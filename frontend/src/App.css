@@ -1,0 +1,209 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0e1117;
+  --panel: #161b22;
+  --border: #2a3140;
+  --text: #e6e6e6;
+  --muted: #8b95a5;
+  --call: #2fb673;
+  --put: #d8737a;
+  --accent: #5b8def;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+header h1 {
+  margin-bottom: 4px;
+}
+
+.tagline {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  max-width: 780px;
+}
+
+.error-banner {
+  background: #4a1a1a;
+  border: 1px solid #7a2a2a;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin: 12px 0;
+  cursor: pointer;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 16px 0;
+}
+
+.controls select, .controls button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.controls button:hover { border-color: var(--accent); }
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 16px;
+}
+
+@media (max-width: 800px) {
+  .layout { grid-template-columns: 1fr; }
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1.05rem;
+}
+
+.muted { color: var(--muted); }
+
+.trip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.trip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.trip:hover { background: #1d2430; }
+.trip.selected { border-color: var(--accent); background: #1a2540; }
+
+.trip-delay.late { color: var(--put); }
+.trip-delay.early { color: var(--call); }
+
+.quote-summary {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.quote-summary > div { display: flex; flex-direction: column; }
+.quote-summary strong { font-size: 1.1rem; }
+
+.cross-check {
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+  margin-bottom: 12px;
+}
+
+.threshold-block { margin-bottom: 18px; }
+.threshold-block h4 { margin-bottom: 8px; }
+
+.contract-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.contract-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.contract-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.badge {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+.badge.call { background: rgba(47,182,115,0.15); color: var(--call); }
+.badge.put { background: rgba(216,115,122,0.15); color: var(--put); }
+
+.price em { color: var(--muted); font-style: normal; font-size: 0.75rem; }
+
+.greeks-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin: 8px 0;
+  font-size: 0.75rem;
+}
+
+.greek-cell { text-align: center; }
+.greek-cell dt { color: var(--muted); }
+.greek-cell dd { margin: 0; font-weight: 600; }
+
+.contract-card button {
+  width: 100%;
+  padding: 6px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+}
+.contract-card button:disabled { opacity: 0.6; cursor: default; }
+
+.contracts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.contracts-table th, .contracts-table td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.contracts-table td.call { color: var(--call); }
+.contracts-table td.put { color: var(--put); }
+
+.itm { color: var(--call); }
+.otm { color: var(--muted); }

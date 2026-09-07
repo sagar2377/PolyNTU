@@ -1,0 +1,8 @@
+numpy
+scipy
+pytest
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy
+httpx
