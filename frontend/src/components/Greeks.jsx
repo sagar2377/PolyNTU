@@ -1,17 +1,12 @@
-const LABELS = {
-  delta: { label: "Delta", hint: "sensitivity to the current predicted arrival time moving" },
-  gamma: { label: "Gamma", hint: "sensitivity of delta itself to the predicted arrival time" },
-  vega: { label: "Vega", hint: "sensitivity to route volatility (punctuality uncertainty)" },
-  theta: { label: "Theta", hint: "value decay as the scheduled time approaches" },
-  rho: { label: "Rho", hint: "not meaningful here (rate is fixed at 0)" },
-};
+const ORDER = ["delta", "gamma", "vega", "theta", "rho"];
+const LABELS = { delta: "Delta", gamma: "Gamma", vega: "Vega", theta: "Theta", rho: "Rho" };
 
-export default function Greeks({ greeks }) {
+export default function Greeks({ greeks, hints }) {
   return (
     <dl className="greeks-grid">
-      {Object.entries(LABELS).map(([key, { label, hint }]) => (
-        <div className="greek-cell" key={key} title={hint}>
-          <dt>{label}</dt>
+      {ORDER.map((key) => (
+        <div className="greek-cell" key={key} title={hints?.[key] || ""}>
+          <dt>{LABELS[key]}</dt>
           <dd>{greeks[key].toFixed(4)}</dd>
         </div>
       ))}

@@ -1,79 +1,44 @@
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
-import ScheduleList from "./components/ScheduleList";
-import QuotePanel from "./components/QuotePanel";
-import ContractsBlotter from "./components/ContractsBlotter";
+import MarketBrowse from "./pages/MarketBrowse";
+import MarketPage from "./pages/MarketPage";
+import Portfolio from "./pages/Portfolio";
 import "./App.css";
 
-const THRESHOLDS = [0, 5, 10];
-
 export default function App() {
-  const [routes, setRoutes] = useState([]);
-  const [routeId, setRouteId] = useState(null);
-  const [trips, setTrips] = useState([]);
-  const [selectedMinute, setSelectedMinute] = useState(null);
-  const [quote, setQuote] = useState(null);
-  const [contracts, setContracts] = useState([]);
-  const [creatingKey, setCreatingKey] = useState(null);
+  const [markets, setMarkets] = useState([]);
+  const [view, setView] = useState("browse"); // 'browse' | 'market' | 'portfolio'
+  const [selectedMarketId, setSelectedMarketId] = useState(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    api.listRoutes().then((r) => {
-      setRoutes(r);
-      setRouteId(r[0]);
-    }).catch((e) => setError(e.message));
+  const loadMarkets = useCallback(() => {
+    api.listMarkets().then(setMarkets).catch((e) => setError(e.message));
   }, []);
 
-  const refresh = useCallback(() => {
-    if (!routeId) return;
-    api.getSchedule(routeId).then(setTrips).catch((e) => setError(e.message));
-    api.listContracts(routeId).then(setContracts).catch((e) => setError(e.message));
-  }, [routeId]);
-
   useEffect(() => {
-    refresh();
-    setSelectedMinute(null);
-    setQuote(null);
-  }, [routeId, refresh]);
-
-  useEffect(() => {
-    if (routeId && selectedMinute != null) {
-      api.getQuote(routeId, selectedMinute, THRESHOLDS).then(setQuote).catch((e) => setError(e.message));
-    }
-  }, [routeId, selectedMinute]);
-
-  const handleCreateContract = async (type, threshold) => {
-    const key = `${selectedMinute}-${threshold}-${type}`;
-    setCreatingKey(key);
-    try {
-      await api.createContract(routeId, type, threshold, selectedMinute);
-      await api.listContracts(routeId).then(setContracts);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setCreatingKey(null);
-    }
-  };
+    loadMarkets();
+  }, [loadMarkets]);
 
   const handleAdvanceClock = async (minutes) => {
     try {
       await api.advanceClock(minutes);
-      refresh();
-      if (selectedMinute != null) {
-        api.getQuote(routeId, selectedMinute, THRESHOLDS).then(setQuote).catch(() => {});
-      }
+      setRefreshTick((t) => t + 1);
     } catch (e) {
       setError(e.message);
     }
   };
 
+  const selectedMarket = markets.find((m) => m.id === selectedMarketId);
+
   return (
     <div className="app">
       <header>
-        <h1>ShuttlePredict</h1>
+        <h1>PolyNTU</h1>
         <p className="tagline">
-          Confidence-priced NTU shuttle arrival predictions, using derivatives-pricing theory
-          (Black-Scholes, Greeks, Monte Carlo) to model and communicate arrival uncertainty.
+          An academic prediction-market platform for the NTU campus: confidence-priced outcomes
+          across several campus market types, using derivatives-pricing theory (Black-Scholes,
+          Greeks, Monte Carlo) to model and communicate uncertainty.
           <br />
           <strong>Educational project — all prices are simulated confidence units, never real currency.</strong>
         </p>
@@ -82,34 +47,26 @@ export default function App() {
       {error && <div className="error-banner" onClick={() => setError(null)}>{error} (click to dismiss)</div>}
 
       <div className="controls">
-        <label>
-          Route:{" "}
-          <select value={routeId || ""} onChange={(e) => setRouteId(e.target.value)}>
-            {routes.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </label>
-        <button onClick={() => handleAdvanceClock(5)}>Advance simulated clock +5 min</button>
-        <button onClick={refresh}>Refresh</button>
+        <button onClick={() => setView("browse")}>Browse markets</button>
+        <button onClick={() => setView("portfolio")}>Portfolio</button>
+        <span className="spacer" />
+        <button onClick={() => handleAdvanceClock(5)}>Advance clock +5 min</button>
+        <button onClick={() => handleAdvanceClock(60)}>+1 hour</button>
+        <button onClick={() => handleAdvanceClock(24 * 60)}>+1 day</button>
       </div>
 
-      <main className="layout">
-        <section className="panel">
-          <h2>Upcoming trips</h2>
-          <ScheduleList trips={trips} selectedMinute={selectedMinute} onSelect={setSelectedMinute} />
-        </section>
+      {view === "browse" && (
+        <MarketBrowse markets={markets} onSelect={(id) => { setSelectedMarketId(id); setView("market"); }} />
+      )}
 
-        <section className="panel">
-          <h2>Priced confidence contracts</h2>
-          <QuotePanel quote={quote} onCreateContract={handleCreateContract} creatingKey={creatingKey} />
-        </section>
-      </main>
+      {view === "market" && selectedMarket && (
+        <MarketPage market={selectedMarket} refreshTick={refreshTick}
+                    onBack={() => setView("browse")} onError={setError} />
+      )}
 
-      <section className="panel">
-        <h2>Positions</h2>
-        <ContractsBlotter contracts={contracts} />
-      </section>
+      {view === "portfolio" && (
+        <Portfolio refreshTick={refreshTick} onError={setError} />
+      )}
     </div>
   );
 }

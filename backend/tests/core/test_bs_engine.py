@@ -1,7 +1,7 @@
 """Sanity checks against the original engine's known-good numbers (see
 blacksholes/README.md: S=100,K=100,T=1,r=0.05,sigma=0.2 -> Call 10.45, Put 5.57)."""
 import numpy as np
-from app import bs_engine
+from core import bs_engine
 
 
 def test_matches_original_engine_sanity_check():

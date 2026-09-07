@@ -1,10 +1,9 @@
 """
-Arrival data simulator.
+Arrival data simulator (Shuttle Arrival market type).
 
 There is no public NTU shuttle API, so this module stands in for one. It
 generates a bus schedule and, for each scheduled trip, a realistic arrival
-delay plus a live "predicted delay" signal that converges to the true delay
-as the bus gets closer.
+delay in minutes.
 
 MODELING LIMITATION (read before reusing this for real data):
 Bus arrivals are bounded and schedule-anchored, not a free random walk:
@@ -19,8 +18,13 @@ distribution (right-skewed, bounded below) rather than GBM, and only bring
 GBM back in at the pricing layer as a tractable approximation. Swapping this
 module's `sample_delay_minutes` for a real bootstrap resample of logged
 historical delays (once such logs exist) is the intended upgrade path —
-the calibration functions below are written to consume either source
+core.calibration.calibrate_sigma is written to consume either source
 identically, since both just produce an array of minute-delays.
+
+The generic "noisy live estimate converging to a true value" and "absolute
+stdev -> fractional BS sigma" logic used to live here but had no
+shuttle-specific content — see core/live_estimate.py and
+core/calibration.py, used by market_type.py.
 """
 from dataclasses import dataclass
 from typing import List
@@ -77,54 +81,6 @@ def generate_historical_delays(route_id: str, hour_of_day: int, n_days: int = 90
     """
     Stand-in for a historical log query: n_days worth of observed delays for
     a route at a given hour, used to calibrate volatility. Once real logs
-    exist, replace this call with a DB read of actual past delays — the
-    calibration functions downstream don't care where the array came from.
+    exist, replace this call with a DB read of actual past delays.
     """
     return sample_delay_minutes(hour_of_day, n_days, rng)
-
-
-def predicted_delay_minutes(true_delay: float, minutes_remaining: float,
-                             minutes_to_horizon: float, prediction_sigma: float,
-                             rng=None) -> float:
-    """
-    The bus's live "predicted delay" at some point before arrival: the true
-    delay plus noise that shrinks to zero as minutes_remaining -> 0. This
-    is what a rider sees on the app before the bus actually arrives, and it
-    is the "spot price" (S) fed into the pricing module.
-
-    prediction_sigma is minutes of prediction noise per sqrt(hour) of time
-    remaining (Brownian scaling), calibrated by calibrate_sigma().
-    """
-    rng = rng or np.random.default_rng()
-    if minutes_remaining <= 0:
-        return true_delay
-    hours_remaining = min(minutes_remaining, minutes_to_horizon) / 60.0
-    noise = rng.normal(0, prediction_sigma * np.sqrt(hours_remaining))
-    return true_delay + noise
-
-
-def calibrate_sigma(historical_delays: np.ndarray, reference_horizon_minutes: float = 10.0,
-                     reference_level_minutes: float = 60.0) -> float:
-    """
-    Turn a sample of historical delays into a Black-Scholes-style volatility.
-
-    Black-Scholes' sigma is a *fractional* volatility (it multiplies the
-    underlying's level inside an exp()), not an absolute one — the same way
-    equity vol of "20%" means 20% of the stock price, not a flat $20.
-    calibrate_sigma therefore does two conversions from the raw minutes
-    standard deviation of historical delay:
-      1. divide by reference_level_minutes to turn an absolute-minutes
-         spread into a fraction of the underlying's level. This MUST match
-         the level pricing.py's shift transform puts the underlying at
-         (pricing.SHIFT_MINUTES) — passing a mismatched reference_level here
-         silently miscalibrates every price and Greek.
-      2. divide by sqrt(reference_horizon_in_hours) to annualize (here:
-         "hour-ize") it, the same Brownian scaling equity vol uses.
-    reference_horizon_minutes is "how far out the delay was effectively
-    locked in" for this data — treat it as a calibration knob, not a fact
-    derivable from the gamma-simulated data itself.
-    """
-    std_minutes = float(np.std(historical_delays))
-    fractional_std = std_minutes / reference_level_minutes
-    ref_hours = reference_horizon_minutes / 60.0
-    return fractional_std / np.sqrt(ref_hours)
