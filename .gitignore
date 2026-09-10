@@ -16,3 +16,10 @@ dist/
 .env.*
 *.pem
 *.key
+
+# Local development tools, archived data, and Rust build output
+.tools/
+.local/
+target/
+.venv/
+*.log

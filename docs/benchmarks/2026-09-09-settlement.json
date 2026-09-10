@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-09-08T19:37:21.798Z",
+  "expected_claims": 10000,
+  "markets_completed": 50,
+  "sse_clients": 200,
+  "actual_claims": 10000,
+  "invalid_credits": 0,
+  "seconds_from_evidence_submission_start": 7.642920100000003,
+  "evidence_upload_ms": 42.86410000000615,
+  "measurement": "Real HTTP and fixed wall-clock windows; completion polled every 500 ms; includes evidence upload and finalization wait. Quote/trade samples cover settlement interval only.",
+  "nominal_finalize_ms": 1788896234496,
+  "quote": {
+    "samples": 764,
+    "p50_ms": 1.76,
+    "p95_ms": 2.4,
+    "p99_ms": 3.61
+  },
+  "trade": {
+    "samples": 153,
+    "p50_ms": 4.28,
+    "p95_ms": 60.45,
+    "p99_ms": 74.41
+  },
+  "conflicts": 0,
+  "errors": 0,
+  "submittedQuotes": 764,
+  "submittedTrades": 153,
+  "reconciliation": {
+    "account_errors": 0,
+    "inventory_errors": 0,
+    "net_units_micros": "0",
+    "ok": true,
+    "reserve_errors": 0
+  }
+}

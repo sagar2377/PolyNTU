@@ -1,16 +1,31 @@
-# React + Vite
+# PolyNTU React frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The frontend is a React 19 single-page interface built with Vite. It displays public markets, manages a locally stored demo account token, previews and confirms trades, recovers uncertain receipts, and displays positions and settlement credits. All authoritative trading and resolution decisions remain in the Rust backend.
 
-Currently, two official plugins are available:
+## Run the frontend separately
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```powershell
+npm ci
+npm run dev
+```
 
-## React Compiler
+Vite proxies `/api` and `/health` to `http://127.0.0.1:8000`. Set `VITE_API_URL` only when the API is hosted at another origin. `npm run build` creates `dist/`, and `npm run lint` checks the source.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Source map
 
-## Expanding the Oxlint configuration
+| File | Responsibility |
+|---|---|
+| `src/App.jsx` | Account access, navigation, global refresh, errors, pending-trade notice, and demo clock controls. |
+| `src/api.js` | Fetch wrapper, bearer/admin headers, exact unit formatting, share parsing, timestamps, and storage keys. |
+| `src/pages/MarketBrowse.jsx` | Paginated market discovery and category filtering. |
+| `src/pages/MarketPage.jsx` | Instance snapshot, event subscription, resolution evidence, and trade panel composition. |
+| `src/pages/Portfolio.jsx` | Positions, settlement credits, and trade history. |
+| `src/components/TradePanel.jsx` | Quote preview, expiry countdown, confirmation, idempotency persistence, and receipt recovery. |
+| `src/App.css` | Application layout, components, responsive rules, and focus styles. |
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## Browser storage
+
+- `polyntu.v2.token` stores the current bearer token.
+- `polyntu.v2.pending-trade` stores an exact submitted trade body, its account and instance IDs, and its idempotency key until a definitive response is received.
+
+Local storage is acceptable for the present loopback demonstration but is not sufficient production credential handling. See [frontend internals](../docs/developer/frontend.md) and [security and privacy](../docs/developer/security-and-privacy.md).

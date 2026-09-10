@@ -1,0 +1,32 @@
+name: Verify Rust outcome markets
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: polyntu
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U polyntu -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://polyntu:test-only-password@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: rustup toolchain install 1.88.0 --profile minimal --component rustfmt --component clippy
+      - run: rustup override set 1.88.0
+      - run: cargo fmt --manifest-path backend/Cargo.toml -- --check
+      - run: cargo test --manifest-path backend/Cargo.toml --locked -- --test-threads=4
+      - run: cargo clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings
+      - run: npm ci && npm run lint && npm run build
+        working-directory: frontend

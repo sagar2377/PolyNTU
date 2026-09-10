@@ -1,0 +1,5122 @@
+[
+  {
+    "inventory": [
+      63809,
+      49960
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 3407
+  },
+  {
+    "inventory": [
+      122369,
+      91987
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 779
+  },
+  {
+    "inventory": [
+      126940,
+      29296
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 9999012
+  },
+  {
+    "inventory": [
+      51247,
+      58440
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 661316
+  },
+  {
+    "inventory": [
+      103585,
+      21458
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      72215,
+      129794
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 3
+  },
+  {
+    "inventory": [
+      21080,
+      31028
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 260263
+  },
+  {
+    "inventory": [
+      95707,
+      62835
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 95707,
+    "amount_micros": 33220122
+  },
+  {
+    "inventory": [
+      89672,
+      89263
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 490
+  },
+  {
+    "inventory": [
+      51834,
+      42105
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 715596
+  },
+  {
+    "inventory": [
+      9861,
+      121694
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 999985
+  },
+  {
+    "inventory": [
+      124364,
+      95709
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 917
+  },
+  {
+    "inventory": [
+      85267,
+      9912
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      127065,
+      54125
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 72300125
+  },
+  {
+    "inventory": [
+      112362,
+      66167
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 53752855
+  },
+  {
+    "inventory": [
+      148438,
+      78325
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 69630750
+  },
+  {
+    "inventory": [
+      34801,
+      53930
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 129
+  },
+  {
+    "inventory": [
+      78932,
+      112346
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 99652260
+  },
+  {
+    "inventory": [
+      6438,
+      145514
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      143266,
+      343
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 9999997
+  },
+  {
+    "inventory": [
+      1214190,
+      783792
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 126974
+  },
+  {
+    "inventory": [
+      905564,
+      389816
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 16902
+  },
+  {
+    "inventory": [
+      99860,
+      453700
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 972
+  },
+  {
+    "inventory": [
+      823509,
+      417654
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 2876011
+  },
+  {
+    "inventory": [
+      1179447,
+      691645
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 7593
+  },
+  {
+    "inventory": [
+      385797,
+      196441
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 1366666
+  },
+  {
+    "inventory": [
+      242404,
+      634111
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 19
+  },
+  {
+    "inventory": [
+      1313795,
+      275376
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1000
+  },
+  {
+    "inventory": [
+      441468,
+      850058
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 983551
+  },
+  {
+    "inventory": [
+      589519,
+      1235746
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 267491
+  },
+  {
+    "inventory": [
+      36513,
+      1360457
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 999998
+  },
+  {
+    "inventory": [
+      39492,
+      603579
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 997
+  },
+  {
+    "inventory": [
+      870756,
+      300816
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 16943
+  },
+  {
+    "inventory": [
+      539424,
+      114058
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 238
+  },
+  {
+    "inventory": [
+      490650,
+      324032
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 842
+  },
+  {
+    "inventory": [
+      1300233,
+      549535
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 999454
+  },
+  {
+    "inventory": [
+      1341847,
+      453129
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 2
+  },
+  {
+    "inventory": [
+      1162892,
+      50991
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 9999859
+  },
+  {
+    "inventory": [
+      45115,
+      752163
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99854206
+  },
+  {
+    "inventory": [
+      1190385,
+      1426213
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 87
+  },
+  {
+    "inventory": [
+      5350872,
+      10777705
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 16925
+  },
+  {
+    "inventory": [
+      9511389,
+      7801529
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 14684473
+  },
+  {
+    "inventory": [
+      3809209,
+      3771684
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 47813725
+  },
+  {
+    "inventory": [
+      1508685,
+      2684347
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 12991
+  },
+  {
+    "inventory": [
+      3722260,
+      9940357
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 19991
+  },
+  {
+    "inventory": [
+      2491452,
+      8674278
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 16965
+  },
+  {
+    "inventory": [
+      2129295,
+      11797271
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 6655
+  },
+  {
+    "inventory": [
+      3239010,
+      3727084
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 3815268
+  },
+  {
+    "inventory": [
+      10285630,
+      8761450
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 3041
+  },
+  {
+    "inventory": [
+      2416489,
+      7650604
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 90
+  },
+  {
+    "inventory": [
+      10384654,
+      8263663
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 11198063
+  },
+  {
+    "inventory": [
+      12454666,
+      5795766
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99865294
+  },
+  {
+    "inventory": [
+      1165548,
+      7685386
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 14644
+  },
+  {
+    "inventory": [
+      2667184,
+      7499909
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 7
+  },
+  {
+    "inventory": [
+      2758538,
+      3992213
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 774373
+  },
+  {
+    "inventory": [
+      3929043,
+      9587098
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 60
+  },
+  {
+    "inventory": [
+      14709642,
+      5924352
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 16998
+  },
+  {
+    "inventory": [
+      1384761,
+      3529336
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 89973124
+  },
+  {
+    "inventory": [
+      11589062,
+      5537825
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 997649
+  },
+  {
+    "inventory": [
+      4562686,
+      13185170
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 9998210
+  },
+  {
+    "inventory": [
+      371706232,
+      101173296
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 9373374
+  },
+  {
+    "inventory": [
+      22455970,
+      395623444
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 976
+  },
+  {
+    "inventory": [
+      170186766,
+      47172663
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 226158
+  },
+  {
+    "inventory": [
+      14158302,
+      163337050
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 13877
+  },
+  {
+    "inventory": [
+      206898000,
+      289790224
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 5165
+  },
+  {
+    "inventory": [
+      452199698,
+      238025145
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 106
+  },
+  {
+    "inventory": [
+      314427155,
+      450909690
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 204
+  },
+  {
+    "inventory": [
+      228596506,
+      99354831
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 21535953
+  },
+  {
+    "inventory": [
+      275687872,
+      211910305
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 654252
+  },
+  {
+    "inventory": [
+      431187575,
+      159343742
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 6186505
+  },
+  {
+    "inventory": [
+      425465275,
+      341569795
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 3017655
+  },
+  {
+    "inventory": [
+      183634077,
+      463568646
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 975
+  },
+  {
+    "inventory": [
+      474365907,
+      156495229
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 16320
+  },
+  {
+    "inventory": [
+      62553008,
+      30034462
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 9869
+  },
+  {
+    "inventory": [
+      126454675,
+      372135835
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 7890551
+  },
+  {
+    "inventory": [
+      77167468,
+      237965080
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 14163
+  },
+  {
+    "inventory": [
+      305061382,
+      32119482
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 939
+  },
+  {
+    "inventory": [
+      306752089,
+      165772400
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 80365501
+  },
+  {
+    "inventory": [
+      11928835,
+      341128751
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 36
+  },
+  {
+    "inventory": [
+      22172244,
+      46950618
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 43849218
+  },
+  {
+    "inventory": [
+      51032,
+      66017,
+      32244
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 786858
+  },
+  {
+    "inventory": [
+      121999,
+      42492,
+      118583
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 8781094
+  },
+  {
+    "inventory": [
+      167,
+      18848,
+      59569
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 59110855
+  },
+  {
+    "inventory": [
+      82156,
+      28422,
+      112033
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 16182
+  },
+  {
+    "inventory": [
+      19904,
+      146601,
+      72142
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 614
+  },
+  {
+    "inventory": [
+      95064,
+      91056,
+      142507
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 52465099
+  },
+  {
+    "inventory": [
+      42583,
+      96687,
+      149140
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      125784,
+      138360,
+      133819
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 8861
+  },
+  {
+    "inventory": [
+      62191,
+      121390,
+      146673
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 188
+  },
+  {
+    "inventory": [
+      32691,
+      108224,
+      26493
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 498
+  },
+  {
+    "inventory": [
+      114441,
+      33905,
+      62821
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 9961926
+  },
+  {
+    "inventory": [
+      147464,
+      132590,
+      63727
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 3130
+  },
+  {
+    "inventory": [
+      87675,
+      147864,
+      146225
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 5810166
+  },
+  {
+    "inventory": [
+      133683,
+      24379,
+      20040
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 999972
+  },
+  {
+    "inventory": [
+      113585,
+      100222,
+      29076
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 783342
+  },
+  {
+    "inventory": [
+      95269,
+      119815,
+      11618
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 20
+  },
+  {
+    "inventory": [
+      95297,
+      103862,
+      34212
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 87890212
+  },
+  {
+    "inventory": [
+      114843,
+      80995,
+      46306
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 6449
+  },
+  {
+    "inventory": [
+      68442,
+      113205,
+      98815
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 3232
+  },
+  {
+    "inventory": [
+      63667,
+      114534,
+      109454
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 3
+  },
+  {
+    "inventory": [
+      554678,
+      1248835,
+      775522
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 990
+  },
+  {
+    "inventory": [
+      107937,
+      901691,
+      39847
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 31036
+  },
+  {
+    "inventory": [
+      357099,
+      1429174,
+      511720
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      386275,
+      238165,
+      1222390
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 235
+  },
+  {
+    "inventory": [
+      497194,
+      116714,
+      843823
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 5069893
+  },
+  {
+    "inventory": [
+      516162,
+      1134384,
+      1422154
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 905
+  },
+  {
+    "inventory": [
+      840335,
+      669330,
+      1486366
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 1570
+  },
+  {
+    "inventory": [
+      1237038,
+      1273034,
+      1477624
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 13940
+  },
+  {
+    "inventory": [
+      849826,
+      1153639,
+      108028
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 1735
+  },
+  {
+    "inventory": [
+      1450135,
+      801947,
+      548889
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 99895641
+  },
+  {
+    "inventory": [
+      802740,
+      1265483,
+      1407426
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 194
+  },
+  {
+    "inventory": [
+      1406383,
+      259878,
+      615471
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 23216
+  },
+  {
+    "inventory": [
+      371938,
+      1202199,
+      1447698
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 15656
+  },
+  {
+    "inventory": [
+      667871,
+      635578,
+      619992
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 42582340
+  },
+  {
+    "inventory": [
+      56253,
+      1440270,
+      1001373
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 987799
+  },
+  {
+    "inventory": [
+      242984,
+      960323,
+      458409
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 6595
+  },
+  {
+    "inventory": [
+      1385289,
+      679345,
+      1357962
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 55509999
+  },
+  {
+    "inventory": [
+      183879,
+      221622,
+      228996
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 249
+  },
+  {
+    "inventory": [
+      1271429,
+      862446,
+      1297614
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 67496626
+  },
+  {
+    "inventory": [
+      1292188,
+      800967,
+      986925
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 6940
+  },
+  {
+    "inventory": [
+      7642930,
+      9896347,
+      9132660
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 1137
+  },
+  {
+    "inventory": [
+      13740097,
+      5059146,
+      11368609
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 91046522
+  },
+  {
+    "inventory": [
+      14177043,
+      14492622,
+      9382643
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 576358
+  },
+  {
+    "inventory": [
+      8301307,
+      13590566,
+      13548536
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 8657
+  },
+  {
+    "inventory": [
+      8909793,
+      11970896,
+      2525952
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 9549726
+  },
+  {
+    "inventory": [
+      2903615,
+      1692690,
+      12256086
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 25
+  },
+  {
+    "inventory": [
+      5638537,
+      14075202,
+      7545461
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 16972
+  },
+  {
+    "inventory": [
+      5831041,
+      4803107,
+      6160052
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 505671
+  },
+  {
+    "inventory": [
+      5576632,
+      13252703,
+      9360469
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 198852
+  },
+  {
+    "inventory": [
+      1605577,
+      2020046,
+      9514689
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99902975
+  },
+  {
+    "inventory": [
+      2202034,
+      14319627,
+      6921510
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      7428665,
+      8079808,
+      6547044
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 1248345
+  },
+  {
+    "inventory": [
+      5781940,
+      13605949,
+      9021453
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 989508
+  },
+  {
+    "inventory": [
+      14441965,
+      2060484,
+      6395732
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 4
+  },
+  {
+    "inventory": [
+      10449851,
+      14886224,
+      10614173
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 9749788
+  },
+  {
+    "inventory": [
+      10196026,
+      5414215,
+      3984587
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 1984
+  },
+  {
+    "inventory": [
+      11796331,
+      12108050,
+      8802913
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 9610
+  },
+  {
+    "inventory": [
+      4849249,
+      5022294,
+      13350437
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 999556
+  },
+  {
+    "inventory": [
+      7737295,
+      7277365,
+      260969
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 387
+  },
+  {
+    "inventory": [
+      12331785,
+      6015181,
+      6254746
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 16930
+  },
+  {
+    "inventory": [
+      436688280,
+      286531751,
+      322420064
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 649
+  },
+  {
+    "inventory": [
+      374584808,
+      318052283,
+      190220878
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 32921729
+  },
+  {
+    "inventory": [
+      259083475,
+      291089846,
+      30448747
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 9444
+  },
+  {
+    "inventory": [
+      315516720,
+      22605308,
+      495620958
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 1406527
+  },
+  {
+    "inventory": [
+      189368746,
+      188574598,
+      354881481
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 724312
+  },
+  {
+    "inventory": [
+      430847958,
+      282834474,
+      480914483
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 573364
+  },
+  {
+    "inventory": [
+      380403211,
+      287194900,
+      217324902
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 24761396
+  },
+  {
+    "inventory": [
+      34614421,
+      30998295,
+      256441236
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 86
+  },
+  {
+    "inventory": [
+      82297121,
+      390414521,
+      93075989
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 4186496
+  },
+  {
+    "inventory": [
+      170676371,
+      257821311,
+      433736912
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 8037211
+  },
+  {
+    "inventory": [
+      478112169,
+      259707232,
+      216183767
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 9492998
+  },
+  {
+    "inventory": [
+      394060700,
+      458850535,
+      106570184
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 19010
+  },
+  {
+    "inventory": [
+      386583756,
+      423167469,
+      277430017
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 8825
+  },
+  {
+    "inventory": [
+      146955586,
+      158989398,
+      423176168
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 881
+  },
+  {
+    "inventory": [
+      139831020,
+      416694404,
+      130882407
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 56
+  },
+  {
+    "inventory": [
+      428113919,
+      496500320,
+      491635387
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 406969
+  },
+  {
+    "inventory": [
+      364465461,
+      207390550,
+      92840632
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 1631701
+  },
+  {
+    "inventory": [
+      363890811,
+      239572289,
+      337633587
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 37389971
+  },
+  {
+    "inventory": [
+      422892298,
+      231686441,
+      43205373
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 854544
+  },
+  {
+    "inventory": [
+      401172650,
+      331919065,
+      359731139
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 3935
+  },
+  {
+    "inventory": [
+      86918,
+      70320,
+      140116,
+      11283,
+      131633,
+      111500,
+      42526,
+      114231
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 625
+  },
+  {
+    "inventory": [
+      132389,
+      54112,
+      120276,
+      85101,
+      56333,
+      87388,
+      97721,
+      31321
+    ],
+    "liquidity": 10,
+    "outcome": 3,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 49780292
+  },
+  {
+    "inventory": [
+      24601,
+      1047,
+      85467,
+      124841,
+      1070,
+      77731,
+      112560,
+      125767
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 85467,
+    "amount_micros": 80937
+  },
+  {
+    "inventory": [
+      106802,
+      90775,
+      24933,
+      86267,
+      127084,
+      87319,
+      64323,
+      122434
+    ],
+    "liquidity": 10,
+    "outcome": 3,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 8811
+  },
+  {
+    "inventory": [
+      123315,
+      83321,
+      14539,
+      80978,
+      26432,
+      44246,
+      78506,
+      102540
+    ],
+    "liquidity": 10,
+    "outcome": 5,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 20709392
+  },
+  {
+    "inventory": [
+      129208,
+      102502,
+      119072,
+      92582,
+      97789,
+      135972,
+      98921,
+      109337
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 87045053
+  },
+  {
+    "inventory": [
+      33375,
+      95233,
+      93295,
+      134114,
+      138223,
+      113441,
+      90850,
+      66736
+    ],
+    "liquidity": 10,
+    "outcome": 4,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 561
+  },
+  {
+    "inventory": [
+      129088,
+      97713,
+      31330,
+      80627,
+      126021,
+      47638,
+      142949,
+      76112
+    ],
+    "liquidity": 10,
+    "outcome": 3,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 1428
+  },
+  {
+    "inventory": [
+      83260,
+      124440,
+      143277,
+      131798,
+      118695,
+      86956,
+      137514,
+      87206
+    ],
+    "liquidity": 10,
+    "outcome": 4,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 38373
+  },
+  {
+    "inventory": [
+      71481,
+      35688,
+      81496,
+      100916,
+      45810,
+      11860,
+      89043,
+      10344
+    ],
+    "liquidity": 10,
+    "outcome": 3,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 674648
+  },
+  {
+    "inventory": [
+      20311,
+      85530,
+      89408,
+      61403,
+      135122,
+      118756,
+      43250,
+      126846
+    ],
+    "liquidity": 10,
+    "outcome": 4,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 9316365
+  },
+  {
+    "inventory": [
+      95111,
+      102874,
+      141442,
+      84822,
+      4941,
+      102867,
+      45993,
+      66830
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 202147
+  },
+  {
+    "inventory": [
+      135678,
+      133226,
+      34829,
+      143020,
+      63940,
+      121168,
+      51370,
+      9640
+    ],
+    "liquidity": 10,
+    "outcome": 4,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 4
+  },
+  {
+    "inventory": [
+      126571,
+      16105,
+      36507,
+      54480,
+      70541,
+      32477,
+      90773,
+      115918
+    ],
+    "liquidity": 10,
+    "outcome": 5,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 376
+  },
+  {
+    "inventory": [
+      142276,
+      2538,
+      22920,
+      21662,
+      126069,
+      79411,
+      59054,
+      45220
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 2538,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      10939,
+      43779,
+      3955,
+      54235,
+      99177,
+      50846,
+      127778,
+      139537
+    ],
+    "liquidity": 10,
+    "outcome": 6,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 3957
+  },
+  {
+    "inventory": [
+      102305,
+      86627,
+      79342,
+      148831,
+      90024,
+      13899,
+      101147,
+      115359
+    ],
+    "liquidity": 10,
+    "outcome": 5,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      141892,
+      86163,
+      28309,
+      40806,
+      105154,
+      21040,
+      35542,
+      74066
+    ],
+    "liquidity": 10,
+    "outcome": 5,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      132849,
+      42981,
+      4914,
+      123202,
+      21913,
+      134988,
+      63541,
+      44712
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      148454,
+      103190,
+      48421,
+      121797,
+      135958,
+      138600,
+      56019,
+      99535
+    ],
+    "liquidity": 10,
+    "outcome": 5,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 3125882
+  },
+  {
+    "inventory": [
+      1154583,
+      1419454,
+      611556,
+      1086976,
+      99655,
+      319309,
+      721925,
+      1266728
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 2226
+  },
+  {
+    "inventory": [
+      1168141,
+      982451,
+      136363,
+      323349,
+      339775,
+      900518,
+      275855,
+      1255066
+    ],
+    "liquidity": 100,
+    "outcome": 3,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 10200
+  },
+  {
+    "inventory": [
+      229203,
+      110356,
+      1468248,
+      121773,
+      1321925,
+      1154599,
+      960928,
+      466298
+    ],
+    "liquidity": 100,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 366
+  },
+  {
+    "inventory": [
+      679435,
+      791089,
+      695487,
+      1192730,
+      399310,
+      578313,
+      399650,
+      1202820
+    ],
+    "liquidity": 100,
+    "outcome": 3,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 7944
+  },
+  {
+    "inventory": [
+      1215230,
+      1442588,
+      92347,
+      789739,
+      329672,
+      764645,
+      955201,
+      171376
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 899
+  },
+  {
+    "inventory": [
+      382637,
+      1448697,
+      176701,
+      618035,
+      1435966,
+      625207,
+      176437,
+      1296344
+    ],
+    "liquidity": 100,
+    "outcome": 6,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 245
+  },
+  {
+    "inventory": [
+      59780,
+      102112,
+      547007,
+      1086877,
+      33050,
+      607963,
+      1051291,
+      1127531
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      4460,
+      968877,
+      516151,
+      1485639,
+      259968,
+      234285,
+      215903,
+      1032024
+    ],
+    "liquidity": 100,
+    "outcome": 6,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 28
+  },
+  {
+    "inventory": [
+      454024,
+      1373076,
+      1221108,
+      892779,
+      1260592,
+      162801,
+      1372899,
+      620319
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 39
+  },
+  {
+    "inventory": [
+      547944,
+      183888,
+      669419,
+      1115323,
+      1115340,
+      1058496,
+      941795,
+      569030
+    ],
+    "liquidity": 100,
+    "outcome": 6,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 1086
+  },
+  {
+    "inventory": [
+      449956,
+      348922,
+      1026361,
+      634419,
+      17768,
+      1009420,
+      187098,
+      1140672
+    ],
+    "liquidity": 100,
+    "outcome": 4,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      963176,
+      1058724,
+      910896,
+      449980,
+      1303551,
+      460055,
+      351850,
+      1368644
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 28
+  },
+  {
+    "inventory": [
+      1250257,
+      759489,
+      1177938,
+      577825,
+      111167,
+      1246883,
+      1033089,
+      1115164
+    ],
+    "liquidity": 100,
+    "outcome": 3,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 427
+  },
+  {
+    "inventory": [
+      649204,
+      962568,
+      367984,
+      757022,
+      657210,
+      704722,
+      1364556,
+      1315393
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 273
+  },
+  {
+    "inventory": [
+      147720,
+      1265502,
+      546208,
+      1016700,
+      349971,
+      1333262,
+      906285,
+      859320
+    ],
+    "liquidity": 100,
+    "outcome": 3,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 4504868
+  },
+  {
+    "inventory": [
+      176756,
+      1109241,
+      1232410,
+      844410,
+      1472931,
+      1231027,
+      839234,
+      770195
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 74233
+  },
+  {
+    "inventory": [
+      64493,
+      1491874,
+      1183221,
+      893165,
+      282797,
+      1253143,
+      86091,
+      571091
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      624232,
+      922198,
+      1287204,
+      525363,
+      179000,
+      255309,
+      1138565,
+      1073164
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 19
+  },
+  {
+    "inventory": [
+      135747,
+      37089,
+      659026,
+      1238806,
+      116592,
+      54625,
+      1165376,
+      214805
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      428971,
+      1494761,
+      1340121,
+      32542,
+      520239,
+      1223475,
+      349299,
+      650519
+    ],
+    "liquidity": 100,
+    "outcome": 6,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 78
+  },
+  {
+    "inventory": [
+      6287844,
+      6243897,
+      5775852,
+      8868927,
+      11662127,
+      3998958,
+      2461956,
+      5474710
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 2580
+  },
+  {
+    "inventory": [
+      13298960,
+      10560894,
+      5001844,
+      9074922,
+      12449176,
+      4992977,
+      12913955,
+      2252489
+    ],
+    "liquidity": 1000,
+    "outcome": 3,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 7
+  },
+  {
+    "inventory": [
+      7585541,
+      9162531,
+      2418369,
+      12198567,
+      8739105,
+      14980928,
+      11919810,
+      8094268
+    ],
+    "liquidity": 1000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 96306
+  },
+  {
+    "inventory": [
+      2168031,
+      14885462,
+      3055943,
+      5786038,
+      271450,
+      10629521,
+      11523179,
+      12461189
+    ],
+    "liquidity": 1000,
+    "outcome": 5,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 212
+  },
+  {
+    "inventory": [
+      14652046,
+      4696381,
+      12770843,
+      14169630,
+      9192410,
+      10078684,
+      13646925,
+      9524631
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      14801118,
+      10511588,
+      1531014,
+      1914727,
+      3479149,
+      13505736,
+      4730859,
+      211908
+    ],
+    "liquidity": 1000,
+    "outcome": 4,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 0
+  },
+  {
+    "inventory": [
+      9765506,
+      867515,
+      4192962,
+      830326,
+      8848924,
+      14911023,
+      901197,
+      9567868
+    ],
+    "liquidity": 1000,
+    "outcome": 4,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 218869
+  },
+  {
+    "inventory": [
+      5772125,
+      6745233,
+      7192091,
+      12958005,
+      9075646,
+      2326516,
+      9982400,
+      6679610
+    ],
+    "liquidity": 1000,
+    "outcome": 4,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 1817968
+  },
+  {
+    "inventory": [
+      10414465,
+      6256979,
+      8017853,
+      1026833,
+      5954834,
+      4533986,
+      4215248,
+      12511354
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 1836
+  },
+  {
+    "inventory": [
+      715587,
+      10587576,
+      7864026,
+      8296992,
+      12804148,
+      9992392,
+      142359,
+      9900405
+    ],
+    "liquidity": 1000,
+    "outcome": 3,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 88361
+  },
+  {
+    "inventory": [
+      10366116,
+      10926820,
+      14870069,
+      8000439,
+      5599729,
+      12000818,
+      9923293,
+      3756986
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 10107
+  },
+  {
+    "inventory": [
+      13557979,
+      9519732,
+      12524585,
+      10657483,
+      8851835,
+      12713322,
+      12840948,
+      9273973
+    ],
+    "liquidity": 1000,
+    "outcome": 3,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 2211484
+  },
+  {
+    "inventory": [
+      4530724,
+      3596863,
+      10347772,
+      8531539,
+      52682,
+      1873689,
+      6823821,
+      3264136
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 8358662
+  },
+  {
+    "inventory": [
+      11062500,
+      11755533,
+      5505161,
+      8511487,
+      1659648,
+      12050021,
+      6781155,
+      1335161
+    ],
+    "liquidity": 1000,
+    "outcome": 4,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 1358
+  },
+  {
+    "inventory": [
+      13001203,
+      13665823,
+      8304119,
+      12295079,
+      674632,
+      453230,
+      11030865,
+      8209850
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 43
+  },
+  {
+    "inventory": [
+      11232048,
+      6432604,
+      11835136,
+      5445650,
+      7481452,
+      182396,
+      2394129,
+      4665292
+    ],
+    "liquidity": 1000,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 490
+  },
+  {
+    "inventory": [
+      6665756,
+      3174953,
+      6424284,
+      8337382,
+      5619908,
+      7327699,
+      8960056,
+      926219
+    ],
+    "liquidity": 1000,
+    "outcome": 3,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 275
+  },
+  {
+    "inventory": [
+      2988337,
+      9997884,
+      4187092,
+      6089440,
+      10234607,
+      5563878,
+      4468716,
+      11584070
+    ],
+    "liquidity": 1000,
+    "outcome": 5,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 1649
+  },
+  {
+    "inventory": [
+      14774813,
+      4017176,
+      3709649,
+      8840450,
+      12558920,
+      9819727,
+      7730523,
+      9973912
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 1320
+  },
+  {
+    "inventory": [
+      1710625,
+      7900128,
+      10991629,
+      6645119,
+      4665607,
+      5891832,
+      4752328,
+      802892
+    ],
+    "liquidity": 1000,
+    "outcome": 4,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 176111
+  },
+  {
+    "inventory": [
+      47132563,
+      227565136,
+      8417027,
+      490806196,
+      339195997,
+      83104118,
+      478192559,
+      221929797
+    ],
+    "liquidity": 100000,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 298370
+  },
+  {
+    "inventory": [
+      442912407,
+      96759363,
+      392481115,
+      478020913,
+      182668922,
+      103427603,
+      344231173,
+      247931830
+    ],
+    "liquidity": 100000,
+    "outcome": 6,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 1013279
+  },
+  {
+    "inventory": [
+      154031243,
+      171256447,
+      392011963,
+      114668089,
+      45926597,
+      173225398,
+      51655598,
+      83327729
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 62232
+  },
+  {
+    "inventory": [
+      45266519,
+      89511366,
+      204867712,
+      480973740,
+      21451259,
+      99610005,
+      363860272,
+      126983367
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 148
+  },
+  {
+    "inventory": [
+      11605222,
+      341822758,
+      297166348,
+      20695986,
+      421769935,
+      101551328,
+      175844901,
+      431130554
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 10000,
+    "amount_micros": 1500532
+  },
+  {
+    "inventory": [
+      355106580,
+      368046471,
+      97486494,
+      36093129,
+      412720550,
+      387637641,
+      454984812,
+      37446306
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 2367
+  },
+  {
+    "inventory": [
+      63903091,
+      189491632,
+      402682842,
+      133480250,
+      154733082,
+      243123510,
+      25943783,
+      448265988
+    ],
+    "liquidity": 100000,
+    "outcome": 6,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 744174
+  },
+  {
+    "inventory": [
+      216325424,
+      364265002,
+      375694162,
+      201717692,
+      153141372,
+      435925174,
+      156407886,
+      46320242
+    ],
+    "liquidity": 100000,
+    "outcome": 6,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 256308
+  },
+  {
+    "inventory": [
+      498477227,
+      186679995,
+      306884129,
+      154966405,
+      6264971,
+      461948581,
+      161443223,
+      274816967
+    ],
+    "liquidity": 100000,
+    "outcome": 3,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 155943
+  },
+  {
+    "inventory": [
+      45842681,
+      79549328,
+      315512729,
+      80440093,
+      424429679,
+      80670718,
+      193901706,
+      27398013
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1000,
+    "amount_micros": 213816
+  },
+  {
+    "inventory": [
+      357138350,
+      398713080,
+      303416826,
+      469694534,
+      232745519,
+      492667053,
+      69628314,
+      303368655
+    ],
+    "liquidity": 100000,
+    "outcome": 6,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 513618
+  },
+  {
+    "inventory": [
+      104160609,
+      344777690,
+      320221871,
+      455871197,
+      108703627,
+      141319738,
+      446557916,
+      407555833
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 80
+  },
+  {
+    "inventory": [
+      298482324,
+      481066454,
+      475819785,
+      160416483,
+      170568850,
+      87213720,
+      176336472,
+      22647417
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 7480
+  },
+  {
+    "inventory": [
+      38718559,
+      498214784,
+      129291918,
+      300956597,
+      412940328,
+      1488046,
+      210081089,
+      229033725
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 10000,
+    "amount_micros": 144349
+  },
+  {
+    "inventory": [
+      281765269,
+      215766776,
+      169974274,
+      274959133,
+      230212603,
+      352749145,
+      471607162,
+      131787415
+    ],
+    "liquidity": 100000,
+    "outcome": 5,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 165
+  },
+  {
+    "inventory": [
+      113564838,
+      403477332,
+      369929533,
+      76659174,
+      42806857,
+      219253865,
+      445574886,
+      441292491
+    ],
+    "liquidity": 100000,
+    "outcome": 5,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 542
+  },
+  {
+    "inventory": [
+      207879165,
+      231932421,
+      10528586,
+      128708075,
+      35184599,
+      448273055,
+      93886873,
+      185464128
+    ],
+    "liquidity": 100000,
+    "outcome": 5,
+    "side": "buy",
+    "quantity": 17,
+    "amount_micros": 12355
+  },
+  {
+    "inventory": [
+      79030852,
+      10832782,
+      65343474,
+      372259724,
+      336078320,
+      497335155,
+      73170997,
+      452142506
+    ],
+    "liquidity": 100000,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 17,
+    "amount_micros": 4979
+  },
+  {
+    "inventory": [
+      52646746,
+      413636903,
+      299435952,
+      224996089,
+      339137749,
+      109219687,
+      131465108,
+      98027877
+    ],
+    "liquidity": 100000,
+    "outcome": 3,
+    "side": "sell",
+    "quantity": 1000,
+    "amount_micros": 71438
+  },
+  {
+    "inventory": [
+      413317291,
+      4924492,
+      221161896,
+      170978647,
+      334446894,
+      41165915,
+      210679504,
+      483682737
+    ],
+    "liquidity": 100000,
+    "outcome": 6,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 3392597
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 501
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 93068983
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 499
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 6931017
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 501
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 93068983
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 499
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 6931017
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99999546
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 454
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 501
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 62011451
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 499
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 37988549
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 501
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 62011451
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 499
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 37988549
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99999999
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 501
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 51249480
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 499
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 48750520
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 501
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 51249480
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 499
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 48750520
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99999999
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 501
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 50012500
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 499
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 49987500
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 501
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 50012500
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 499
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 49987500
+  },
+  {
+    "inventory": [
+      1000000000,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99995457
+  },
+  {
+    "inventory": [
+      1000000000,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 1,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 4543
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 334
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 89014786
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 333
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 4054424
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 334
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 89014786
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 333
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 4054424
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99999092
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 454
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 334
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 45283243
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 333
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 23661748
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 334
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 45283243
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 333
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 23661748
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99999999
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 334
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 34456472
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 333
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 32234866
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 334
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 34456472
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 333
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 32234866
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99999999
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 334
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 33344446
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 333
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 33322223
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 334
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 33344446
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 333
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 33322223
+  },
+  {
+    "inventory": [
+      1000000000,
+      0,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      0,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99990916
+  },
+  {
+    "inventory": [
+      1000000000,
+      0,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      0,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 2,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 4542
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 126
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 79208763
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 124
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 1335249
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 126
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 79208763
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 124
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 10,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 1335249
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99996822
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000,
+      999800000
+    ],
+    "liquidity": 10,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 454
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 126
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 19456730
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 124
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 8231160
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 126
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 19456730
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 124
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 8231160
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99999997
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000,
+      998000000
+    ],
+    "liquidity": 100,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 126
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 13060702
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 124
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 11966638
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 126
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 13060702
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 124
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 1000,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 11966638
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99999998
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000,
+      980000000
+    ],
+    "liquidity": 1000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 126
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 12505471
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 124
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 12494532
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 126
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 12505471
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 124
+  },
+  {
+    "inventory": [
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000,
+      999900000
+    ],
+    "liquidity": 100000,
+    "outcome": 7,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 12494532
+  },
+  {
+    "inventory": [
+      1000000000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 1,
+    "amount_micros": 999
+  },
+  {
+    "inventory": [
+      1000000000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 0,
+    "side": "sell",
+    "quantity": 100000,
+    "amount_micros": 99968214
+  },
+  {
+    "inventory": [
+      1000000000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 1,
+    "amount_micros": 1
+  },
+  {
+    "inventory": [
+      1000000000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "liquidity": 100000,
+    "outcome": 7,
+    "side": "buy",
+    "quantity": 100000,
+    "amount_micros": 4541
+  }
+]

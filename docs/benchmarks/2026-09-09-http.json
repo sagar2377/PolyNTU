@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-09-08T19:48:20.222Z",
+  "duration_seconds": 600.01572,
+  "client": "v25.7.0",
+  "markets": 100,
+  "accounts": 200,
+  "seeded_positions": 10000,
+  "sse_clients": 200,
+  "measurement": "HTTP round-trip including response parsing; development machine, local PostgreSQL; elapsed-time arrival scheduling targets 100 quote/s and 20 trade workflows/s",
+  "phases": {
+    "spread": {
+      "quote": {
+        "samples": 29999,
+        "p50_ms": 1.59,
+        "p95_ms": 2.47,
+        "p99_ms": 3.98
+      },
+      "trade": {
+        "samples": 5999,
+        "p50_ms": 2.61,
+        "p95_ms": 5.05,
+        "p99_ms": 14.48
+      },
+      "conflicts": 0,
+      "errors": 0,
+      "skipped": 0,
+      "committed": 5999,
+      "submittedQuotes": 29999,
+      "submittedTrades": 5999
+    },
+    "hot_80_percent": {
+      "quote": {
+        "samples": 30000,
+        "p50_ms": 1.53,
+        "p95_ms": 2.35,
+        "p99_ms": 3.52
+      },
+      "trade": {
+        "samples": 5979,
+        "p50_ms": 2.52,
+        "p95_ms": 4.47,
+        "p99_ms": 16.51
+      },
+      "conflicts": 21,
+      "errors": 0,
+      "skipped": 0,
+      "committed": 5979,
+      "submittedQuotes": 30000,
+      "submittedTrades": 6000
+    }
+  },
+  "reconciliation": {
+    "account_errors": 0,
+    "inventory_errors": 0,
+    "net_units_micros": "0",
+    "ok": true,
+    "reserve_errors": 0
+  }
+}

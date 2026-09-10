@@ -1,99 +1,63 @@
-# Adding a new Market Type
+# Adding a market type
 
-A Market Type is a plugin under `backend/market_types/<key>/` with two
-files: `simulator.py` (your domain's data-generation logic) and
-`market_type.py` (a `MarketType` subclass wired into `core/market.py`'s
-interface). Nothing in `core/` ever imports a concrete market type — the
-core pricing engine, settlement state machine, and DB layer are all
-generic over the `MarketType` interface defined in `core/market.py`.
+Status: **current Rust extension guide**
 
-Use `market_types/shuttle_arrival/` (negated transform, many short-lived
-recurring instances) and `market_types/student_election/` (identity
-transform, one long-lived instance) as the two worked examples — between
-them they exercise both directions of every design decision below.
+Market types define questions and translate normalized observations into outcomes. They must not implement pricing, quote signing, authentication, ledger movements, ownership checks, transaction retries, or settlement credits.
 
-## Checklist
+## Decide whether a new type is necessary
 
-1. **Pick your domain value and its units.** What is the "spot price" a
-   user sees before resolution? (Shuttle: predicted delay in minutes.
-   Election: estimated vote-share percentage.) Set `unit_label` on the
-   `Market` you create to whatever this is, in plain words.
+Reuse an existing rule when the new question differs only by identifiers, threshold, title, source, or time window. Add a new `Rule`/`Observation` variant only when validation, outcome structure, or evidence evaluation genuinely differs.
 
-2. **Write `to_underlying(value) -> float`.** Black-Scholes needs a
-   strictly positive underlying (it computes `log(S/K)`). If your domain
-   value can be zero or negative, you need an affine shift (and, if the
-   "good" outcome is a *low* value, a negation too — see
-   `market_types/shuttle_arrival/market_type.py`'s module docstring for
-   the full derivation of why negation makes "Call" mean "ends up below
-   threshold"). If your value is already non-negative, a small positivity
-   floor is enough (see `student_election`'s `EPSILON`).
+Queue length, crowd occupancy, and unique attendance reuse `Rule::Count` with distinct `Metric` values. A new template does not require new Rust code.
 
-3. **Set `delta_sign`.** `+1.0` if `to_underlying` doesn't negate, `-1.0`
-   if it does. This is the *only* Greek that needs a sign correction —
-   gamma is invariant to an affine transform's sign, and vega/theta/rho
-   don't depend on the value-transform at all (see `core/pricing.py`'s
-   module docstring for why).
+## Implementation checklist
 
-4. **Write `payoff_call`/`payoff_put` in domain units.** These are used
-   both for the near-expiry pricing shortcut and for real settlement —
-   keep them simple, direct `max(...)` expressions in your domain's native
-   units. They do NOT need to go through `to_underlying` (the shift cancels
-   out of any payoff difference).
+1. **Define the immutable rule.** Add a `Rule` variant in `backend/src/market.rs`. Use bounded identifiers, explicit units, and only fields that are known when the instance opens.
+2. **Map the category.** Extend `Rule::category`. If the category key is new, add a numbered migration updating the `templates.category` constraint and update the frontend label map.
+3. **Validate the rule.** Reject empty/oversized identifiers, invalid values, ambiguous outcome sets, or unsafe real-person use. Validation must run before funding or publication.
+4. **Derive outcomes.** Extend `Rule::outcomes`. Binary rules should reuse `yes`/`no`; categorical rules need 2–8 distinct, exhaustive labels with stable IDs.
+5. **Define normalized evidence.** Add the matching `Observation` variant with `deny_unknown_fields` behaviour. Include completeness/finality explicitly; never infer a negative result from missing coverage.
+6. **Evaluate evidence.** Extend `Rule::evaluate`. Confirm identifiers and units match the published rule. Return `Ok(None)` for incomplete/non-final evidence, `Winner` for a supported final result, and `Void` only for a prepublished cancellation/no-winner policy.
+7. **Specify timing.** Set close, half-open observation interval, earliest finalization, and evidence deadline in `NewInstance`. Trading must close no later than observation start.
+8. **Add demo behaviour if needed.** Extend `Rule::simulated` and `demo_specs`. Simulation must be deterministic from the private per-database seed/instance identity and generated only after the window.
+9. **Design the real adapter boundary.** A future adapter runs outside quote/execution, retains the provider record, normalizes to `EvidenceInput`, uses monotonic revisions, and never places secrets or personal data in the publicly returned payload.
+10. **Update the frontend.** Add a category label only for a new category key. Existing outcome rendering and trading should work without category-specific execution code.
+11. **Test rule boundaries.** Cover exact threshold, just below/above, wrong identifiers, negative values, missing coverage, interval endpoints, excessive arrays, cancellation, and invalid categorical labels.
+12. **Test the shared lifecycle.** Add an integration case proving quote, buy/sell, evidence, finalization/void, claim, and reconciliation work without category-specific ledger changes.
+13. **Update documentation.** Revise the evidence ADR, API rule/observation examples, overview category table, glossary if needed, traceability matrix, and change record.
 
-5. **Write `generate_instances(market, rng) -> list[MarketInstance]`.**
-   Simulate your domain's schedule of resolvable events. Each
-   `MarketInstance` needs a `resolution_minute` and a `truth_seed` dict
-   holding whatever ground truth `resolve()` will need later. Instances
-   are NOT persisted — they're regenerated deterministically from a seeded
-   RNG each time the platform starts, same as ShuttlePredict's original
-   schedule generator.
+## Evidence design rules
 
-6. **Write `live_spot(market, instance, now_minute, rng, observations) ->
-   (spot, sigma)`.** If your domain value should get noisier the further
-   `now_minute` is from resolution, reuse
-   `core.live_estimate.brownian_bridge_estimate` rather than reimplementing
-   it. Calibrate `sigma` from `observations` via `core.calibration.
-   calibrate_sigma` — pick a `reference_level` that matches whatever level
-   your `to_underlying` transform puts values at (get this wrong and every
-   price and Greek is silently miscalibrated; see that function's
-   docstring).
+- Use absolute timestamps and exact, published units.
+- Treat `[start, end)` consistently: the start counts and the end does not.
+- Preserve source identity and revision history.
+- Separate completeness from a zero/empty measurement.
+- Keep raw credentials and personally identifying data outside `EvidenceInput`.
+- Make cancellation/void policy explicit before opening.
+- Never allow provider estimates or simulator truth to reset AMM inventory or prices.
 
-7. **Write `resolve(market, instance) -> float`.** Usually just reads back
-   a value from `instance.truth_seed`.
+## Current worked patterns
 
-8. **Override `contract_label`, `greek_hints`, `calibration_bucket`, and
-   `validate_params`** as needed — all have generic defaults in
-   `MarketType`, but a specific market type should give the UI
-   domain-flavored wording (see both plugins' overrides for the pattern).
+| Pattern | Code example | Important edge case |
+|---|---|---|
+| Numeric threshold | Weather | Missing readings are not zero. |
+| Event-in-window | Bus | Arrival at start counts; arrival at end does not. No requires complete coverage. |
+| Small categorical | Fictional election | Candidate labels must be distinct and final null winner voids. |
+| Aggregate threshold | Count metrics | Queue, occupancy, and unique attendance are different measurements. |
 
-9. **Add a `seed_demo_history` override if you want fake historical data**
-   for calibration in the demo (both existing plugins do this). A real
-   deployment would rely on accumulating real logs instead — this hook is
-   optional and no-op by default.
+## Attendance privacy
 
-10. **Register it.** Add `from .<your_type>.market_type import
-    YourMarketType` and `market.register(YourMarketType())` to
-    `backend/market_types/__init__.py`.
+The current attendance contract accepts only an already deduplicated aggregate. A future check-in adapter must deduplicate before submission and must not put attendee identities in observations, references, logs, public instance responses, or developer fixtures.
 
-11. **Add a default `Market` instance** to `DEFAULT_MARKETS` in
-    `backend/app/main.py` if you want it seeded automatically, or create
-    one via `POST /admin/markets` (which runs your `validate_params` and
-    rejects an empty/placeholder `resolution_criterion` before it goes
-    live).
+## Completion gate
 
-12. **Write tests** under `tests/market_types/<key>/`: a `test_simulator.py`
-    for your data generation, and a `test_market_type.py` that exercises
-    `to_underlying`/`payoff_call`/`payoff_put`/`generate_instances`/
-    `resolve`/`live_spot` — see either existing plugin's tests as a
-    template, including the "does this converge near resolution"
-    convergence check.
+A new type is complete only when:
 
-## A responsible-design constraint worth keeping
+- its rule and evidence contract are unambiguous;
+- database and frontend category constraints agree;
+- category-specific unit tests and shared integration tests pass;
+- reconciliation passes after settlement;
+- no pricing/accounting code branches on the new category; and
+- current documentation describes its source assumptions and failure policy.
 
-If your market type could ever touch a real person's reputation, a real
-in-progress process, or anything where being "priced" without consent
-would cause harm (elections, disputes, individual performance, etc.),
-consider whether `validate_params` should hard-require an explicit opt-in
-flag the way `student_election` requires `is_fictional: true`. It costs
-one `if` statement and prevents the plugin from being pointed at something
-it was never designed to handle safely.
+The archived Python extension checklist describes option transforms and Greeks and does not apply to the Rust application.

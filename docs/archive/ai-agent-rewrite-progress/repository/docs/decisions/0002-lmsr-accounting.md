@@ -1,0 +1,15 @@
+Decision 0002 — Funded LMSR with exact ledger units.
+
+Status: implemented.
+
+All five categories use the same automated market maker. There are 2–8 mutually exclusive outcomes; binary Yes/No is the two-outcome case. Initial inventory is zero and prices are uniform. The cost function is `C(q) = b * ln(sum(exp(q_i / b)))`. A trade pays the cost difference; multiplying quantity by the displayed marginal probability would misprice finite trades. The reserve starts with at least `b * ln(n)` units. `b` remains fixed after opening. [LMSR formulas and funding](https://gnosis-pm-js.readthedocs.io/en/v1.3.0/lmsr-primer.html)
+
+One credit contains 1,000,000 microcredits; one share contains 1,000 millishares. Balances and quantities use bounded integers. Financial values cross HTTP as integer strings; the frontend formats them with `BigInt`. A full winning share credits exactly one unit. Participant buys round up and sales round down at the microcredit boundary. There are no additional fees. Sales require owned shares; margin and short selling are unavailable.
+
+The authoritative calculation uses `rust_decimal`, not binary floating point. Exponentials request a 1e-25 convergence tolerance. Logarithms and exponentials are still approximations. A stable cost-difference expression avoids subtracting two large cost-function values; weights are shifted by the maximum inventory. Only display probabilities become `f64`. An independent Python Decimal calculation at 80-digit precision generates 384 committed reference cases whose rounded results must match exactly, including high inventory, concentration boundaries and 0.001-share trades.
+
+Supported inputs are bounded: `b` between 10 and 100,000 units, trade size between 0.001 and 100 shares, per-outcome inventory at most 1,000,000 shares, and inventory spread at most `20*b` shares. Trades outside that range are rejected rather than approximated silently. This concentration limit is an explicit v1 product constraint. The sampled reference suite is numerical evidence, not a formal proof over every possible input.
+
+Quotes expire after 15 seconds or at market close, whichever comes first. They reserve no inventory. Signed claims bind account, instance, outcome, side, quantity, amount, inventory version, expiry and engine version. Execution recomputes the identical quote and rejects changed versions. A user supplies a maximum cost for buys or minimum proceeds for sales. At most one distinct trade can consume a given market version. Repeated delivery with the same successful idempotency key retrieves the stored receipt, including after expiry or settlement.
+
+Every transfer is structurally balanced: source and destination are mandatory and distinct. PostgreSQL applies both balance changes atomically and enforces nonnegative user/reserve/treasury accounts. The issuance account is the sole negative balancing account. Grants and subsidies draw from the treasury; leftover market reserves return after settlement. No options contract is converted into these balances.

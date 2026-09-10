@@ -1,0 +1,80 @@
+# Requirements, code, and test traceability
+
+This matrix helps human reviewers verify that documented promises correspond to implementation and tests. A reference identifies evidence, not infallibility.
+
+## Core product requirements
+
+| Requirement | Implementation | Database enforcement | Verification |
+|---|---|---|---|
+| Simulated units only; no payment path | Account/ledger services and React wording | Account/transfer schema contains no currency/payment table | HTTP category/lifecycle test; source review |
+| 2–8 direct outcomes | `Rule::outcomes`, `amm::validate` | Inventory cardinality and outcome-length checks | Property/numerical tests; election validation |
+| Five category families | `Rule`, `Metric`, `demo_specs` | Template category constraint | All-category unit/HTTP tests |
+| Winning share resolves to one unit | `settle_batch` winner calculation | Exact integer columns and claims | Resolution integration tests; settlement workload |
+| Missing final data uses published fractional void | `settle_batch`, public void policy | Terminal state/result protection | Exact categorical void test |
+| No short selling | Execution compares position to sale quantity | Nonnegative position/inventory checks | Ownership integration test |
+| Quotes do not mutate state | `Store::quote` is read-only | No quote table/state update | Pure-quote integration assertion |
+| Trades are atomic | `execute_once` transaction | triggers, constraints, unique trade version | Injected failure rollback test |
+| Duplicate delivery has one effect | account-scoped body-hash idempotency | idempotency primary key | 24-request concurrency/restart test |
+| One distinct trade per market version | instance lock/version check | unique `(instance_id,instance_version)` | competing-quote test |
+| No balance overdraft | account locking and precheck | nonnegative non-issuance account check | cross-market spending test |
+| No trade after close | time recheck under instance lock | state/inventory trigger after close | waiting-lock cutoff test |
+| Published definitions/results immutable | service has no edit path | `protect_instance` trigger | migration/source inspection; lifecycle tests |
+| Evidence revisions append-only/deduplicated | `record_evidence` | unique event/revision; immutable trigger | out-of-order/idempotency test |
+| Settlement resumes without double credit | `settle_batch` selection/batching | claim primary key, unique ledger reference | failed/resumed batch tests |
+| Reserve remains funded | trade liability check, settlement balance check | nonnegative reserve account | properties, reconcile, settlement workload |
+| Public updates survive reconnect | outbox insert plus SSE cursor | durable outbox sequence/index | HTTP workload holds streams; propagation not percentile-tested |
+| Account portfolios are private | bearer-derived account ID | account foreign keys | unauthorized and account-bound quote tests |
+
+## Operational and security requirements
+
+| Requirement | Implementation/evidence | Known gap |
+|---|---|---|
+| Demo cannot bind publicly | `main.rs` loopback check | Does not harden non-demo deployment |
+| Quote/admin secrets differ and are long | `AppState::new` | Length is not entropy; no rotation |
+| Account token plaintext not stored in DB | `random_token`, `hash`, account lookup | Browser local storage holds plaintext; no recovery/revocation |
+| Internal errors hidden from API | `Error::IntoResponse` | Server logs still require access control/redaction discipline |
+| Administrator endpoints protected | `require_admin` on all `/admin/*` handlers | One shared identity and incomplete admin-audit coverage |
+| Evidence contains no attendee identities | Typed aggregate observations and documentation | Reference is arbitrary public text; no automatic redaction |
+| Reconciliation available | `Store::reconcile`, SQL reserve query | Detection only; no automated repair/alerting |
+| Database mode cannot silently change | `Store::initialize` | Separate database remains an operator responsibility |
+
+## Source-file coverage map
+
+| Active file | Main documentation | Tests/evidence |
+|---|---|---|
+| `backend/src/lib.rs` | [Backend](backend.md) | Compiled by every backend check |
+| `backend/src/main.rs` | [Architecture](../architecture.md), [Operations](operations.md) | Release build/startup HTTP record |
+| `backend/src/error.rs` | [Backend](backend.md), [API](../api.md) | HTTP authorization/error paths; not every variant directly asserted |
+| `backend/src/auth.rs` | [Security](security-and-privacy.md), [Trading](trading-and-accounting.md) | Account/quote authorization integration paths |
+| `backend/src/amm.rs` | [Trading](trading-and-accounting.md), ADR 0002 | Unit/property and 384-fixture test |
+| `backend/src/market.rs` | [Backend](backend.md), [Evidence](evidence-and-settlement.md) | Category unit tests and all-category HTTP test |
+| `backend/src/execution.rs` | [Trading](trading-and-accounting.md) | Concurrency, expiry, ownership, rollback, cutoff tests |
+| `backend/src/store.rs` | [Backend](backend.md), [Database](database.md) | Integration harness and reconciliation after every DB test |
+| `backend/src/resolution.rs` | [Evidence](evidence-and-settlement.md) | Revision, void, rollback, resume tests |
+| `backend/src/worker.rs` | [Architecture](../architecture.md), [Evidence](evidence-and-settlement.md) | Fairness/all-category tests and workloads |
+| `backend/migrations/*.sql` | [Database](database.md) | Fresh migrations in each integration database |
+| `backend/queries/reconcile_reserves.sql` | [Database](database.md), [Trading](trading-and-accounting.md) | Reconciliation after tests/workloads |
+| `frontend/src/api.js` | [Frontend](frontend.md), [API](../api.md) | Lint/build; behavioural tests absent |
+| `frontend/src/App.jsx` | [Frontend](frontend.md) | Lint/build; manual behaviour required |
+| `frontend/src/pages/*.jsx` | [Frontend](frontend.md) | Lint/build; manual behaviour required |
+| `frontend/src/components/TradePanel.jsx` | [Frontend](frontend.md), [Trading](trading-and-accounting.md) | Lint/build; receipt recovery not browser-automated |
+| `scripts/*.ps1` | [Development](../development.md), [Operations](operations.md) | Used in recorded local runs; no script unit tests |
+| `scripts/*.mjs` | [Testing](testing-and-verification.md) | Retained benchmark JSON |
+| `.github/workflows/verify.yml` | [Development](../development.md) | Workflow defined; successful hosted run not retained here |
+
+## Documentation-to-source review checklist
+
+When reviewing a claim:
+
+1. identify whether it is requirement, current behaviour, historical decision, measurement, or future work;
+2. follow the implementation references above;
+3. check the latest migration rather than only the first schema definition;
+4. inspect the test assertion, not merely its name;
+5. inspect raw benchmark fields and measurement boundaries;
+6. verify the documented working-tree/commit baseline; and
+7. report differences instead of choosing whichever statement is more convenient.
+
+## Known unverified areas
+
+The frontend interaction model, visual layout/accessibility, Docker runtime, hosted CI, backup restoration, public hardening, multi-process capacity, and live evidence-provider behaviour do not currently have complete retained verification. Their documentation describes design or procedure and labels the gap.
+
