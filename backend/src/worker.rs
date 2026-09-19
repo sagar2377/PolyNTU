@@ -1,8 +1,10 @@
 use crate::{
     error::{Error, Result},
-    market::{EvidenceInput, Instance, demo_series_spec, demo_specs},
+    market::{EvidenceInput, Instance, Series, demo_series_spec, demo_specs},
+    resolver,
     store::Store,
 };
+use serde_json::{Value, json};
 
 pub async fn seed_demo(store: &Store) -> Result<()> {
     if !store.demo_mode {
@@ -44,7 +46,9 @@ pub async fn tick(store: &Store) -> Result<usize> {
     let now = store.now().await?;
     // Select actionable rows so markets awaiting evidence cannot fill the batch
     // indefinitely and starve later instances whose results are ready.
-    let due: Vec<Instance> = sqlx::query_as("SELECT i.* FROM instances i LEFT JOIN evidence e ON e.id=i.evidence_id WHERE i.state='resolving' OR (i.state='closed' AND ((i.data_mode='simulated' AND $2 AND i.evidence_id IS NULL AND i.observation_end_ms<=$1) OR (i.finalize_after_ms<=$1 AND (i.evidence_deadline_ms<=$1 OR e.evaluated_result IS NOT NULL)))) ORDER BY i.finalize_after_ms,i.id LIMIT 100")
+    // Resolver-authority instances become due at their finalize window so the
+    // worker can ask their external source (ADR 0007).
+    let due: Vec<Instance> = sqlx::query_as("SELECT i.* FROM instances i LEFT JOIN evidence e ON e.id=i.evidence_id WHERE i.state='resolving' OR (i.state='closed' AND ((i.data_mode='simulated' AND $2 AND i.evidence_id IS NULL AND i.observation_end_ms<=$1) OR (i.finalize_after_ms<=$1 AND (i.evidence_deadline_ms<=$1 OR e.evaluated_result IS NOT NULL)) OR (i.finalize_after_ms<=$1 AND i.evidence_id IS NULL AND EXISTS(SELECT 1 FROM market_series s WHERE s.id=i.series_id AND s.resolution_authority='resolver')))) ORDER BY i.finalize_after_ms,i.id LIMIT 100")
         .bind(now).bind(store.demo_mode).fetch_all(&store.pool).await?;
     let mut count = 0;
     // Independent instances settle concurrently in bounded chunks; the
@@ -91,6 +95,53 @@ async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
             Ok(_) | Err(Error::Conflict(_)) => {}
             Err(e) => {
                 tracing::error!(instance_id=%instance.id, error=%e, "simulated observation failed");
+            }
+        }
+    }
+    // ADR 0007: resolver-authority instances ask their external source at the
+    // finalize window. A valid answer settles; pending, malformed, or
+    // unreachable sources retry on later ticks until the published deadline
+    // voids the instance.
+    if instance.state == "closed"
+        && instance.evidence_id.is_none()
+        && let Some(series_id) = &instance.series_id
+    {
+        let series: Option<Series> = sqlx::query_as("SELECT * FROM market_series WHERE id=$1")
+            .bind(series_id)
+            .fetch_optional(&store.pool)
+            .await?;
+        if let Some(series) = series.filter(|s| s.resolution_authority == "resolver")
+            && let Some(endpoint) = series.resolver_endpoint.clone()
+        {
+            let request = resolver::ResolverRequest::of(instance);
+            match resolver::call(&endpoint, &request).await {
+                Ok((body, request_value)) => {
+                    let response = serde_json::from_slice::<Value>(&body).unwrap_or_else(
+                        |_| json!({"raw": String::from_utf8_lossy(&body).to_string()}),
+                    );
+                    match resolver::parse_response(&body, instance) {
+                        resolver::ResolverAnswer::Outcome(outcome_id) => {
+                            if let Err(e) = store
+                                .record_resolver_evidence(
+                                    &instance.id,
+                                    &outcome_id,
+                                    &request_value,
+                                    &response,
+                                )
+                                .await
+                            {
+                                tracing::error!(instance_id=%instance.id, error=%e, "resolver evidence failed");
+                            }
+                        }
+                        resolver::ResolverAnswer::Pending => {}
+                        resolver::ResolverAnswer::Invalid => {
+                            tracing::warn!(instance_id=%instance.id, "resolver answer is invalid; retrying until the deadline");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(instance_id=%instance.id, error=%e, "resolver unreachable; retrying until the deadline");
+                }
             }
         }
     }

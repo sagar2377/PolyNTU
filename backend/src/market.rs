@@ -541,13 +541,18 @@ impl ResolutionSpec {
             }
             Self::Resolver { endpoint } => {
                 let endpoint = endpoint.trim();
-                if !endpoint.starts_with("https://")
+                // https for real services; plain http only on loopback, where
+                // local adapters run during development and tests.
+                let allowed = endpoint.starts_with("https://")
+                    || endpoint.starts_with("http://127.0.0.1")
+                    || endpoint.starts_with("http://localhost");
+                if !allowed
                     || endpoint.len() < 12
                     || endpoint.len() > 500
                     || endpoint.chars().any(char::is_whitespace)
                 {
                     return Err(invalid(
-                        "The resolver endpoint must be an https URL without whitespace",
+                        "The resolver endpoint must be an https URL (http allowed on loopback only)",
                     ));
                 }
             }

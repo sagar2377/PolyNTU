@@ -106,6 +106,71 @@ impl Store {
         Ok(json!({"evidence_id":evidence_id,"evaluated_result":result,"outcome_id":outcome_id}))
     }
 
+    /// An external resolver's answer (ADR 0007), recorded as the evidence
+    /// that settles the instance. The outcome was already validated against
+    /// the published options.
+    pub async fn record_resolver_evidence(
+        &self,
+        id: &str,
+        outcome_id: &str,
+        request: &Value,
+        response: &Value,
+    ) -> Result<Value> {
+        let mut tx = self.pool.begin().await?;
+        let instance: Instance = sqlx::query_as("SELECT * FROM instances WHERE id=$1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let now = db_now(&mut tx).await?;
+        if !matches!(instance.state.as_str(), "open" | "closed") {
+            tx.commit().await?;
+            return Err(conflict(
+                "Resolution is already final; resolver answers cannot change it",
+            ));
+        }
+        if now >= instance.evidence_deadline_ms {
+            tx.commit().await?;
+            return Err(conflict("The published evidence deadline has passed"));
+        }
+        let already: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM evidence WHERE instance_id=$1 AND source_id='external-resolver')",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if already {
+            tx.commit().await?;
+            return Ok(json!({"duplicate": true}));
+        }
+        let outcome = instance.outcome_index(outcome_id)?;
+        let result = Resolution::Winner { outcome };
+        let payload = json!({"request": request, "response": response, "outcome_id": outcome_id});
+        let encoded = serde_json::to_vec(&payload).map_err(|e| Error::Internal(e.to_string()))?;
+        let evidence_id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO evidence(id,instance_id,source_id,event_id,source_revision,received_ms,parser_version,payload,payload_hash,evaluated_result) VALUES($1,$2,'external-resolver',$3,0,$4,'external-resolver-v1',$5,$6,$7)")
+            .bind(&evidence_id).bind(id).bind(format!("resolver:{id}")).bind(now)
+            .bind(Json(&payload)).bind(auth::hash(&encoded)).bind(Json(&result))
+            .execute(&mut *tx).await?;
+        sqlx::query("UPDATE instances SET evidence_id=$2,version=version+1 WHERE id=$1")
+            .bind(id)
+            .bind(&evidence_id)
+            .execute(&mut *tx)
+            .await?;
+        audit(
+            &mut tx,
+            "resolver_evidence",
+            Some(id),
+            json!({"evidence_id":evidence_id,"outcome_id":outcome_id}),
+            now,
+        )
+        .await?;
+        event(&mut tx, id, instance.version + 1, "evidence", now).await?;
+        tx.commit().await?;
+        self.cache.invalidate(id);
+        Ok(json!({"evidence_id":evidence_id,"evaluated_result":result,"outcome_id":outcome_id}))
+    }
+
     pub(crate) async fn record_evidence(
         &self,
         id: &str,

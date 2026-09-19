@@ -1059,6 +1059,120 @@ async fn creators_resolve_their_markets_with_signed_statements() {
     db.finish().await;
 }
 
+// ADR 0007: resolver authority calls the external endpoint.
+async fn spawn_resolver(answer: Value) -> String {
+    let app = axum::Router::new().route(
+        "/answer",
+        axum::routing::post(move || async move { axum::Json(answer.clone()) }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{address}/answer")
+}
+
+/// Bind a port and drop the listener so nothing answers there.
+async fn dead_endpoint() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    drop(listener);
+    format!("http://{address}/answer")
+}
+
+#[tokio::test]
+async fn resolver_authority_settles_from_the_external_endpoint() {
+    let db = TestDb::new().await;
+    let endpoint = spawn_resolver(json!({"outcome_id": "yes"})).await;
+    let (creator, _) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    let mut spec = rain_series(Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    });
+    spec.resolution = Some(ResolutionSpec::Resolver { endpoint });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+    let instance = db.store.instance(&instance_id).await.unwrap();
+    let (trader, _) = db.account().await;
+    buy(&db, &trader, &instance, 1000).await;
+    // Past the finalize window the worker asks the external source.
+    db.store.advance_demo_clock(4).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    let settled = db.store.instance(&instance_id).await.unwrap();
+    assert_eq!(settled.state, "resolved");
+    assert_eq!(
+        settled.result.as_ref().unwrap().0,
+        Resolution::Winner { outcome: 0 }
+    );
+    let evidence: Value = sqlx::query_scalar(
+        "SELECT payload FROM evidence WHERE instance_id=$1 AND source_id='external-resolver'",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.store.pool)
+    .await
+    .unwrap();
+    assert_eq!(evidence["request"]["instance_id"], instance_id);
+    assert_eq!(evidence["response"]["outcome_id"], "yes");
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn resolver_authority_voids_when_answers_stay_invalid_or_unreachable() {
+    let db = TestDb::new().await;
+    let (creator, _) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    let once = Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    };
+    // One series whose source keeps naming an unpublished option.
+    let mut invalid = rain_series(once.clone());
+    invalid.title = "Invalid answer series".into();
+    invalid.resolution = Some(ResolutionSpec::Resolver {
+        endpoint: spawn_resolver(json!({"outcome_id": "maybe"})).await,
+    });
+    let invalid_view = db
+        .store
+        .create_series(Some(&creator.id), &invalid, "manual")
+        .await
+        .unwrap();
+    // One series whose source is unreachable.
+    let mut unreachable = rain_series(once);
+    unreachable.title = "Unreachable answer series".into();
+    unreachable.resolution = Some(ResolutionSpec::Resolver {
+        endpoint: dead_endpoint().await,
+    });
+    let unreachable_view = db
+        .store
+        .create_series(Some(&creator.id), &unreachable, "manual")
+        .await
+        .unwrap();
+    // Through the finalize window: invalid and unreachable answers record
+    // nothing, and the deadline voids both instances per the published policy.
+    db.store.advance_demo_clock(4).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    db.store.advance_demo_clock(2).await.unwrap();
+    for _ in 0..2 {
+        worker::tick(&db.store).await.unwrap();
+    }
+    for view in [&invalid_view, &unreachable_view] {
+        let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+        let voided = db.store.instance(&instance_id).await.unwrap();
+        assert_eq!(voided.state, "voided");
+    }
+    db.finish().await;
+}
+
 // The seeded demo administrator reaches admin routes through its session.
 #[tokio::test]
 async fn demo_databases_seed_an_administrator_account() {

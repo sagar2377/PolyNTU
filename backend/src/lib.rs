@@ -10,5 +10,6 @@ pub mod execution;
 pub mod fee;
 pub mod market;
 pub mod resolution;
+pub mod resolver;
 pub mod store;
 pub mod worker;
