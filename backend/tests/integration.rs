@@ -711,6 +711,76 @@ async fn fee_free_markets_charge_no_fee_and_pay_no_creator_share() {
     db.finish().await;
 }
 
+#[tokio::test]
+async fn creators_cannot_trade_in_their_own_markets() {
+    let db = TestDb::new().await;
+    let (creator, _) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    let spec = rain_series(Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+    // The creator's own quote is rejected outright.
+    let denied = db
+        .store
+        .quote(
+            &creator.id,
+            &QuoteRequest {
+                instance_id: instance_id.clone(),
+                outcome_id: "yes".into(),
+                side: Side::Buy,
+                quantity_millis: 1000,
+            },
+            SECRET,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        denied.to_string(),
+        "Creators cannot trade in their own markets; the fee share is their compensation"
+    );
+    // Everyone else trades the same market normally.
+    let (trader, _) = db.account().await;
+    let quote = db
+        .store
+        .quote(
+            &trader.id,
+            &QuoteRequest {
+                instance_id,
+                outcome_id: "yes".into(),
+                side: Side::Buy,
+                quantity_millis: 1000,
+            },
+            SECRET,
+        )
+        .await
+        .unwrap();
+    let receipt = db
+        .store
+        .execute(
+            &trader.id,
+            &Uuid::new_v4().to_string(),
+            &TradeRequest {
+                quote_token: quote["quote_token"].as_str().unwrap().into(),
+                limit_micros: quote["amount_micros"].as_str().unwrap().into(),
+            },
+            SECRET,
+        )
+        .await
+        .unwrap();
+    assert_eq!(receipt["owned_millis"], 1000);
+    db.finish().await;
+}
+
 // The seeded demo administrator reaches admin routes through its session.
 #[tokio::test]
 async fn demo_databases_seed_an_administrator_account() {

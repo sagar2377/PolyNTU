@@ -65,6 +65,11 @@ impl Store {
         if !instance.tradable(now) {
             return Err(conflict("This market is closed or suspended"));
         }
+        if instance.creator_account_id.as_deref() == Some(account_id) {
+            return Err(conflict(
+                "Creators cannot trade in their own markets; the fee share is their compensation",
+            ));
+        }
         let outcome = instance.outcome_index(&request.outcome_id)?;
         let calculation = amm::calculate(
             &instance.inventory,
@@ -222,6 +227,11 @@ impl Store {
         let now: i64 = row.get("db_now_ms");
         if !instance.tradable(now) {
             return Err(conflict("This market is closed or suspended"));
+        }
+        if instance.creator_account_id.as_deref() == Some(account) {
+            return Err(conflict(
+                "Creators cannot trade in their own markets; the fee share is their compensation",
+            ));
         }
         if now >= claims.expires_ms {
             return Err(conflict("Quote expired. Request a new quote"));
