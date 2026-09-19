@@ -18,17 +18,23 @@ Pop-Location
 ./scripts/run-prod.ps1
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Create a demo account, open a market, preview a trade, and confirm it. In demo mode, the administrator token stored in `.local/dev-secrets.json` can advance the demonstration clock. Keep that file private.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Create a demo account, open a market, preview a trade, and confirm it. Demo databases also seed an administrator account, `admin@ntu.edu.sg` with password `admin`, for signing in and working the verification queue. In demo mode, the administrator token stored in `.local/dev-secrets.json` can advance the demonstration clock. Keep that file private.
 
 For other platforms, Docker, separate frontend development, and environment variables, see [development setup](docs/development.md). For fast backend iteration, `./scripts/run-dev.ps1` runs a debug backend and skips the frontend build; keep the Vite dev server (`npm run dev` in `frontend/`) running for the interface.
 
 ## What the system provides
 
 - Five market categories: weather, bus timings, fictional elections, queue/crowd measurements, and event/lecture attendance.
+- NTU email registration, password login, and single-session tokens that invalidate older sessions.
+- An administrator-reviewed verification workflow that grants the creator role.
+- One-time and recurring market series; recurring series spawn brackets on a fixed grid inside a daily operating window.
 - One funded LMSR pricing engine for binary and small categorical markets.
 - Exact integer ledger units and bounded decimal market calculations.
+- Per-market trading fees shared between the creator and the treasury; welfare markets can opt out of fees entirely.
 - Signed, account-bound, expiring quotes and idempotent trade execution.
 - Immutable published rules, append-only evidence, and resumable settlement.
+- Resolution by administrator evidence, creator-signed statements, or a configured external resolver.
+- Bucketed price and volume history reconstructed from executed trades.
 - Authenticated private portfolios and durable trade receipts.
 - Persisted public market events delivered through Server-Sent Events (SSE).
 - Deterministic, explicitly labelled simulator evidence for local demonstrations.
@@ -68,4 +74,4 @@ These are local development-machine measurements, not production capacity guaran
 
 ## Current scope limits
 
-Live provider adapters, campus SSO, credential recovery and rotation, separate administrator/resolver roles, rate limiting, outbox retention, budget-to-quantity entry, and public production deployment are not implemented. The current manual evidence endpoint accepts authenticated structured observations but cannot independently prove their real-world accuracy. External feeds are treated as a future integration dependency; the present application assumes that suitable normalized observations can eventually be supplied.
+Live provider adapters, campus SSO, password recovery, rate limiting, outbox retention, budget-to-quantity entry, and public production deployment are not implemented. The current manual evidence endpoint accepts authenticated structured observations but cannot independently prove their real-world accuracy, and creator-signed or resolver-based resolutions likewise trust their key holders and endpoints. External feeds are treated as a future integration dependency; the present application assumes that suitable normalized observations can eventually be supplied.

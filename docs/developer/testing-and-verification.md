@@ -6,7 +6,7 @@ PolyNTU separates arithmetic tests, database/HTTP integration tests, frontend st
 
 | Layer | Location | Primary purpose |
 |---|---|---|
-| Rust unit/property | `backend/src/amm.rs`, `market.rs` | Pure math and category-rule behaviour |
+| Rust unit/property | `backend/src/amm.rs`, `market.rs`, `auth.rs`, `fee.rs`, `resolver.rs` | Pure math, category rules, accounts, fees, resolver answers |
 | Independent numerical | `backend/tests/numerical.rs` | Exact rounded parity with external high-precision fixtures |
 | PostgreSQL integration | `backend/tests/integration.rs` | HTTP/service/database transactions, races, rollback, recovery, settlement |
 | Frontend static | npm lint/build | React rules, syntax, bundling, production asset generation |
@@ -29,9 +29,25 @@ PolyNTU separates arithmetic tests, database/HTTP integration tests, frontend st
 
 `bus_boundaries_and_missing_coverage` checks half-open interval endpoints and distinguishes incomplete coverage from No.
 
-`all_categories_have_deterministic_matching_evidence` ensures seven demo specifications validate, cover five categories, and generate matching final observations.
+`all_categories_have_deterministic_matching_evidence` ensures the six one-shot demo specifications plus the recurring series specification validate, cover five categories between them, and generate matching final observations.
+
+`active_window_is_interpreted_in_singapore_time` pins the recurring operating window to minute-of-day in SGT (UTC+8).
 
 `elections_require_distinct_fictional_candidates` enforces distinct candidates and the fictional-only safeguard.
+
+### Account and fee tests
+
+`accepts_ntu_addresses_only` walks valid and invalid NTU email forms through the manual parser, including lookalike domains, uppercase, and overlong local parts.
+
+`password_hashes_round_trip` proves argon2 hashes verify their source password and reject a different one.
+
+`fee_rounds_up_and_never_exceeds_the_amount` checks 25 bps rounding on the charge amount.
+
+`charged_amounts_stay_nonnegative_and_creator_split_sums` checks fee-free markets charge the pure engine amount and the creator/treasury split sums to the fee.
+
+### Resolver tests
+
+`responses_must_name_one_published_option` accepts only `{"pending":true}` or a published outcome id from an external resolver answer, and rejects unknown ids and malformed bodies.
 
 ## Independent numerical fixtures
 
@@ -58,11 +74,68 @@ Failure before cleanup can leave the isolated database for inspection. The harne
 
 ## Integration test catalogue
 
+Thirty-six tests, grouped by area.
+
+### Accounts, login, and sessions
+
+| Test | Behaviour demonstrated |
+|---|---|
+| `registration_creates_a_member_account_with_the_welcome_gift` | A valid NTU email and password register a member account funded with the welcome gift. |
+| `registration_rejects_invalid_submissions_and_duplicate_emails` | Non-NTU emails, short passwords, and duplicate emails are rejected without creating rows. |
+| `registration_is_reachable_over_http_and_the_demo_grant_is_unchanged` | HTTP registration works and the demo grant is unaffected. |
+| `login_rotates_the_session_token` | Login issues a fresh token and invalidates every previous session for the account, cached or not. |
+| `login_failures_are_indistinguishable_and_demo_accounts_cannot_log_in` | Wrong password and unknown email return the same error; demo accounts without credentials cannot log in. |
+| `login_is_reachable_over_http` | HTTP login returns a session usable on authenticated endpoints. |
+| `demo_databases_seed_an_administrator_account` | Demo initialization seeds the `admin@ntu.edu.sg` administrator account idempotently. |
+
+### Creator verification
+
+| Test | Behaviour demonstrated |
+|---|---|
+| `approval_grants_the_creator_role_permanently` | Administrator approval flips the account role to creator and the decision cannot be reopened. |
+| `rejection_records_a_reason_and_allows_reapplication` | Rejection stores the reason and the account may submit a fresh request. |
+| `verification_endpoints_are_reachable_and_gated_over_http` | Submission, listing, and decision routes enforce account versus administrator authorization. |
+
+### Series and spawning
+
+| Test | Behaviour demonstrated |
+|---|---|
+| `creators_publish_one_time_series_with_their_single_instance` | A creator-role account publishes a one-shot series with its instance; non-creators are refused. |
+| `recurring_series_keep_the_rolling_horizon_filled` | Worker ticks spawn brackets on the grid up to the concurrency limit inside the operating window. |
+| `series_end_stops_spawning_and_settled_brackets_end_the_series` | Past the end no new brackets spawn; when every bracket settles the series ends. |
+| `the_demo_bus_is_a_rolling_fee_free_series` | The demo bus seeds as a platform-owned fee-free recurring series and spawns only inside the SGT window. |
+
+### Fees and creator trading
+
+| Test | Behaviour demonstrated |
+|---|---|
+| `trading_fees_are_charged_and_split_with_the_creator` | The 25 bps fee is charged on trades and split evenly between creator and treasury. |
+| `fee_free_markets_charge_no_fee_and_pay_no_creator_share` | Fee-free markets charge the pure engine amount and pay no creator share. |
+| `creators_cannot_trade_in_their_own_markets` | The creator account is refused with a conflict; the fee share is their compensation. |
+
+### Resolution authority
+
+| Test | Behaviour demonstrated |
+|---|---|
+| `resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence` | Administrator evidence cannot resolve creator/resolver-authority instances; the authority is immutable after publication. |
+| `creators_resolve_their_markets_with_signed_statements` | A valid ed25519 signature over the resolution message settles the bracket; wrong nonce, signature, outcome, or account is rejected. |
+| `resolver_authority_settles_from_the_external_endpoint` | The worker calls the configured endpoint and settles on the returned published outcome id. |
+| `resolver_authority_voids_when_answers_stay_invalid_or_unreachable` | Unpublished answers and unreachable endpoints record nothing and the deadline voids the instance. |
+
+### Price history and day view
+
+| Test | Behaviour demonstrated |
+|---|---|
+| `instance_history_buckets_prices_and_volume` | Trade replay reconstructs post-fill prices and volume per bucket. |
+| `series_day_view_weights_live_brackets_by_units_bet` | The day view reports volume-weighted probability and per-slot state, result, and volume. |
+
+### Engine, concurrency, and settlement
+
 | Test | Behaviour demonstrated |
 |---|---|
 | `foreign_key_read_locks_do_not_block_account_balance_updates` | Migration 0003 lock compatibility; parallel balance update completes while another transaction holds an FK-related read lock. |
 | `waiting_evidence_cannot_starve_ready_resolution` | Actionable worker selection resolves a ready row despite 101 waiting rows; invalid simulator source rejected. |
-| `http_all_five_categories_buy_sell_resolve_and_authorization` | Seven templates/five categories, HTTP auth, retired route, buy/sell, duplicate receipt, demo resolution, portfolio claims. |
+| `http_all_five_categories_buy_sell_resolve_and_authorization` | Six templates/five categories, HTTP auth, retired route, buy/sell, duplicate receipt, demo resolution, portfolio claims. |
 | `concurrent_duplicate_requests_have_one_effect_and_survive_restart` | 24 identical concurrent requests have one effect; receipt survives store reopen, expiry, and conflicting-body rejection. |
 | `competing_quotes_cannot_execute_the_same_inventory_version` | Only one of twenty distinct requests using the same quote/version commits. |
 | `concurrent_cross_market_spending_cannot_overdraw_account` | Account lock/nonnegative constraint allows only one of two otherwise overspending market trades. |

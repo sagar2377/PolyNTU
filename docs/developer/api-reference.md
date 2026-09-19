@@ -24,17 +24,28 @@ This document maps external endpoints to Axum handlers and service code. The sta
 | `GET /health` | `health` | None | `SELECT 1` |
 | `GET /api/v2/config` | `config` | None | `Store::now` plus constants |
 | `POST /api/v2/auth/demo` | `demo_account` | Demo mode | `Store::create_account` |
+| `POST /api/v2/auth/register` | `register` | None | `Store::register_account` |
+| `POST /api/v2/auth/login` | `login` | None | `Store::login` |
 | `POST /api/v2/admin/accounts` | `admin_account` | `require_admin` | `Store::create_account` |
-| `GET /api/v2/me` | `me` | `AppState::account` | `Store::account_for_token` |
+| `GET /api/v2/me` | `me` | `AppState::account` | `Store::account_by_id` for a fresh balance |
 | `GET /api/v2/me/portfolio` | `portfolio` | Account | `Store::portfolio` |
 | `GET /api/v2/me/trades` | `trades` | Account | `Store::trades` |
 | `GET /api/v2/markets` | `markets` | None | `Store::templates` |
 | `GET /api/v2/markets/{id}/instances` | `template_instances` | None | `Store::instances(Some(id))` |
+| `POST /api/v2/series` | `create_series` | Creator role | `Store::create_series` |
+| `GET /api/v2/series` | `list_series` | None | `Store::series_list` |
+| `GET /api/v2/series/{id}` | `series_detail` | None | `Store::series_view` |
 | `GET /api/v2/instances` | `instances` | None | `Store::instances(None)` |
 | `GET /api/v2/instances/{id}` | `instance` | None | `Store::instance_detail` |
+| `GET /api/v2/instances/{id}/history` | `instance_history` | None | `Store::instance_history` |
 | `GET /api/v2/instances/{id}/events` | `events` | None | outbox polling stream |
+| `POST /api/v2/instances/{id}/resolution` | `creator_resolution` | Series creator | `Store::record_creator_resolution` |
 | `POST /api/v2/quotes` | `quote` | Account | `Store::quote` |
 | `POST /api/v2/trades` | `trade` | Account + header | `Store::execute` |
+| `POST /api/v2/verification-requests` | `request_verification` | Account | `Store::create_verification_request` |
+| `GET /api/v2/verification-requests` | `my_verification_request` | Account | `Store::verification_request` |
+| `GET /api/v2/admin/verification-requests` | `verification_list` | Administrator | `Store::verification_requests` |
+| `POST /api/v2/admin/verification-requests/{id}/decision` | `verification_decision` | Administrator | `Store::decide_verification_request` |
 | `POST /api/v2/admin/instances` | `create_instance` | Administrator | `Store::create_instance` + `instance_view` |
 | `POST /api/v2/admin/instances/{id}/evidence` | `evidence` | Administrator | `Store::ingest_evidence` |
 | `POST /api/v2/admin/instances/{id}/suspension` | `suspend` | Administrator | `Store::suspend` |
@@ -51,14 +62,14 @@ Headers are parsed as visible ASCII strings. Missing/malformed bearer headers ma
 
 ## Authentication flow
 
-`AppState::account` extracts the bearer token and calls `Store::account_for_token`, which:
+`AppState::account` extracts the bearer token and calls `Store::auth_account_for_token`, which:
 
 - rejects tokens longer than 200 characters;
 - hashes the token with SHA-256;
-- queries a `kind='user'` account; and
+- resolves a `kind='user'` account through the read-through token cache; and
 - returns unauthorized if none exists.
 
-`require_admin` compares a candidate `x-admin-token` with the configured value using fixed-message HMAC tags. No administrator identity is attached to audit rows because the system has only one shared administrator credential.
+`require_admin` accepts either the configured shared `x-admin-token` (compared with fixed-message HMAC tags) or the bearer session of an account holding the admin role. Administrator actions are not attributed to an individual admin identity in audit rows.
 
 ## Business-error flow
 
@@ -95,7 +106,7 @@ A database error logs and ends the stream. The handler has no per-client databas
 
 ## Missing APIs by design
 
-There is no endpoint for drafts, editing published definitions, deleting markets, retrieving all ledger/audit/evidence rows, rotating credentials, account recovery, live provider setup, outbox administration, or general database repair.
+There is no endpoint for drafts, editing published definitions, deleting markets, retrieving all ledger/audit/evidence rows, account recovery, live provider setup, outbox administration, or general database repair. Session tokens rotate on every login; password recovery remains absent by design.
 
 ## Endpoint change checklist
 
