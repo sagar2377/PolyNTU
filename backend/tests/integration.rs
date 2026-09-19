@@ -452,6 +452,80 @@ async fn login_is_reachable_over_http() {
     db.finish().await;
 }
 
+// The seeded demo administrator reaches admin routes through its session.
+#[tokio::test]
+async fn demo_databases_seed_an_administrator_account() {
+    let db = TestDb::new().await;
+    let session = db.store.login("admin@ntu.edu.sg", "admin").await.unwrap();
+    assert_eq!(session["account"]["role"], "admin");
+    assert_eq!(session["account"]["email"], "admin@ntu.edu.sg");
+    let token = session["token"].as_str().unwrap().to_owned();
+    let app = db.app();
+    let (status, _) = http(
+        &app,
+        "GET",
+        "/api/v2/admin/verification-requests",
+        json!(null),
+        Some(&token),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    // Member sessions and anonymous requests still cannot.
+    let member = db
+        .store
+        .register_account("Billy", "billy@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let (status, _) = http(
+        &app,
+        "GET",
+        "/api/v2/admin/verification-requests",
+        json!(null),
+        Some(member["token"].as_str().unwrap()),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = http(
+        &app,
+        "GET",
+        "/api/v2/admin/verification-requests",
+        json!(null),
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // The shared admin token keeps working.
+    let (status, _) = http(
+        &app,
+        "GET",
+        "/api/v2/admin/verification-requests",
+        json!(null),
+        None,
+        true,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    // The administrator does not request creator verification.
+    let admin_id = session["account"]["id"].as_str().unwrap().to_owned();
+    let request = db
+        .store
+        .create_verification_request(&admin_id)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        request.to_string(),
+        "Administrators do not request creator verification"
+    );
+    db.finish().await;
+}
+
 // ADR 0005: the creator verification workflow.
 #[tokio::test]
 async fn approval_grants_the_creator_role_permanently() {

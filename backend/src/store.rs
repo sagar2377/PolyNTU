@@ -215,6 +215,20 @@ impl Store {
             .bind(INITIAL_ISSUANCE_UNITS * amm::CREDIT_SCALE).bind(now).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO ledger_transfers(id,from_account,to_account,amount_micros,kind,reference,created_ms) VALUES('issuance-expansion','issuance','treasury',$1,'issuance','issuance-expansion',$2) ON CONFLICT DO NOTHING")
             .bind((TOTAL_ISSUANCE_UNITS - INITIAL_ISSUANCE_UNITS) * amm::CREDIT_SCALE).bind(now).execute(&mut *tx).await?;
+        // Demo and test databases seed an administrator account:
+        // admin@ntu.edu.sg with password "admin". Its session token is
+        // generated fresh at each login; the seed token's plaintext is
+        // discarded, so the only way in is the password.
+        if self.demo_mode {
+            let seeded_token = auth::random_token()?;
+            sqlx::query(
+                "INSERT INTO accounts(id,display_name,kind,token_hash,email,password_hash,role) VALUES('demo-admin','Administrator','user',$1,'admin@ntu.edu.sg',$2,'admin') ON CONFLICT (email) DO NOTHING",
+            )
+            .bind(auth::hash(seeded_token.as_bytes()))
+            .bind(auth::hash_password("admin")?)
+            .execute(&mut *tx)
+            .await?;
+        }
         tx.commit().await?;
         Ok(offset)
     }
@@ -268,6 +282,17 @@ impl Store {
         .fetch_optional(&self.pool)
         .await?
         .ok_or(Error::NotFound)
+    }
+
+    /// Whether the account holds the admin role. Read fresh on every admin
+    /// request: role changes are rare and the auth cache carries no roles.
+    pub async fn account_is_admin(&self, id: &str) -> Result<bool> {
+        let admin: Option<bool> =
+            sqlx::query_scalar("SELECT role='admin' FROM accounts WHERE id=$1 AND kind='user'")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(admin.unwrap_or(false))
     }
 
     /// Read-through instance lookup for the quote path. A miss fetches the
@@ -433,13 +458,19 @@ impl Store {
             Some(row) => row.get("role"),
             None => return Err(Error::NotFound),
         };
-        if role.as_deref() == Some("creator") {
-            return Err(invalid("This account is already a creator"));
-        }
-        if role.is_none() {
-            return Err(invalid(
-                "Register with an NTU email before requesting verification",
-            ));
+        match role.as_deref() {
+            Some("creator") => return Err(invalid("This account is already a creator")),
+            Some("member") => {}
+            Some("admin") => {
+                return Err(invalid(
+                    "Administrators do not request creator verification",
+                ));
+            }
+            _ => {
+                return Err(invalid(
+                    "Register with an NTU email before requesting verification",
+                ));
+            }
         }
         let id = Uuid::new_v4().to_string();
         let inserted = sqlx::query(

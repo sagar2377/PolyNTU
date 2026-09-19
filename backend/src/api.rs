@@ -49,16 +49,22 @@ impl AppState {
             events: EventBus::default(),
         })
     }
-    fn require_admin(&self, headers: &HeaderMap) -> Result<()> {
-        let token = headers
+    /// Admin access: the configured shared token, or the bearer session of
+    /// an account holding the admin role (the seeded administrator).
+    async fn require_admin(&self, headers: &HeaderMap) -> Result<()> {
+        if headers
             .get("x-admin-token")
             .and_then(|h| h.to_str().ok())
-            .ok_or(Error::Forbidden)?;
-        if auth::verify_admin(token, &self.admin_token) {
-            Ok(())
-        } else {
-            Err(Error::Forbidden)
+            .is_some_and(|token| auth::verify_admin(token, &self.admin_token))
+        {
+            return Ok(());
         }
+        if let Ok(account) = self.account(headers).await
+            && self.store.account_is_admin(&account.id).await?
+        {
+            return Ok(());
+        }
+        Err(Error::Forbidden)
     }
     async fn account(&self, headers: &HeaderMap) -> Result<Arc<AuthAccount>> {
         let token = headers
@@ -190,7 +196,7 @@ async fn admin_account(
     headers: HeaderMap,
     Json(req): Json<AccountInput>,
 ) -> Result<Json<Value>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     Ok(Json(s.store.create_account(&req.display_name).await?))
 }
 async fn me(State(s): State<AppState>, headers: HeaderMap) -> Result<Json<Account>> {
@@ -298,7 +304,7 @@ async fn create_instance(
     headers: HeaderMap,
     Json(req): Json<NewInstance>,
 ) -> Result<Json<Value>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     Ok(Json(instance_view(
         &s.store.create_instance(&req).await?,
         s.store.now().await?,
@@ -334,7 +340,7 @@ async fn verification_list(
     headers: HeaderMap,
     Query(filter): Query<StatusFilter>,
 ) -> Result<Json<Vec<Value>>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     Ok(Json(
         s.store
             .verification_requests(filter.status.as_deref())
@@ -353,7 +359,7 @@ async fn verification_decision(
     Path(id): Path<String>,
     Json(req): Json<DecisionInput>,
 ) -> Result<Json<Value>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     Ok(Json(
         s.store
             .decide_verification_request(&id, req.approve, req.reason.as_deref())
@@ -366,7 +372,7 @@ async fn evidence(
     Path(id): Path<String>,
     Json(req): Json<EvidenceInput>,
 ) -> Result<Json<Value>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     Ok(Json(s.store.ingest_evidence(&id, &req).await?))
 }
 #[derive(Deserialize)]
@@ -381,7 +387,7 @@ async fn suspend(
     Path(id): Path<String>,
     Json(req): Json<SuspensionInput>,
 ) -> Result<Json<Value>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     s.store.suspend(&id, req.suspended, &req.reason).await?;
     Ok(Json(json!({"ok":true})))
 }
@@ -395,7 +401,7 @@ async fn advance(
     headers: HeaderMap,
     Json(req): Json<AdvanceInput>,
 ) -> Result<Json<Value>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     let now = s.store.advance_demo_clock(req.minutes).await?;
     let settled = worker::tick(&s.store).await?;
     Ok(Json(
@@ -403,11 +409,11 @@ async fn advance(
     ))
 }
 async fn reconcile(State(s): State<AppState>, headers: HeaderMap) -> Result<Json<Value>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     Ok(Json(s.store.reconcile().await?))
 }
 async fn tick(State(s): State<AppState>, headers: HeaderMap) -> Result<Json<Value>> {
-    s.require_admin(&headers)?;
+    s.require_admin(&headers).await?;
     Ok(Json(
         json!({"settled_accounts":worker::tick(&s.store).await?}),
     ))
