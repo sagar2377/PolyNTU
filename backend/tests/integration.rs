@@ -452,6 +452,223 @@ async fn login_is_reachable_over_http() {
     db.finish().await;
 }
 
+// ADR 0005: the creator verification workflow.
+#[tokio::test]
+async fn approval_grants_the_creator_role_permanently() {
+    let db = TestDb::new().await;
+    let session = db
+        .store
+        .register_account("Billy", "billy@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let account_id = session["account"]["id"].as_str().unwrap().to_owned();
+    let request = db
+        .store
+        .create_verification_request(&account_id)
+        .await
+        .unwrap();
+    assert_eq!(request["status"], "pending");
+    let duplicate = db
+        .store
+        .create_verification_request(&account_id)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        duplicate.to_string(),
+        "A pending verification request already exists"
+    );
+    let pending = db
+        .store
+        .verification_requests(Some("pending"))
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0]["email"], "billy@ntu.edu.sg");
+    let decision = db
+        .store
+        .decide_verification_request(request["id"].as_str().unwrap(), true, None)
+        .await
+        .unwrap();
+    assert_eq!(decision["status"], "approved");
+    let account = db.store.account_by_id(&account_id).await.unwrap();
+    assert_eq!(account.role.as_deref(), Some("creator"));
+    // Approval is permanent: re-requesting is rejected, and the decided
+    // request cannot be decided again.
+    let re_request = db
+        .store
+        .create_verification_request(&account_id)
+        .await
+        .unwrap_err();
+    assert_eq!(re_request.to_string(), "This account is already a creator");
+    let re_decide = db
+        .store
+        .decide_verification_request(request["id"].as_str().unwrap(), true, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(re_decide, polyntu::error::Error::NotFound));
+    // The admin audit recorded the decision.
+    let audit_rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM admin_audit WHERE action='verification_decision'")
+            .fetch_one(&db.store.pool)
+            .await
+            .unwrap();
+    assert_eq!(audit_rows, 1);
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn rejection_records_a_reason_and_allows_reapplication() {
+    let db = TestDb::new().await;
+    let session = db
+        .store
+        .register_account("Billy", "billy@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let account_id = session["account"]["id"].as_str().unwrap().to_owned();
+    let first = db
+        .store
+        .create_verification_request(&account_id)
+        .await
+        .unwrap();
+    let missing_reason = db
+        .store
+        .decide_verification_request(first["id"].as_str().unwrap(), false, None)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        missing_reason.to_string(),
+        "A rejection must record a reason"
+    );
+    db.store
+        .decide_verification_request(
+            first["id"].as_str().unwrap(),
+            false,
+            Some("Insufficient campus activity"),
+        )
+        .await
+        .unwrap();
+    let account = db.store.account_by_id(&account_id).await.unwrap();
+    assert_eq!(account.role.as_deref(), Some("member"));
+    let latest = db
+        .store
+        .verification_request(&account_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(latest["status"], "rejected");
+    assert_eq!(latest["reason"], "Insufficient campus activity");
+    // A rejected member may apply again, and the second request can succeed.
+    let second = db
+        .store
+        .create_verification_request(&account_id)
+        .await
+        .unwrap();
+    db.store
+        .decide_verification_request(second["id"].as_str().unwrap(), true, None)
+        .await
+        .unwrap();
+    let account = db.store.account_by_id(&account_id).await.unwrap();
+    assert_eq!(account.role.as_deref(), Some("creator"));
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn verification_endpoints_are_reachable_and_gated_over_http() {
+    let db = TestDb::new().await;
+    let app = db.app();
+    let registered = db
+        .store
+        .register_account("Billy", "billy@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let token = registered["token"].as_str().unwrap().to_owned();
+    let (status, _) = http(
+        &app,
+        "POST",
+        "/api/v2/verification-requests",
+        json!(null),
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, request) = http(
+        &app,
+        "POST",
+        "/api/v2/verification-requests",
+        json!(null),
+        Some(&token),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(request["status"], "pending");
+    let (status, _) = http(
+        &app,
+        "GET",
+        "/api/v2/admin/verification-requests",
+        json!(null),
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, list) = http(
+        &app,
+        "GET",
+        "/api/v2/admin/verification-requests?status=pending",
+        json!(null),
+        None,
+        true,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    let (status, _) = http(
+        &app,
+        "POST",
+        &format!(
+            "/api/v2/admin/verification-requests/{}/decision",
+            request["id"].as_str().unwrap()
+        ),
+        json!({"approve": true}),
+        None,
+        true,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, me) = http(
+        &app,
+        "GET",
+        "/api/v2/me",
+        json!(null),
+        Some(&token),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["role"], "creator");
+    // Demo accounts must register before they can request verification.
+    let demo = db.store.create_account("Demo user").await.unwrap();
+    let demo_id = demo["account"]["id"].as_str().unwrap().to_owned();
+    let demo_request = db
+        .store
+        .create_verification_request(&demo_id)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        demo_request.to_string(),
+        "Register with an NTU email before requesting verification"
+    );
+    db.finish().await;
+}
+
 #[tokio::test]
 async fn foreign_key_read_locks_do_not_block_account_balance_updates() {
     let db = TestDb::new().await;

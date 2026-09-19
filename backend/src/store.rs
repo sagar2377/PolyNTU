@@ -417,6 +417,140 @@ impl Store {
         Ok(json!({"token": token, "account": account}))
     }
 
+    /// A member files a creator verification request (ADR 0005). One pending
+    /// request per account; a rejected member may apply again.
+    pub async fn create_verification_request(&self, account: &str) -> Result<Value> {
+        let mut tx = self.pool.begin().await?;
+        let now = db_now(&mut tx).await?;
+        // Lock the account row so an approval cannot interleave with this
+        // request; the role check below then cannot go stale.
+        let record =
+            sqlx::query("SELECT role FROM accounts WHERE id=$1 AND kind='user' FOR NO KEY UPDATE")
+                .bind(account)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let role: Option<String> = match &record {
+            Some(row) => row.get("role"),
+            None => return Err(Error::NotFound),
+        };
+        if role.as_deref() == Some("creator") {
+            return Err(invalid("This account is already a creator"));
+        }
+        if role.is_none() {
+            return Err(invalid(
+                "Register with an NTU email before requesting verification",
+            ));
+        }
+        let id = Uuid::new_v4().to_string();
+        let inserted = sqlx::query(
+            "INSERT INTO verification_requests(id,account_id,status,created_ms) VALUES($1,$2,'pending',$3) ON CONFLICT DO NOTHING RETURNING id",
+        )
+        .bind(&id)
+        .bind(account)
+        .bind(now)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if inserted.is_none() {
+            return Err(conflict("A pending verification request already exists"));
+        }
+        tx.commit().await?;
+        Ok(json!({"id": id, "account_id": account, "status": "pending", "created_ms": now}))
+    }
+
+    /// The account's latest verification request, if any, for the requester's
+    /// own interface.
+    pub async fn verification_request(&self, account: &str) -> Result<Option<Value>> {
+        let row = sqlx::query(
+            "SELECT id,status,reason,created_ms,decided_ms FROM verification_requests WHERE account_id=$1 ORDER BY created_ms DESC,id LIMIT 1",
+        )
+        .bind(account)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| {
+            json!({"id": r.get::<String,_>("id"), "status": r.get::<String,_>("status"),
+                "reason": r.get::<Option<String>,_>("reason"), "created_ms": r.get::<i64,_>("created_ms"),
+                "decided_ms": r.get::<Option<i64>,_>("decided_ms")})
+        }))
+    }
+
+    /// The administrator's review list, newest first.
+    pub async fn verification_requests(&self, status: Option<&str>) -> Result<Vec<Value>> {
+        if status.is_some_and(|status| !matches!(status, "pending" | "approved" | "rejected")) {
+            return Err(invalid("Status must be pending, approved, or rejected"));
+        }
+        let rows = sqlx::query(
+            "SELECT v.id,v.account_id,v.status,v.reason,v.created_ms,v.decided_ms,a.display_name,a.email FROM verification_requests v JOIN accounts a ON a.id=v.account_id WHERE ($1::TEXT IS NULL OR v.status=$1) ORDER BY v.created_ms DESC,v.id LIMIT 200",
+        )
+        .bind(status)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                json!({"id": r.get::<String,_>("id"), "account_id": r.get::<String,_>("account_id"),
+                    "status": r.get::<String,_>("status"), "reason": r.get::<Option<String>,_>("reason"),
+                    "created_ms": r.get::<i64,_>("created_ms"), "decided_ms": r.get::<Option<i64>,_>("decided_ms"),
+                    "display_name": r.get::<String,_>("display_name"), "email": r.get::<Option<String>,_>("email")})
+            })
+            .collect())
+    }
+
+    /// The administrator approves or rejects a pending request. Approval
+    /// permanently grants the creator role; rejection records a reason.
+    pub async fn decide_verification_request(
+        &self,
+        id: &str,
+        approve: bool,
+        reason: Option<&str>,
+    ) -> Result<Value> {
+        let mut tx = self.pool.begin().await?;
+        let now = db_now(&mut tx).await?;
+        let row = sqlx::query(
+            "SELECT account_id FROM verification_requests WHERE id=$1 AND status='pending' FOR UPDATE",
+        )
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let account_id: String = match row {
+            Some(row) => row.get("account_id"),
+            None => return Err(Error::NotFound),
+        };
+        if !approve && reason.map(str::trim).unwrap_or("").is_empty() {
+            return Err(invalid("A rejection must record a reason"));
+        }
+        sqlx::query(
+            "UPDATE verification_requests SET status=$1,reason=$2,decided_ms=$3 WHERE id=$4",
+        )
+        .bind(if approve { "approved" } else { "rejected" })
+        .bind(reason)
+        .bind(now)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        if approve {
+            let updated = sqlx::query(
+                "UPDATE accounts SET role='creator' WHERE id=$1 AND kind='user' AND role='member'",
+            )
+            .bind(&account_id)
+            .execute(&mut *tx)
+            .await?;
+            if updated.rows_affected() == 0 {
+                return Err(conflict("The requester is no longer an eligible member"));
+            }
+        }
+        audit(
+            &mut tx,
+            "verification_decision",
+            None,
+            json!({"request_id": id, "account_id": account_id, "approve": approve, "reason": reason}),
+            now,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(json!({"id": id, "account_id": account_id,
+            "status": if approve { "approved" } else { "rejected" }}))
+    }
+
     pub async fn instance(&self, id: &str) -> Result<Instance> {
         sqlx::query_as("SELECT * FROM instances WHERE id=$1")
             .bind(id)

@@ -86,8 +86,17 @@ pub fn router(state: AppState, origins: Vec<HeaderValue>) -> Router {
         .route("/instances/{id}/events", get(events))
         .route("/quotes", post(quote))
         .route("/trades", post(trade))
+        .route(
+            "/verification-requests",
+            post(request_verification).get(my_verification_request),
+        )
         .route("/admin/accounts", post(admin_account))
         .route("/admin/instances", post(create_instance))
+        .route("/admin/verification-requests", get(verification_list))
+        .route(
+            "/admin/verification-requests/{id}/decision",
+            post(verification_decision),
+        )
         .route("/admin/instances/{id}/evidence", post(evidence))
         .route("/admin/instances/{id}/suspension", post(suspend))
         .route("/admin/clock/advance", post(advance))
@@ -294,6 +303,62 @@ async fn create_instance(
         &s.store.create_instance(&req).await?,
         s.store.now().await?,
     )?))
+}
+async fn request_verification(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>> {
+    let account = s.account(&headers).await?;
+    Ok(Json(
+        s.store.create_verification_request(&account.id).await?,
+    ))
+}
+async fn my_verification_request(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>> {
+    let account = s.account(&headers).await?;
+    Ok(Json(
+        s.store
+            .verification_request(&account.id)
+            .await?
+            .unwrap_or(Value::Null),
+    ))
+}
+#[derive(Deserialize, Default)]
+struct StatusFilter {
+    status: Option<String>,
+}
+async fn verification_list(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Query(filter): Query<StatusFilter>,
+) -> Result<Json<Vec<Value>>> {
+    s.require_admin(&headers)?;
+    Ok(Json(
+        s.store
+            .verification_requests(filter.status.as_deref())
+            .await?,
+    ))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecisionInput {
+    approve: bool,
+    reason: Option<String>,
+}
+async fn verification_decision(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<DecisionInput>,
+) -> Result<Json<Value>> {
+    s.require_admin(&headers)?;
+    Ok(Json(
+        s.store
+            .decide_verification_request(&id, req.approve, req.reason.as_deref())
+            .await?,
+    ))
 }
 async fn evidence(
     State(s): State<AppState>,
