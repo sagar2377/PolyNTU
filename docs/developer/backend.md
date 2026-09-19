@@ -118,13 +118,19 @@ The tagged enum contains:
 
 `EvidenceInput` is the public normalized evidence envelope. All request/observation types deny unknown JSON fields so spelling mistakes do not silently disappear.
 
-`demo_specs` creates seven definitions, all with uniform liquidity 100 and simulator source. Non-election templates recur through the worker; the election remains a single demo occurrence.
+`demo_specs` creates six definitions, all with uniform liquidity 100 and simulator source; the former one-shot bus spec became the rolling series below. Non-election templates recur through the worker; the election remains a single demo occurrence.
+
+### Series types (ADR 0006)
+
+`Schedule` is the tagged recurrence enum: `Once` carries the five instance times, and `Recurring` carries `interval_ms` (one minute to one day), `active_start_minute`/`active_end_minute` (minutes of day, Singapore time), `max_concurrency` (capped at 50), and an optional `end_ms` whose absence means perpetual. `validate` bounds all of them. `bracket_timing` maps a slot start to instance times: the slot is both the close and the observation window `[T, T+interval)`, finalization follows one second after the observation end (`BRACKET_FINALIZE_MARGIN_MS`), and the evidence deadline sixty seconds after (`BRACKET_DEADLINE_MARGIN_MS`).
+
+`inside_active_window` interprets a slot start in Singapore time (UTC+8, no daylight saving) and tests it against the daily window. `NewSeries` is the publication request (title, criterion, rule, source, liquidity, `fee_charged` defaulting to true, an optional resolution authority ([ADR 0007](../decisions/0007-resolution-authority.md)), schedule) and `instance_spec` builds one bracket's `NewInstance`. `Series` mirrors the database row; `Series::bracket_spec` rebuilds a bracket spec from a stored row. `demo_series_spec` is the rolling fee-free demo bus: simulated data, a 2-minute interval, the 06:00 to 23:59 operating window, maximum concurrency 5, perpetual.
 
 ## HTTP layer: `api.rs`
 
 `AppState` owns the cloned `Store` and shared quote/admin secrets. Its private helpers resolve bearer tokens to accounts and gate administrator access: `require_admin` accepts either the configured shared `X-Admin-Token` (constant-time HMAC comparison) or the bearer session of an admin-role account, reading the role fresh from the database on every request.
 
-`router` creates a nested `/api/v2` router, explicit retired routes, global 64 KiB limit, configured CORS, request tracing, and the shared state. Handlers remain deliberately thin: authenticate/parse, call one store/service method, and serialize its result.
+`router` creates a nested `/api/v2` router, explicit retired routes, global 64 KiB limit, configured CORS, request tracing, and the shared state. The series routes (`POST /api/v2/series`, `GET /api/v2/series`, `GET /api/v2/series/{id}`) resolve the bearer account and delegate to the store; publication requires the creator role and publishes manual-data series. Handlers remain deliberately thin: authenticate/parse, call one store/service method, and serialize its result.
 
 The SSE handler is the exception: it validates the instance, initializes a nonnegative cursor, subscribes to the instance's broadcast channel, replays up to 100 outbox rows per catch-up pass, and emits `market` events as notifications arrive, with a 30-second catch-up safety net. The stream ends only on a database query failure or client disconnect.
 
@@ -176,7 +182,13 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 `create_verification_request` lets a member file one pending creator request under an account lock, `verification_request`/`verification_requests` read the requester's latest request and the administrator's filtered review list, and `decide_verification_request` approves or rejects under a row lock, permanently setting the role to `creator` on approval and always appending a `verification_decision` audit row. `account_is_admin` reads the role fresh on every admin request.
 
-`instance`, `instance_detail`, `templates`, and `instances` construct public views. Detail includes the selected evidence payload. `create_instance` validates/derives the full definition, creates/funds a reserve, inserts the immutable instance, and appends event/audit rows.
+`instance`, `instance_detail`, `templates`, and `instances` construct public views. Detail includes the selected evidence payload. `create_instance` validates/derives the full definition, creates/funds a reserve, inserts the immutable instance, and appends the opened event; direct (non-series) creations also write an administrator audit row, while scheduler-spawned brackets publish through the outbox only.
+
+### Series and rolling spawn (ADR 0006)
+
+`create_series` checks the data mode (creators publish manual series; simulated series stay demo-internal), validates the spec, requires the creator role under an account lock (platform seeding passes no creator), creates the series row plus a `templates` row under the series ID, and audits `create_series`. A one-time schedule immediately publishes its single bracket through `create_instance`; if that fails, the series row is removed again so nothing half-published remains.
+
+`series_view` returns the definition plus up to 100 instances, newest close first; `series_list` orders active series first. `spawn_due_brackets` loads every active recurring series and calls `spawn_series_brackets` per series: it walks the grid slots strictly after now for up to `max_concurrency` slots, skips slots past `end_ms` or outside the active window, skips brackets that already exist, and publishes the rest through `create_instance` (a lost race with a competing scheduler is swallowed). Failures are logged per series and retried on the next tick. The same method then ends series: a recurring series whose end has passed with no non-terminal bracket left, and a one-time series once its single instance is terminal.
 
 ### Private reads and reconciliation
 
@@ -198,9 +210,9 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 ## Worker: `worker.rs`
 
-`seed_demo` creates missing future occurrences. A template/close uniqueness constraint handles competing schedulers; elections are deliberately not recurring.
+`seed_demo` seeds the rolling demo bus series once (platform-owned, simulated, fee-free) and creates missing future occurrences for the six one-shot demo specs. A template/close uniqueness constraint handles competing schedulers; elections are deliberately not recurring.
 
-`tick` closes due instances, selects actionable rows, produces due simulator evidence, settles independent instances concurrently in chunks of eight, and then seeds future demos. Per-instance evidence/settlement errors are logged so another instance can continue.
+`tick` closes due instances, spawns due series brackets, selects actionable rows, produces due simulator evidence, settles independent instances concurrently in chunks of eight, and then seeds future demos. Per-series spawn failures and per-instance evidence/settlement errors are logged so one failure cannot stall the others.
 
 `run` invokes `tick` every second with missed ticks skipped. There is no shutdown channel; `main` aborts the spawned task after HTTP shutdown.
 

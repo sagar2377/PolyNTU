@@ -75,9 +75,9 @@ The marginal price begins at 0.5 and ends above 0.5. The LMSR part of a round tr
 
 ## Trading fees
 
-Every trade pays `fee::trade_fee(amount) = ceil(amount × 25 / 10,000)` on the pure LMSR amount, rounded against the trader on both sides, so the fee never exceeds its amount and a sale never credits below zero. Quotes and receipts expose all-in amounts: `amount_micros` includes the fee and `fee_micros` states it separately.
+Whether a market charges the fee is an attribute fixed at creation: `fee_charged` on both `instances` and `market_series`, defaulting to true. The administrator sets it creating instances directly, and creators set it publishing a series. Every trade on a fee-charging market pays `fee::trade_fee(amount) = ceil(amount × 25 / 10,000)` on the pure LMSR amount, rounded against the trader on both sides, so the fee never exceeds its amount and a sale never credits below zero. Fee-free markets charge nothing: quotes and receipts report `fee_micros` 0, the all-in amount equals the pure engine amount, and `fee::charged` takes the flag as its third parameter. Quotes and receipts expose all-in amounts: `amount_micros` includes the fee and `fee_micros` states it separately.
 
-The fee rides inside the single trader/reserve ledger transfer and accumulates in the reserve as an implicit per-instance pot (the sum of `trades.fee_micros`). At settlement, after the last claim, the pot leaves the reserve as explicit `fee` transfers: the creator's floor half to the recorded creator account and the remainder to the treasury, which keeps any odd microcredit. Platform-created instances have no creator, so their whole pot is treasury revenue. Direct per-trade transfers to the treasury were rejected because they would serialize all trades on the treasury account row; see [ADR 0004](../decisions/0004-trade-fees.md).
+The fee rides inside the single trader/reserve ledger transfer and accumulates in the reserve as an implicit per-instance pot (the sum of `trades.fee_micros`). At settlement, after the last claim, the pot leaves the reserve as explicit `fee` transfers: the creator's floor half to the recorded creator account and the remainder to the treasury, which keeps any odd microcredit. Platform-created instances have no creator, so their whole pot is treasury revenue. A fee-free market accumulates no pot, so settlement pays no creator share even when a creator is recorded. Direct per-trade transfers to the treasury were rejected because they would serialize all trades on the treasury account row; see [ADR 0004](../decisions/0004-trade-fees.md), whose blanket fee this per-market attribute amends.
 
 ## Quote contract
 
@@ -92,6 +92,8 @@ A quote reads current instance state and creates signed `QuoteClaims` containing
 - engine compatibility version.
 
 The JSON body is base64url-encoded and authenticated with HMAC-SHA256. Clients must treat the token as opaque. A quote changes no database state and does not guarantee later execution.
+
+A quote for an instance the account created is rejected before calculation with the creator trading ban, the same conflict enforced again under locks at execution: creators cannot trade in their own markets, and the fee share is their compensation.
 
 ## User limits
 
@@ -135,12 +137,13 @@ After waiting for locks, execution rechecks:
 
 1. database time is before both quote expiry and market close;
 2. persisted state is open and not suspended;
-3. signed account and engine are correct;
-4. signed version equals current instance version;
-5. recomputed rounded amount and fee equal the signed values;
-6. user limit accepts the all-in amount;
-7. buyer balance covers the all-in debit or seller holdings cover the quantity; and
-8. resulting reserve balance covers maximum inventory liability.
+3. the requester is not the instance's creator, the same trading ban as at quote time;
+4. signed account and engine are correct;
+5. signed version equals current instance version;
+6. recomputed rounded amount and fee equal the signed values (both zero-fee on fee-free markets);
+7. user limit accepts the all-in amount;
+8. buyer balance covers the all-in debit or seller holdings cover the quantity; and
+9. resulting reserve balance covers maximum inventory liability.
 
 Checking time after locking prevents a request queued before close from executing after close.
 
@@ -182,7 +185,7 @@ The issuance account is deliberately negative by the total issued amount. All ot
 
 For a winner, each winning millishare credits 1,000 microcredits. For a void across `n` outcomes, the account's positive millishares across all outcomes are summed, multiplied by 1,000, divided by `n`, and rounded down by integer division.
 
-When the last claim is credited, the accumulated fee pot is paid out of the reserve before the remaining balance releases to the treasury: the creator's floor half (when the instance records a creator) and the treasury's remainder.
+When the last claim is credited, the accumulated fee pot is paid out of the reserve before the remaining balance releases to the treasury: the creator's floor half (when the instance records a creator) and the treasury's remainder. A fee-free market has no accumulated pot, so it pays no creator share and the whole remaining reserve releases.
 
 Historical positions remain; a unique settlement claim records the actual aggregate credit. This prevents a multi-outcome account credit from appearing once per position.
 

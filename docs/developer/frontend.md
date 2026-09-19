@@ -27,7 +27,7 @@ The wrapper always calls `/api/v2`; health is served separately and is not used 
 
 ### Endpoint helpers
 
-The exported `api` object wraps configuration, account lookup, demo account creation, NTU registration, email/password login, creator verification submission/lookup, instance lists/detail, quotes/trades, portfolio/history, demo clock advance, and event URL construction. It does not currently expose template lists, administrator instance/evidence/suspension creation, worker tick, or reconciliation.
+The exported `api` object wraps configuration, account lookup, demo account creation, NTU registration, email/password login, creator verification submission/lookup, instance lists/detail, series list/detail/publication, quotes/trades, portfolio/history, demo clock advance, and event URL construction. It does not currently expose template lists, administrator instance/evidence/suspension creation, worker tick, or reconciliation.
 
 ### Exact unit functions
 
@@ -55,7 +55,9 @@ Probabilities and average prices are display `Number` values supplied by the bac
 Views are string-selected rather than URL-routed:
 
 - `browse` renders `MarketBrowse`;
-- `market` renders the selected `MarketPage`; and
+- `market` renders the selected `MarketPage`;
+- `series` renders the selected `SeriesPage`;
+- `create` renders `CreateMarket`, offered only to accounts holding the creator role through a Create market navigation button; and
 - `portfolio` renders `Portfolio`.
 
 Refreshing the browser does not preserve the selected view/market, but the account and pending trade remain in local storage.
@@ -91,15 +93,18 @@ This control is local-demo convenience, not an administrator console.
 
 ## Market discovery: `pages/MarketBrowse.jsx`
 
-State contains the current page of instances, selected category, loading flag, and offset. The page loads immediately and every ten seconds. Category filtering is client-side over only the current 100-row page.
+State contains the current page of instances, the active series list, selected category, loading flag, and offset. The page loads instances immediately and every ten seconds; the series list loads once per refresh counter change. Category filtering is client-side over only the current 100-row page and also filters the series strip.
+
+Above the market grid, a strip of chips shows every active series: the title plus the rolling cadence and live count (or One-time) and a no-fee marker. A chip opens the series page.
 
 Each card shows category, effective state, up to three outcomes, marginal percentages, data-mode label, and Singapore close time. Pagination increments by 100 and disables Next when fewer than 100 rows arrive.
 
 Consequences:
 
 - “open on this page” is not a platform-wide count;
-- category filtering does not fetch all pages for that category; and
-- templates are not displayed separately.
+- category filtering does not fetch all pages for that category;
+- templates are not displayed separately; and
+- the strip's no-fee marker reads `fee_charged` from the series list payload, which does not include that field, so the marker currently shows on every chip; the series page reads the fee policy from the detail payload, which does include it.
 
 ## Instance page: `pages/MarketPage.jsx`
 
@@ -107,14 +112,23 @@ The page loads the instance immediately, opens a public `EventSource`, reloads a
 
 It renders:
 
+- a back link, plus a link to the instance's series page when it is a series bracket;
 - final/resolving result banner;
 - all marginal probabilities;
-- published times/liquidity;
+- published times, liquidity, and the trading fee policy (25 bps with the creator split, or none on a welfare market);
 - resolution criterion, source, and void policy;
 - selected public evidence payload inside a disclosure; and
 - `TradePanel`.
 
 The event URL does not include a cursor explicitly; native EventSource reconnects can supply `Last-Event-ID`, while periodic snapshots cover missed/gapped updates.
+
+## Series page: `pages/SeriesPage.jsx`
+
+The page loads the series detail immediately and every five seconds. It renders the schedule as facts: bracket interval, the daily operating window, the live horizon (maximum concurrency and the minutes it covers), the end date or Perpetual, the trading fee policy, per-bracket liquidity, and the series state, followed by the resolution criterion. Live brackets list their close time and current outcome probabilities with a Trade button; settled brackets list their result with a View button. Times render in Singapore time.
+
+## Publish a market: `pages/CreateMarket.jsx`
+
+A creator-only form posting one `api.createSeries` request. It collects the title, resolution criterion, category-specific rule fields (weather station and threshold, bus route/direction/stop, fictional election candidates, or count metric/location/threshold), the evidence source, liquidity, the fee choice (the 25 bps fee with the creator split, or fee-free welfare), and the schedule: one-time (close time plus observation minutes) or recurring (interval, live brackets, operating window, optional end date). The rule shapes mirror the backend's typed rules, and the server rejects unknown fields. On success the app opens the new series page.
 
 ## Trading UI: `components/TradePanel.jsx`
 

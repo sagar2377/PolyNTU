@@ -56,13 +56,13 @@ The executable contains the backend only. The Docker build compiles React separa
 | `backend/src/error.rs` | Shared error categories and conversion to the API error envelope. Internal/database details are logged but hidden from clients. |
 | `backend/src/auth.rs` | Random bearer tokens, SHA-256 hashing, HMAC-SHA256 signed values, token verification, minimum secret validation, and constant-time administrator-token comparison. |
 | `backend/src/amm.rs` | Pure LMSR arithmetic, input bounds, funding calculation, prices, and rounded trade amounts. It has no database, clock, network, account, or RNG access. |
-| `backend/src/market.rs` | Outcomes, typed rules and observations, validation, evaluation, instance types, and demo specifications. |
+| `backend/src/market.rs` | Outcomes, typed rules and observations, validation, evaluation, instance and series types, schedules, and demo specifications. |
 | `backend/src/execution.rs` | Quote structures, signing claims, amount parsing, idempotency, transaction locking, execution checks, ledger movement, positions, trades, receipts, and trade outbox events. |
-| `backend/src/store.rs` | Pool setup, migrations, bootstrap, database time, account provisioning, instance creation/read models, portfolio/history queries, transfers, audit/events, and reconciliation. |
+| `backend/src/store.rs` | Pool setup, migrations, bootstrap, database time, account provisioning, instance and series creation/read models, rolling bracket spawn, portfolio/history queries, transfers, audit/events, and reconciliation. |
 | `backend/src/cache.rs` | Read-through instance and token caches with a local clock estimate; every mutation invalidates or writes through before returning. |
 | `backend/src/events.rs` | PostgreSQL notification listener, per-instance SSE broadcast channels, and demo clock refresh. |
 | `backend/src/resolution.rs` | Evidence validation/deduplication, suspensions, due-market closing, finalization, bounded settlement, reserve release, and demo clock changes. |
-| `backend/src/worker.rs` | One-second scheduling loop, fair actionable-instance selection, private deterministic simulator evidence, concurrent bounded settlement, and recurring demo seeding. |
+| `backend/src/worker.rs` | One-second scheduling loop, rolling series bracket spawn, fair actionable-instance selection, private deterministic simulator evidence, concurrent bounded settlement, and demo seeding (including the rolling bus series). |
 
 See [backend code reference](developer/backend.md) for important types and functions in each file.
 
@@ -122,7 +122,9 @@ Foreign-key checks can hold `KEY SHARE` locks on accounts during idempotency and
 
 ### Instance creation
 
-Instance creation validates the complete immutable specification, derives category and outcomes from the rule, calculates required funding, creates the reserve account, transfers its subsidy from the treasury, inserts the instance, writes an `opened` event, and records an administrator audit in one transaction.
+Instance creation validates the complete immutable specification, derives category and outcomes from the rule, calculates required funding, creates the reserve account, transfers its subsidy from the treasury, inserts the instance, and writes an `opened` event in one transaction. Direct (non-series) creations also record an administrator audit; scheduler-spawned brackets publish through the outbox event only.
+
+Series publication validates the schedule, requires the creator role under an account lock, inserts the immutable series row plus a template row under the series ID, and audits the creation. A one-time schedule immediately publishes its single bracket through instance creation; if funding fails, the series row is removed again.
 
 ### Evidence
 
@@ -141,7 +143,7 @@ open -> closed -> resolving -> resolved
                            \-> voided
 ```
 
-Migration `0002_immutable_rules.sql` rejects changes to published template/category/title/rule/outcomes/source/data mode/times/liquidity/reserve fields. It requires each instance update to advance its version exactly once, forbids inventory changes after closing, and prevents updates to terminal instances or fixed results.
+Migration `0002_immutable_rules.sql` rejects changes to published template/category/title/rule/outcomes/source/data mode/times/liquidity/reserve fields. It requires each instance update to advance its version exactly once, forbids inventory changes after closing, and prevents updates to terminal instances or fixed results. Migration `0009_market_series.sql` extends the protected set with the fee flag, creator attribution, series membership, and bracket slot, and applies the same immutability to series definitions, whose only mutable field is the lifecycle state.
 
 Ledger transfers, trades, evidence, settlement claims, and administrator audit records are append-only through database triggers. Idempotency rows are intentionally updated once with the durable response.
 
@@ -150,10 +152,11 @@ Ledger transfers, trades, evidence, settlement claims, and administrator audit r
 The worker ticks every second and skips accumulated timer ticks. Each cycle:
 
 1. persists closure for up to 100 due open instances using `FOR UPDATE SKIP LOCKED`;
-2. selects up to 100 actionable instances rather than simply the oldest closed rows;
-3. generates evidence for due simulated instances using a hash of a private database secret and instance ID;
-4. settles independent instances concurrently in bounded chunks of eight, logging an error without ending the worker; and
-5. ensures one future demo occurrence exists for each recurring template and one election occurrence overall.
+2. spawns due brackets for every active recurring series, keeping each rolling horizon filled inside its active window and ending finished series;
+3. selects up to 100 actionable instances rather than simply the oldest closed rows;
+4. generates evidence for due simulated instances using a hash of a private database secret and instance ID;
+5. settles independent instances concurrently in bounded chunks of eight, logging an error without ending the worker; and
+6. seeds the rolling demo bus series once and ensures one future demo occurrence exists for each recurring demo template and one election occurrence overall.
 
 The actionable query prevents many markets waiting for evidence from starving a later market that is ready to resolve. Each instance still settles serially under its row lock; concurrency is across instances only.
 

@@ -11,11 +11,12 @@ The current application deliberately uses direct outcomes rather than the call/p
 | Term | Plain-language meaning |
 |---|---|
 | Template | A recurring or reusable market definition used to group instances. |
+| Series | A published definition that occurs once or recurs in rolling brackets on a set schedule. Verified creators publish series; the platform owns the demo bus series. |
 | Instance | One concrete occurrence with its own times, outcomes, inventory, reserve, evidence, and result. |
 | Outcome share | A simulated claim on one mutually exclusive result. |
 | Probability | The current marginal LMSR price shown as a percentage. It reflects trading, not a provider forecast. |
 | Quote | A short-lived preview of the exact cost or proceeds for one proposed trade. |
-| Fee | A 0.25% trading fee included in every quote and trade. It accumulates in the market's reserve and is split between the platform and the recorded market creator when the market settles. |
+| Fee | A 0.25% trading fee on fee-charging markets, fixed when the market is created and included in quotes and trades. It accumulates in the market's reserve and is split between the platform and the recorded market creator when the market settles. Welfare markets like bus timing are fee-free. |
 | Position | The shares an account currently owns in an instance/outcome. |
 | Evidence | A normalized observation submitted after the published observation window. |
 | Settlement claim | The unique final credit recorded for one account in one instance. |
@@ -61,7 +62,7 @@ PostgreSQL ------> accounts, ledger, markets, positions, trades
                    evidence, settlement claims, audit, outbox
     ^
     |
-background worker closes, observes demo markets, and settles claims
+background worker closes, spawns series brackets, observes demo markets, and settles claims
 ```
 
 The API and worker can run in the same process, as they do by default. PostgreSQL transactions, locks, uniqueness constraints, and immutable-record triggers protect shared state.
@@ -102,11 +103,11 @@ Live evidence adapters are not part of the current build. Candidate sources name
 The platform plan extends PolyNTU from an administrator-published demonstration into a campus platform where verified NTU members publish markets and earn a share of the trading fees. The full model, with actors, flows, and the gap against the current build, is the [use case model](developer/use-cases.md).
 
 - **Accounts**: implemented. Registration and login with an NTU email address and a password, a 10,000-unit welcome gift, and a member-to-creator verification workflow ([ADR 0005](decisions/0005-ntu-accounts-and-creator-roles.md), accepted).
-- **Creator-owned series**: markets published as series that occur once or recur in rolling brackets, with a creator-set interval, active period, maximum concurrency, and optional end date; a series without an end date is perpetual. Creators cannot trade in their own markets, and their compensation is the fee share ([ADR 0006](decisions/0006-market-series-and-recurrence.md)).
+- **Creator-owned series**: implemented. Markets are published as series that occur once or recur in rolling brackets, with a creator-set interval, active period, maximum concurrency, and optional end date; a series without an end date is perpetual. Creators cannot trade in their own markets, and their compensation is the fee share, except on the fee-free welfare markets they choose to publish ([ADR 0006](decisions/0006-market-series-and-recurrence.md), accepted).
 - **Resolution authority**: fixed at creation, either the creator signing a human resolution with a key the platform never holds, or an external resolver endpoint whose answer PolyNTU validates against the published options. The administrator cannot resolve creator-owned markets ([ADR 0007](decisions/0007-resolution-authority.md)).
 - **Market experience**: live quotes and probabilities stay, joined by a live-refreshing price and volume history chart and a day-long implied-probability view for recurring series.
 
-Accounts, login, and creator verification are implemented; series, resolution authority, and market experience remain planned. The [use case model](developer/use-cases.md) marks each use case as existing, partial, or new.
+Accounts, login, creator verification, and market series are implemented; the resolution authority phase has started landing and market experience remains planned. The [use case model](developer/use-cases.md) marks each use case as existing, partial, or new.
 
 ## Current limitations
 
@@ -114,6 +115,7 @@ Accounts, login, and creator verification are implemented; series, resolution au
 - One administrator credential performs both administration and resolution duties.
 - No request-rate limiting or public deployment hardening.
 - No live provider adapters or independent verification of manual observations.
+- No price and volume history or day-long probability aggregation yet; the series page lists brackets without aggregating them.
 - No outbox retention or compaction.
 - No resting orders, short selling, leverage, real-money payments, or budget-to-share inversion.
 - No visual-browser verification was performed by the development agent because project instructions prohibit browser automation.

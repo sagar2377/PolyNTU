@@ -2,6 +2,16 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026: Market series, rolling spawn, and the per-market fee policy
+
+- Verified creators publish market series through `POST /api/v2/series` (creators only; anyone else gets 403): a one-time market whose single instance publishes immediately, or a recurring series with an interval (1 minute to 1 day), a daily active window in Singapore time, a maximum concurrency capped at 50, and an optional end date whose absence means perpetual. Published definitions are immutable; only the series state moves from active to ended. `GET /api/v2/series` and `GET /api/v2/series/{id}` expose the list and the definition with its brackets.
+- Rolling spawn: every worker tick publishes each active recurring series' upcoming grid slots, up to its maximum concurrency, skipping slots outside the active window or past the end date. A bracket closes and observes its slot [T, T+interval), finalizes one second after the observation end, and has its evidence deadline 60 seconds after it. A series ends when its end date has passed and no non-terminal bracket remains; a one-time series ends when its single instance settles.
+- Per-market fee policy: `fee_charged` is fixed at creation (default true), set by the administrator for directly created instances and by the creator for a series. A fee-free market charges nothing, collects no fee, and pays no creator share.
+- The demo bus is now a rolling fee-free welfare series: platform-owned, simulated, a bracket every 2 minutes, 06:00 to 23:59 Singapore time, 5 live brackets covering a rolling 10 minutes, perpetual. Its purpose is student welfare, crowd-sourcing real-time road traffic and arrival estimation, so no trading fee is charged. The one-shot bus demo spec is gone; six one-shot demo specs remain.
+- Creators cannot trade in their own markets: their quotes and executions are rejected with the message that the fee share is their compensation.
+- Frontend: a strip of active series chips on the browse page, a series page showing the schedule (interval, operating window, horizon, end date, fee, liquidity) with live and settled brackets, a Create market page for creators (one-time or recurring, category-specific rule fields, fee choice, schedule form), and the market page links to its series and shows the fee policy.
+- The backend now has 11 unit tests, 30 integration tests, and 1 numerical test, all passing. See [ADR 0006](decisions/0006-market-series-and-recurrence.md).
+
 ## 20 September 2026: NTU accounts, password login, and creator verification
 
 - Registration with a display name, a unique NTU email (`name@ntu.edu.sg` or `name@unit.ntu.edu.sg`, normalized to lowercase), and a password of at least 12 characters stored as an argon2id hash. Registered accounts start as members with the 10,000-unit welcome gift; the one-click demo account keeps its 1,000-unit grant and cannot log in.

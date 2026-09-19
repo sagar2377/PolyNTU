@@ -6,7 +6,7 @@ This is the use case model of the planned PolyNTU platform: the actors, the comp
 - **partial**: a smaller or earlier version works in the current build;
 - **new**: planned, not built.
 
-Statements about existing behavior are verified against the current build. Everything marked new or partial describes the plan, recorded in [ADR 0006](../decisions/0006-market-series-and-recurrence.md) (market series and recurrence) and [ADR 0007](../decisions/0007-resolution-authority.md) (resolution authority). [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) (NTU accounts and creator roles) is implemented; its use cases are marked exists.
+Statements about existing behavior are verified against the current build. Everything marked new or partial describes the plan, recorded in [ADR 0007](../decisions/0007-resolution-authority.md) (resolution authority) and the market-experience phase. [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) (NTU accounts and creator roles) and [ADR 0006](../decisions/0006-market-series-and-recurrence.md) (market series and recurrence) are implemented; their use cases are marked exists.
 
 ## Actors
 
@@ -14,8 +14,8 @@ Statements about existing behavior are verified against the current build. Every
 |---|---|---|
 | Visitor | Primary | An unauthenticated person who registers. UC-1 turns a Visitor into a Trader. |
 | Trader | Primary | An account holder who browses markets, views quotes and probabilities, trades outcome shares, and tracks a portfolio. |
-| Market Creator | Primary | A verified trader who also defines markets. The role generalizes Trader, with one restriction: a creator cannot trade in their own markets, and the fee share is their compensation. |
-| Platform Admin | Primary | The operator, reached through the shared token or an admin-role account session (the seeded demo administrator in demo mode). Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. Today it also creates every instance and records evidence; by design it cannot resolve creator-owned markets. |
+| Market Creator | Primary | A verified trader who also defines markets: one-time markets and recurring series. The role generalizes Trader, with one restriction: a creator cannot trade in their own markets, and the fee share is their compensation. |
+| Platform Admin | Primary | The operator, reached through the shared token or an admin-role account session (the seeded demo administrator in demo mode). Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. Today it still creates instances directly and records evidence for platform-authority markets; by design it cannot resolve creator-owned markets. |
 | External Resolver | Secondary system | An automated external API the settlement worker calls at finalize time, for example a bus timing service or a queue counter. Secondary actor in UC-13. |
 | Scheduler | Internal system | The background process that spawns bracket instances for recurring series on a rolling schedule (UC-12). |
 | Settlement Worker | Internal system | The background process that closes instances, resolves them, settles and pays out claims, and voids on missing or invalid evidence (UC-13, UC-15 to UC-17). |
@@ -37,11 +37,11 @@ The source is `docs/diagrams/use-case.puml`; re-render it with `scripts/render-d
 | Account and access | UC-5 | Browse and search markets | Trader | exists |
 | Creator lifecycle | UC-6 | Request creator verification | Trader | exists |
 | Creator lifecycle | UC-7 | Approve or reject a creator request | Platform Admin | exists |
-| Market definition | UC-8 | Create a one-time market | Market Creator | new |
-| Market definition | UC-9 | Create a recurring or perpetual market | Market Creator | new |
+| Market definition | UC-8 | Create a one-time market | Market Creator | exists |
+| Market definition | UC-9 | Create a recurring or perpetual market | Market Creator | exists |
 | Market definition | UC-10 | Configure automatic resolution | Market Creator | new |
 | Market definition | UC-11 | Declare human, creator-only resolution | Market Creator | new |
-| Instance lifecycle | UC-12 | Spawn the next bracket on a rolling schedule | Scheduler | new |
+| Instance lifecycle | UC-12 | Spawn the next bracket on a rolling schedule | Scheduler | exists |
 | Instance lifecycle | UC-13 | Resolve automatically via the external resolver API | Settlement Worker | new |
 | Instance lifecycle | UC-14 | Submit a signed human resolution | Market Creator | new |
 | Instance lifecycle | UC-15 | Settle and pay out | Settlement Worker | exists |
@@ -59,19 +59,19 @@ Notes:
 
 - Visitor is the unauthenticated role that UC-1 turns into a Trader.
 - UC-3: the 10,000-unit gift applies to registered accounts; the one-click demo account keeps its 1,000-unit grant as a development fixture.
-- UC-20 exists today; its creator self-trading ban is a planned alternative flow (see the detailed description).
+- UC-20 exists today, including its creator self-trading ban alternative flow (see the detailed description).
 - The diagram also shows four relationship use cases that this register does not number: Validate the response against the options (included by UC-13), Verify the ed25519 signature (included by UC-14), Charge the 25 bps trading fee (included by UC-20), and Reject the creator's own trades (extends UC-20).
 
 ## Business rules
 
 1. Accounts require an NTU email (existing; [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)). The address must match `^[^@\s]+@([a-z0-9-]+\.)*ntu\.edu\.sg$` (case-insensitive), so `billy@ntu.edu.sg` and `billy@scse.ntu.edu.sg` pass and anything else is rejected.
 2. Registered accounts receive a 10,000-unit welcome gift from the treasury; the demo account keeps its 1,000-unit grant (existing; ADR 0005). Total issuance rises from 1M to 1B units, applied as a second idempotent bootstrap transfer rather than a migration, so the gift budget is not exhausted after 100 users.
-3. Every trade pays a 25-basis-point fee on the LMSR amount, included in the quoted all-in amount, accumulated in the market reserve, and split 50/50 between the creator and the treasury at settlement (existing; [ADR 0004](../decisions/0004-trade-fees.md)).
-4. Creators cannot trade in their own markets; the fee share is their compensation.
-5. A perpetual market is a recurring market with no end date: it recurs forever with automatically refreshing resolution times.
+3. Every trade on a fee-charging market pays a 25-basis-point fee on the LMSR amount, included in the quoted all-in amount, accumulated in the market reserve, and split 50/50 between the creator and the treasury at settlement (existing; [ADR 0004](../decisions/0004-trade-fees.md)). The fee is a market attribute fixed at creation (`fee_charged`, default true): the administrator sets it creating instances directly and creators set it publishing a series. A fee-free market charges nothing, collects no fee, and pays no creator share; bus timing is the welfare example.
+4. Creators cannot trade in their own markets; the fee share is their compensation (existing).
+5. A perpetual market is a recurring market with no end date: it recurs forever with automatically refreshing resolution times (existing).
 6. Rolling spawn: a new bracket instance is created every interval while the live count is below the maximum concurrency; the covered horizon is maximum concurrency × interval.
-7. Recurrence only spawns brackets inside the creator-set active period. A bus series, for example, runs 06:00 to 24:00 because buses do not run at midnight.
-8. Market reserves remain treasury-funded; creators contribute definitions and earn through the fee share, not through deposits.
+7. Recurrence only spawns brackets inside the creator-set active period, a daily window interpreted in Singapore time. A bus series, for example, runs 06:00 to 23:59 because buses do not run at midnight (existing).
+8. Market reserves remain treasury-funded; creators contribute definitions and earn through the fee share, not through deposits (existing).
 9. The resolution authority is fixed at market creation: the market creator (human) or a configured external resolver endpoint (automatic).
 10. Human resolution requires a valid ed25519 signature from the key fixed at creation. The private key is held only by the creator's browser; a lost key means the market voids by the published policy.
 11. The administrator cannot resolve creator-owned markets, by design.
@@ -84,8 +84,8 @@ Notes:
 |---|---|---|
 | Account | existing | Identity and balance. Registered accounts carry a unique NTU email, an argon2 password hash, and a role (member, creator, or admin). |
 | VerificationRequest | existing | A member's creator request with status and the administrator's decision and reason. |
-| MarketSeries | new | A creator-owned definition with options, rule, recurrence rule (interval, active period, maximum concurrency, optional end date), and resolution authority. |
-| Instance | extended | One concrete occurrence with its own inventory, reserve, evidence, and result. Extended with a series reference and bracket slot. |
+| MarketSeries | existing | A published definition with the rule, recurrence rule (interval, active period, maximum concurrency, optional end date), liquidity, and fee policy; one-time or recurring. The resolution authority field arrives with ADR 0007. |
+| Instance | existing | One concrete occurrence with its own inventory, reserve, evidence, and result; carries a series reference, bracket slot, and fee flag when it belongs to a series. |
 | ResolverConfig | new | The endpoint URL and fixed request contract for automatic authority. |
 | ResolutionKey | new | The ed25519 public key fixed at creation for human authority. |
 | Trade | existing | The source of price and volume history. |
@@ -140,7 +140,7 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 1. The member submits a verification request.
 2. The server stores the request as pending.
 3. The request becomes visible to the administrator.
-4. Once approved through UC-7, the account holds the creator role permanently without re-verifying (creating markets as a creator is UC-8, still planned).
+4. Once approved through UC-7, the account holds the creator role permanently without re-verifying (creating markets as a creator is UC-8, which now exists).
 
 **Alternative flows:**
 
@@ -156,7 +156,7 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 1. The administrator reviews the pending request.
 2. The administrator approves it.
 3. The account role becomes creator, permanently, and the decision is recorded in the administrator audit.
-4. The requester is notified and keeps the creator role without re-verifying (creating markets as a creator is UC-8, still planned).
+4. The requester is notified and keeps the creator role without re-verifying (creating markets as a creator is UC-8, which now exists).
 
 **Alternative flows:**
 
@@ -168,18 +168,19 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 
 **Flow of events:**
 
-1. The creator submits a title, a resolution criterion, 2 to 8 options, a close time, an observation window, a finalize deadline, and the resolution authority (an automatic endpoint or human, meaning the creator's own signature).
+1. The creator submits a title, a resolution criterion, the rule (which derives 2 to 8 options), the evidence source, the liquidity, the fee choice, and one explicit window: close time, observation window, finalize deadline, and evidence deadline.
 2. The server validates the submission.
-3. The instance is published immutably.
-4. Its reserve is subsidized from the treasury.
+3. The series and its single instance are published immutably; if the instance cannot be funded, the series is removed again.
+4. The instance's reserve is subsidized from the treasury.
 5. It appears in discovery.
 
 **Alternative flows:**
 
+- The submitter is not a creator: rejected with 403.
 - Invalid or duplicated options: rejected.
 - Inconsistent or past times: rejected.
-- Invalid endpoint format for automatic authority: rejected.
 - Treasury exhausted: rejected.
+- An optional resolution authority (an external resolver endpoint or the creator's own signature) can be fixed at publication; see UC-10 and UC-11 ([ADR 0007](../decisions/0007-resolution-authority.md)).
 
 ### UC-9: Create a recurring or perpetual market
 
@@ -187,17 +188,17 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 
 **Flow of events:**
 
-1. The creator submits what UC-8 requires plus a recurrence rule: an interval (minimum 1 minute), an active period (a daily operating window), a maximum concurrency (cap 50), and an optional end date. The absence of an end date means perpetual.
+1. The creator submits what UC-8 requires plus a recurrence rule: an interval (1 minute to 1 day), an active period (a daily operating window in Singapore time), a maximum concurrency (1 to 50), and an optional end date whose absence means perpetual. The fee choice applies to every bracket.
 2. The server validates the submission.
-3. The series is created.
-4. The scheduler begins rolling spawn (UC-12).
+3. The series is published immutably.
+4. The scheduler begins rolling spawn (UC-12), and the series page shows the schedule and its brackets.
 
 **Alternative flows:**
 
 - Interval out of bounds: rejected.
 - Concurrency above the cap: rejected.
-- Empty active period: rejected.
-- End date before the first spawn: rejected.
+- Empty or inverted active period: rejected.
+- End date too close to leave room for one more slot: rejected.
 
 ### UC-12: Spawn the next bracket on a rolling schedule
 
@@ -205,16 +206,16 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 
 **Flow of events:**
 
-1. On each tick, the scheduler checks whether the live count is below the maximum concurrency and the next slot start falls inside the active period.
-2. When both hold, it creates the instance for bracket [T, T+interval) with the series' options and rule.
-3. It funds the new instance's reserve from the treasury.
-4. It publishes the instance.
+1. On each tick, the scheduler walks every grid slot strictly after now, up to maximum concurrency slots ahead.
+2. It skips slots outside the active period, slots past the series end date, and slots that already have a bracket.
+3. For each remaining slot it creates the instance for bracket [T, T+interval) with the series' rule, funds the new instance's reserve from the treasury, and publishes it.
+4. A recurring series ends when its end date has passed and no non-terminal bracket remains; a one-time series ends when its single instance settles.
 
 **Alternative flows:**
 
-- Next slot outside the active period: skip until the window reopens.
-- Series end date reached: stop spawning; the live brackets run out and settle.
-- Treasury exhausted: pause spawning and alert the operator.
+- Next slot outside the active period: skipped until the window reopens.
+- Series end date reached: spawning stops; the live brackets run out and settle.
+- A spawn fails, for example when the treasury is exhausted: the failure is logged per series and retried on the next tick.
 
 Worked example: a bus series with a 2-minute interval and maximum concurrency 5 always holds five live brackets covering a rolling 10-minute horizon, and a new bracket appears every 2 minutes.
 
@@ -276,7 +277,7 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 **Flow of events:**
 
-1. The account requests a quote: signed, bound to the account and market version, expiring within 15 seconds, and all-in including the 25-basis-point fee (existing).
+1. The account requests a quote: signed, bound to the account and market version, expiring within 15 seconds, and all-in including the 25-basis-point fee on fee-charging markets (existing).
 2. The account confirms.
 3. The server rechecks the quote, account, market version, cutoff, balance, holdings, and reserve inside one transaction and executes atomically with idempotency (existing).
 4. The receipt is returned and an SSE event is published (existing).
@@ -288,7 +289,7 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 - Closed market: rejected (existing).
 - Limit not met: rejected (existing).
 - Duplicate delivery: the same receipt is returned (existing).
-- The account is the creator of this instance: rejected (new); creators cannot trade their own markets, and the fee share is their compensation.
+- The account is the creator of this instance: rejected (existing); creators cannot trade their own markets, and the fee share is their compensation.
 
 ### UC-21: View the day-long probability visualization
 
@@ -311,13 +312,14 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 | Planned capability | Current build | Size |
 |---|---|---|
-| Creator-owned market series (one-time, recurring, perpetual) | Administrator-created single-window instances | large |
-| Recurrence: interval, active period, maximum concurrency, rolling spawn | None; the bus demo hardcodes a 10-minute window | medium |
-| Creator trading ban | None | small |
-| Human resolution by creator signature | Evidence flows only through the admin route | medium |
+| Human resolution by creator signature | Creator-signed resolution has landed as part of the in-progress ADR 0007 phase | none |
 | Automatic resolution via an external API contract | None; live adapters are deferred | medium |
 | Price and volume history chart with live refresh | Live probabilities and SSE exist; no volume display or history | medium |
-| Day-long probability visualization | None | medium |
+| Day-long probability visualization | The series page lists live and settled brackets but does not yet aggregate probabilities across the day | medium |
+| Creator-owned market series (one-time, recurring, perpetual) | Shipped ([ADR 0006](../decisions/0006-market-series-and-recurrence.md)) | none |
+| Recurrence: interval, active period, maximum concurrency, rolling spawn | Shipped ([ADR 0006](../decisions/0006-market-series-and-recurrence.md)); the demo bus is a rolling fee-free series | none |
+| Creator trading ban | Shipped ([ADR 0006](../decisions/0006-market-series-and-recurrence.md)) | none |
+| Per-market fee policy | Shipped ([ADR 0006](../decisions/0006-market-series-and-recurrence.md)) | none |
 | Accounts with NTU email, password login, roles | Shipped ([ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)) | none |
 | Creator verification workflow | Shipped ([ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)) | none |
 | 10,000-unit welcome gift | Shipped ([ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)) | none |
@@ -330,7 +332,7 @@ Method: each planned capability was compared against the current build as verifi
 ## Implementation phases
 
 1. Accounts and access (ADR 0005): registration, login, welcome gift, roles, verification workflow. Implemented.
-2. Market series (ADR 0006): series entity, recurrence, scheduler, the bus demo as a rolling 2-minute series with maximum concurrency 5, creator trading ban.
+2. Market series (ADR 0006): series entity, recurrence, scheduler, the bus demo as a rolling 2-minute fee-free series with maximum concurrency 5, creator trading ban, per-market fee policy. Implemented.
 3. Resolution authority (ADR 0007): signed human resolution with admin exclusion, the external resolver contract.
 4. Market experience: volume statistics, the price and volume history chart, the day-long visualization.
 

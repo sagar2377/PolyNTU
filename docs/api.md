@@ -20,7 +20,7 @@ This document describes the HTTP behaviour exposed to clients. For handler-to-se
 
 | Credential | Header | Used by |
 |---|---|---|
-| Account bearer token | `Authorization: Bearer <token>` | `/me`, private portfolio/history, quotes, trades, and creator verification requests |
+| Account bearer token | `Authorization: Bearer <token>` | `/me`, private portfolio/history, quotes, trades, creator verification requests, and series publication |
 | Administrator token | `X-Admin-Token: <token>` | Account provisioning, verification review, instance/evidence/suspension/clock/worker/reconciliation administration |
 | None | (none) | Registration, login, configuration, markets, instances, health, and public instance events |
 
@@ -67,6 +67,9 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `GET /api/v2/markets` | None | Up to 100 templates ordered by category and ID. |
 | `GET /api/v2/instances` | None | Paginated instances across templates. |
 | `GET /api/v2/markets/{id}/instances` | None | Paginated instances for one template ID. |
+| `GET /api/v2/series` | None | Up to 100 published series, active series first. |
+| `GET /api/v2/series/{id}` | None | One series definition plus up to 100 of its brackets. |
+| `POST /api/v2/series` | Account holding the creator role | Publishes a one-time market or a recurring series. |
 | `GET /api/v2/instances/{id}` | None | Current instance snapshot and selected evidence. |
 | `GET /api/v2/instances/{id}/events` | None | Resumable public SSE events. |
 | `POST /api/v2/quotes` | Account | Read-only signed price preview. |
@@ -82,7 +85,7 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `POST /api/v2/admin/instances/{id}/evidence` | Administrator | Appends a manual evidence revision. |
 | `POST /api/v2/admin/instances/{id}/suspension` | Administrator | Suspends or resumes trading on an open instance. |
 | `POST /api/v2/admin/clock/advance` | Administrator; demo mode only | Advances demo time and runs a worker cycle. |
-| `POST /api/v2/admin/worker/tick` | Administrator | Runs one close/evidence/settlement/scheduling cycle. |
+| `POST /api/v2/admin/worker/tick` | Administrator | Runs one close/bracket-spawn/evidence/settlement/seeding cycle. |
 | `GET /api/v2/admin/reconcile` | Administrator | Checks ledger, inventory, reserve, and total-unit invariants. |
 
 ## Health and configuration
@@ -214,7 +217,65 @@ Errors: unknown email and wrong password both return 401 `invalid_credentials` w
 
 ### Template response
 
-`GET /api/v2/markets` returns objects with `id`, `category`, and `title`. Templates organize recurring instances; they do not own inventory or settlement.
+`GET /api/v2/markets` returns objects with `id`, `category`, and `title`. Templates organize recurring instances; they do not own inventory or settlement. Every published series also creates a template row with the series ID, so its brackets keep a browse grouping.
+
+### Market series
+
+A series is a published, immutable definition that either publishes exactly one instance immediately (one-time) or spawns bracket instances on a rolling grid (recurring). Creators publish manual-data series; simulated series stay demo-internal.
+
+`POST /api/v2/series` requires the bearer session of an account holding the creator role (403 otherwise) and accepts the `NewSeries` shape:
+
+```json
+{
+  "title": "Blue line arrival at North Spine",
+  "resolution_criterion": "Yes if at least one matching bus arrives in the published [start, end) window...",
+  "rule": {
+    "kind": "bus",
+    "route_id": "NTU-blue",
+    "direction": "clockwise",
+    "stop_id": "north-spine"
+  },
+  "source_id": "campus-bus-observer",
+  "liquidity_units": 100,
+  "fee_charged": true,
+  "schedule": {
+    "kind": "once",
+    "close_ms": 1788919200000,
+    "observation_start_ms": 1788919200000,
+    "observation_end_ms": 1788922800000,
+    "finalize_after_ms": 1788922801000,
+    "evidence_deadline_ms": 1788922860000
+  }
+}
+```
+
+A recurring schedule replaces the five times with:
+
+```json
+{
+  "kind": "recurring",
+  "interval_ms": 120000,
+  "active_start_minute": 360,
+  "active_end_minute": 1439,
+  "max_concurrency": 5,
+  "end_ms": null
+}
+```
+
+Validation includes:
+
+- title 5–240 characters and resolution criterion 30–4,000 characters, as for instances;
+- a valid typed rule and liquidity 10–100,000;
+- `fee_charged` defaults to true and is fixed at publication;
+- an optional `resolution` field fixes the resolution authority at publication ([ADR 0007](../decisions/0007-resolution-authority.md)): `{"kind":"creator","public_key":"base64"}` (a 32-byte ed25519 public key) or `{"kind":"resolver","endpoint":"https://..."}`; absent means the platform administrator resolves;
+- recurring: `interval_ms` between 1 minute and 1 day, `max_concurrency` between 1 and 50, and an active window in minutes of day (start 0–1438, end 1–1439, start before end) interpreted in Singapore time; `end_ms` is optional and must leave room for at least one more slot, and its absence means perpetual; and
+- once: the same future time ordering as an instance (`close <= observation start < observation end <= finalize < deadline`, within one year).
+
+A one-time series publishes its single instance immediately; if the bracket cannot be funded, the series row is removed again so nothing half-published remains. Recurring brackets close and observe their slot `[T, T+interval)`, finalize one second after the observation end, and carry an evidence deadline 60 seconds after it. The response is the series view below.
+
+`GET /api/v2/series` returns up to 100 rows ordered active series first, then newest. Each row contains `id`, `creator_account_id`, `title`, `category`, `state`, `recurrence`, `interval_ms`, `max_concurrency`, `end_ms`, and `created_ms`.
+
+`GET /api/v2/series/{id}` returns the full definition: `id`, `creator_account_id`, `title`, `resolution_criterion`, `rule`, `source_id`, `data_mode`, `liquidity_units`, `fee_charged`, `state`, `created_ms`, a `resolution` object with `authority`, `public_key`, and `endpoint` ([ADR 0007](../decisions/0007-resolution-authority.md)), a `schedule` object with `kind`, `interval_ms`, `active_start_minute`, `active_end_minute`, `max_concurrency`, and `end_ms` (null where not applicable), and up to 100 `instances` ordered by newest close time first.
 
 ### Instance snapshot
 
@@ -238,6 +299,8 @@ Instance list and detail endpoints share the following core fields:
 | `liquidity_units` | Fixed LMSR parameter `b`. |
 | `result` | `null`, `{"kind":"winner","outcome":0}`, or `{"kind":"void","reason":"..."}`. |
 | `creator_account_id` | Optional participant account credited with the creator's half of the settled trading-fee pot. |
+| `fee_charged` | Whether trades on this instance pay the 25-basis-point fee; fixed at creation. |
+| `series_id` / `bracket_start_ms` | Series membership and grid slot for series brackets; null for direct creations. |
 | `evidence_id` | Selected highest-revision evidence record, when present. |
 | `server_time_ms` | Authoritative time used to build the view. |
 | `void_policy` | Human-readable uniform fractional redemption policy. |
@@ -302,7 +365,7 @@ Example response:
 }
 ```
 
-`amount_micros` is the all-in debit (buy) or credit (sell): the LMSR amount plus a 25-basis-point trading fee, reported separately as `fee_micros` and rounded against the trader. `average_price` divides the all-in amount by the quantity. The exact fields depend on inventory and liquidity. The token embeds the authoritative rounded amount and fee and expires after at most 15 seconds.
+`amount_micros` is the all-in debit (buy) or credit (sell): the LMSR amount plus a 25-basis-point trading fee, reported separately as `fee_micros` and rounded against the trader. Fee-free markets (`fee_charged:false`, fixed at creation) report `fee_micros` as 0 and an all-in amount equal to the pure LMSR amount. `average_price` divides the all-in amount by the quantity. The exact fields depend on inventory and liquidity. The token embeds the authoritative rounded amount and fee and expires after at most 15 seconds. A quote for an instance the account created is rejected with 409 `conflict`: creators cannot trade in their own markets, and the fee share is their compensation.
 
 ## Trades and idempotency
 
@@ -326,10 +389,11 @@ The idempotency key must contain 1–120 ASCII letters, digits, hyphens, or unde
 
 - For a buy, `limit_micros` is the maximum debit.
 - For a sale, it is the minimum credit.
-- Amounts are all-in: they include the 25-basis-point trading fee.
+- Amounts are all-in: they include the 25-basis-point trading fee, except on fee-free markets where no fee applies.
 - Using the quoted amount confirms exactly the previewed financial result.
 - Reusing a key with the identical body returns its stored response.
 - Reusing it with another body returns 409.
+- The creator of the instance cannot execute trades: the same 409 rejection as at quote time.
 - Expired/stale quotes, insufficient units, insufficient shares, suspended/closed markets, or reserve violations return 409 before effects commit.
 
 Successful response:
@@ -455,6 +519,7 @@ Successful response:
   "finalize_after_ms": 1788836460000,
   "evidence_deadline_ms": 1788837000000,
   "liquidity_units": 100,
+  "fee_charged": true,
   "creator_account_id": "optional-participant-account-uuid"
 }
 ```
@@ -467,6 +532,7 @@ Validation includes:
 - future `close <= observation start < observation end <= finalize < deadline`;
 - evidence deadline within one year of creation;
 - liquidity 10–100,000;
+- `fee_charged` (default true) is fixed at creation: a fee-free market charges nothing, collects no fee, and pays no creator share;
 - `creator_account_id`, when present, must be an existing participant account and is immutable after publication; and
 - simulated mode only in demo mode with source `polyntu-simulator-v1`.
 
@@ -557,7 +623,7 @@ One request accepts 1–10,080 minutes, the cumulative offset is limited to ten 
 
 ### Tick worker
 
-`POST /api/v2/admin/worker/tick` returns `{"settled_accounts":N}`. The number counts accounts processed during that cycle, not markets finalized.
+`POST /api/v2/admin/worker/tick` returns `{"settled_accounts":N}`. The number counts accounts processed during that cycle, not markets finalized. One cycle closes due instances, spawns due series brackets, produces simulated evidence, settles, ends finished series, and seeds demo markets.
 
 ### Reconcile
 

@@ -1,6 +1,6 @@
 # ADR 0006: Market series with recurring brackets and rolling spawn
 
-Status: **proposed (planned, not yet implemented)**
+Status: **accepted and implemented**
 
 ## Context
 
@@ -35,15 +35,19 @@ Markets will be published as market series: creator-owned definitions that spawn
 
 ## Evidence
 
-Planned artifacts (none exist yet):
+Implemented artifacts:
 
-- series and recurrence migrations
-- the scheduler duty in the worker
-- the execution-side creator trading ban check
+- `backend/migrations/0009_market_series.sql`: the `market_series` table with its recurrence, interval, active-window, concurrency, end, anchor, and state checks; the `instances` series/bracket/fee columns; the `protect_series` trigger; and the `protect_instance` extension covering the new immutable fields.
+- `backend/src/market.rs`: `Schedule` (once and recurring), `NewSeries`, `Series`, the bracket timing (`bracket_spec`, `instance_spec`, `BRACKET_FINALIZE_MARGIN_MS`, `BRACKET_DEADLINE_MARGIN_MS`), `inside_active_window` in Singapore time, and `demo_series_spec`.
+- `backend/src/store.rs`: `create_series` (creator-role check, templates row, immediate one-time publication), `series_view` and `series_list`, and `spawn_due_brackets`/`spawn_series_brackets` (rolling spawn and series ending).
+- `backend/src/api.rs`: `POST /api/v2/series`, `GET /api/v2/series`, and `GET /api/v2/series/{id}`.
+- `backend/src/execution.rs` and `backend/src/fee.rs`: the per-market fee attribute and the creator trading ban at quote and execution.
+- `backend/src/worker.rs`: bracket spawning inside `tick` and the demo bus series seeding in `seed_demo`.
+- `frontend/src/pages/SeriesPage.jsx` and `frontend/src/pages/CreateMarket.jsx`, plus the browse series strip, the market page series link and fee display, and the creator navigation in `App.jsx`.
+- `backend/tests/integration.rs`: one-time publication with member rejection, the rolling horizon grid, end-date stop with voiding and series end, the fee-free market with no creator payout, the creator trading ban, and the rolling demo bus.
 
-Current code this decision will touch:
+Honest notes extending this record's original wording:
 
-- `backend/src/worker.rs`
-- `backend/src/market.rs` (demo specs)
-- `backend/src/store.rs` (`create_instance`)
-- `backend/src/execution.rs`
+- The per-market fee policy extends this record and amends [ADR 0004](0004-trade-fees.md)'s blanket fee. `fee_charged` is a market attribute fixed at creation, defaulting to true: the administrator sets it when creating instances through the admin route, and creators set it when publishing a series. A fee-free market charges nothing, collects no fee, and pays no creator share. The demo bus series is fee-free: its purpose is student welfare, crowd-sourcing real-time road traffic and arrival estimation. `fee::charged` gained the `fee_charged` parameter.
+- `max_concurrency` bounds the upcoming tradable horizon, not the total live count. The scheduler keeps up to `max_concurrency` upcoming grid slots published; brackets already in observation or settlement can briefly coexist with the full horizon, so the total non-terminal count can exceed `max_concurrency`.
+- Scheduler-spawned brackets are not administrator audit rows; only the outbox `opened` event is written, while direct creations still audit. Each series also gets a `templates` row with the series ID, so browse grouping keeps working.

@@ -83,7 +83,7 @@ Public instance views independently report `closed` when cutoff has passed, even
 
 ## Actionable worker selection
 
-After closing, `worker::tick` selects rows that can make progress:
+After closing and series bracket spawning, `worker::tick` selects rows that can make progress:
 
 - every `resolving` instance with unfinished claims;
 - due simulated instances missing evidence;

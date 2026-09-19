@@ -14,6 +14,8 @@ PostgreSQL stores all active v2 state. SQLx embeds and applies the numbered migr
 | `0006_ntu_accounts.sql` | Add the unique NTU email, argon2 password hash, and role columns with consistency checks. |
 | `0007_creator_verification.sql` | Add the `verification_requests` table and its one-pending-per-account partial unique index. |
 | `0008_admin_role.sql` | Extend the role check with the `admin` role. |
+| `0009_market_series.sql` | Add the `market_series` table, the instance series/bracket/fee columns, the `protect_series` trigger, and the extended `protect_instance`. |
+| `0010_resolution_authority.sql` | Fix the resolution authority at series creation: the `admin` default, the creator's ed25519 public key, or the external resolver endpoint, all immutable ([ADR 0007](../decisions/0007-resolution-authority.md)). |
 
 Never edit an applied migration. Add a numbered migration and verify both fresh creation and upgrade.
 
@@ -25,6 +27,8 @@ settings
 accounts <----- ledger_transfers -----> accounts
    ^                    |
    |                    +--> ledger_entries view
+   |
+market_series <--- instances (series_id bracket membership)
    |
 templates <----- instances -----> reserve account
                     |
@@ -39,7 +43,7 @@ idempotency -> participant account
 verification_requests -> participant account
 ```
 
-`admin_audit.instance_id` is intentionally not declared as a foreign key, allowing an attempted action to be retained even when no referenced instance row is available.
+`admin_audit.instance_id` is intentionally not declared as a foreign key, allowing an attempted action to be retained even when no referenced instance row is available. Each published series also owns a `templates` row with the series ID, so its brackets keep a browse grouping.
 
 ## `settings`
 
@@ -116,7 +120,7 @@ The partial unique index `verification_requests_pending` on `account_id WHERE st
 
 ### `templates`
 
-Templates have a stable text ID, one of five category keys, and a title. They organize instances and provide the uniqueness boundary for recurring close times. The initial schema category check must be migrated when a genuinely new category is added.
+Templates have a stable text ID, one of five category keys, and a title. They organize instances and provide the uniqueness boundary for recurring close times. A published series creates its template row with the series ID, so scheduler-spawned brackets group under their series. The initial schema category check must be migrated when a genuinely new category is added.
 
 ### `instances`
 
@@ -128,7 +132,9 @@ One row owns a concrete market occurrence:
 - fixed liquidity;
 - millishare inventory array and version;
 - unique reserve-account reference;
-- optional immutable creator-account reference, used to split the settled fee pot; and
+- the fee flag `fee_charged`, fixed at creation (migration 0009);
+- optional immutable creator-account reference, used to split the settled fee pot;
+- optional immutable series reference and bracket slot (migration 0009); and
 - selected result/evidence references.
 
 Important constraints:
@@ -141,11 +147,11 @@ Important constraints:
 - `close <= observation_start < observation_end <= finalize_after < evidence_deadline`; and
 - `(template_id, close_ms)` is unique.
 
-The partial due index covers nonterminal states; the browse index covers template and reverse close time.
+The partial due index covers nonterminal states; the browse index covers template and reverse close time; the series index (`series_id, close_ms`) covers bracket listings.
 
-The `protect_instance` trigger introduced in migration 0002 (creator attribution added in migration 0005):
+The `protect_instance` trigger introduced in migration 0002 (creator attribution added in migration 0005, the fee flag and series/bracket membership in migration 0009):
 
-1. rejects any change to published definition/funding/creator fields;
+1. rejects any change to published definition/funding/creator/fee/series fields;
 2. requires `version = old.version + 1` for every update;
 3. rejects updates to terminal rows;
 4. keeps a fixed result immutable;
@@ -153,6 +159,31 @@ The `protect_instance` trigger introduced in migration 0002 (creator attribution
 6. permits only `open->closed->resolving->{resolved|voided}` lifecycle transitions.
 
 Suspension, evidence pointer, and state can change only through version-advancing updates.
+
+### `market_series`
+
+One row per published series (migration 0009). A one-time market is a series with `recurrence='once'` and exactly one instance; recurring series spawn bracket instances on a rolling grid. The platform itself may own a series (null creator), like the rolling demo bus.
+
+| Column | Notes |
+|---|---|
+| `id` | Text UUID primary key; also the template ID of its brackets. |
+| `creator_account_id` | Optional creator account; null for platform-owned series. |
+| `title` / `resolution_criterion` / `rule` / `source_id` / `data_mode` | The published definition, mirroring the instance fields. |
+| `liquidity_units` | Per-bracket LMSR funding parameter, 10–100,000. |
+| `fee_charged` | Whether trades on the brackets pay the fee; fixed at creation, default true. |
+| `recurrence` | `once` or `recurring`. |
+| `interval_ms` | Slot spacing, 1 minute to 1 day; null exactly when the recurrence is `once`. |
+| `active_start_minute` / `active_end_minute` | Daily operating window as minutes of day in Singapore time (UTC+8); required for recurring series with start before end. |
+| `max_concurrency` | How many upcoming slots stay live, 1–50, default 1. |
+| `end_ms` | Optional series end; null means perpetual. |
+| `anchor_ms` | Grid origin for slot calculation, fixed at creation. |
+| `resolution_authority` / `resolution_public_key` / `resolver_endpoint` | How the series resolves, fixed at creation (migration 0010, [ADR 0007](../decisions/0007-resolution-authority.md)): `admin` (the default), `creator` with a 32-byte ed25519 public key, or `resolver` with an endpoint. |
+| `state` | `active` or `ended`. |
+| `created_ms` | Creation time. |
+
+Table checks require `interval_ms` to be null exactly for one-time series, and recurring rows to carry both window minutes with start before end. Migration 0010 adds the authority checks: `creator` authority requires a public key and a creator-owned series, and `resolver` authority requires an endpoint. The `market_series_active` index covers state and creation order.
+
+The `protect_series` trigger makes every definition column immutable, including the fee flag, the schedule, and the authority fields; only the lifecycle state may move, from `active` to `ended`, and an ended series cannot reopen. Instances reference their series through `series_id` with the slot start in `bracket_start_ms`; both are immutable under `protect_instance`, and the scheduler treats `(series_id, bracket_start_ms)` as the spawn uniqueness boundary alongside `(template_id, close_ms)`.
 
 ## Trading state
 

@@ -31,6 +31,12 @@ This matrix helps human reviewers verify that documented promises correspond to 
 | Login failures cannot enumerate accounts | `LOGIN_TIMING_HASH` equal-work verification | no per-account error state stored | indistinguishable-failure test |
 | Creator verification: one pending request, decided with a reason, permanent role | `create_verification_request`, `decide_verification_request` | partial unique pending index; status/role checks (migrations 0007, 0008) | verification integration tests |
 | Admin routes accept an admin-role session | `AppState::require_admin`, `Store::account_is_admin` | role check includes `admin` (migration 0008) | seeded-administrator test |
+| Creators publish one-time and recurring series | `Store::create_series`, `market::NewSeries`/`Schedule` | `market_series` definition immutability and checks (migration 0009) | series one-time publication test with member rejection |
+| Rolling spawn fills the horizon inside the active window | `Store::spawn_due_brackets`/`spawn_series_brackets`, `market::inside_active_window` | template/close uniqueness; immutable `series_id`/`bracket_start_ms` | rolling horizon grid test; end-date stop test |
+| Series end after the last non-terminal bracket | `Store::spawn_due_brackets` ending update | `state IN ('active','ended')` check with no reopening | end-date stop test with voiding and series end |
+| Creators cannot trade in their own markets | creator check in `Store::quote` and `execute_once` | none required beyond the immutable creator reference | creator trading ban test |
+| Per-market fee policy: fee-free markets charge nothing and pay no creator share | `fee::charged` with `fee_charged`, `Instance.fee_charged` | `instances.fee_charged`/`market_series.fee_charged` immutable (migration 0009) | fee-free market test with no creator payout |
+| The demo bus is a rolling fee-free series | `worker::seed_demo`, `market::demo_series_spec` | platform-owned series row with null creator | rolling demo bus test |
 
 ## Operational and security requirements
 
@@ -54,11 +60,11 @@ This matrix helps human reviewers verify that documented promises correspond to 
 | `backend/src/error.rs` | [Backend](backend.md), [API](../api.md) | HTTP authorization/error paths; not every variant directly asserted |
 | `backend/src/auth.rs` | [Security](security-and-privacy.md), [Trading](trading-and-accounting.md) | Account/quote authorization integration paths |
 | `backend/src/amm.rs` | [Trading](trading-and-accounting.md), ADR 0002 | Unit/property and 384-fixture test |
-| `backend/src/market.rs` | [Backend](backend.md), [Evidence](evidence-and-settlement.md) | Category unit tests and all-category HTTP test |
+| `backend/src/market.rs` | [Backend](backend.md), [Evidence](evidence-and-settlement.md) | Category and schedule unit tests; all-category HTTP test |
 | `backend/src/execution.rs` | [Trading](trading-and-accounting.md) | Concurrency, expiry, ownership, rollback, cutoff tests |
 | `backend/src/store.rs` | [Backend](backend.md), [Database](database.md) | Integration harness and reconciliation after every DB test |
 | `backend/src/resolution.rs` | [Evidence](evidence-and-settlement.md) | Revision, void, rollback, resume tests |
-| `backend/src/worker.rs` | [Architecture](../architecture.md), [Evidence](evidence-and-settlement.md) | Fairness/all-category tests and workloads |
+| `backend/src/worker.rs` | [Architecture](../architecture.md), [Evidence](evidence-and-settlement.md) | Fairness/all-category tests, rolling spawn tests, and workloads |
 | `backend/migrations/*.sql` | [Database](database.md) | Fresh migrations in each integration database |
 | `backend/queries/reconcile_reserves.sql` | [Database](database.md), [Trading](trading-and-accounting.md) | Reconciliation after tests/workloads |
 | `frontend/src/api.js` | [Frontend](frontend.md), [API](../api.md) | Lint/build; behavioural tests absent |
@@ -83,14 +89,12 @@ When reviewing a claim:
 
 ## Planned requirements
 
-These product requirements are documented and not yet implemented. No row above claims any of them. The [use case model](use-cases.md) holds the full register, the flows, and the gap analysis, and the remaining decisions are [ADR 0006](../decisions/0006-market-series-and-recurrence.md) and [ADR 0007](../decisions/0007-resolution-authority.md); [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) is implemented and its requirements moved into the core table above.
+These product requirements are documented and not yet implemented. No row above claims any of them. The [use case model](use-cases.md) holds the full register, the flows, and the gap analysis, and the remaining decision is [ADR 0007](../decisions/0007-resolution-authority.md); [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) and [ADR 0006](../decisions/0006-market-series-and-recurrence.md) are implemented and their requirements moved into the core table above.
 
 | Planned requirement | Decision | Current build |
 |---|---|---|
-| Creator-owned market series | ADR 0006 | The administrator creates every instance |
-| Recurrence, active periods, rolling spawn, and the creator trading ban | ADR 0006 | Single fixed windows; no recurrence |
-| Creator-signed human resolution and external resolver endpoints | ADR 0007 | Evidence flows only through the administrator route |
-| Price and volume history chart, and the day-long probability view | Use case model (UC-19, UC-21) | Live probabilities and SSE updates only |
+| Creator-signed human resolution and external resolver endpoints | ADR 0007 | Creator-signed human resolution has landed; external resolver endpoints are still in progress |
+| Price and volume history chart, and the day-long probability view | Use case model (UC-19, UC-21) | Live probabilities and SSE updates only; the series page lists brackets without aggregating them |
 
 ## Known unverified areas
 

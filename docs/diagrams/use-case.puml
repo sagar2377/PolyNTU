@@ -33,14 +33,14 @@ rectangle "PolyNTU" {
   }
 
   package "Market definition" {
-    usecase "Create a\none-time market" as UC8 #FFCC80
-    usecase "Create a recurring\nor perpetual market" as UC9 #FFCC80
+    usecase "Create a\none-time market" as UC8 #C8E6C9
+    usecase "Create a recurring\nor perpetual market" as UC9 #C8E6C9
     usecase "Configure\nautomatic resolution" as UC10 #FFCC80
     usecase "Declare human,\ncreator-only resolution" as UC11 #FFCC80
   }
 
   package "Instance lifecycle" {
-    usecase "Spawn the next bracket\non a rolling schedule" as UC12 #FFCC80
+    usecase "Spawn the next bracket\non a rolling schedule" as UC12 #C8E6C9
     usecase "Resolve automatically via\nthe external resolver API" as UC13 #FFCC80
     usecase "Validate the response\nagainst the options" as UC13a #FFCC80
     usecase "Submit a signed\nhuman resolution" as UC14 #FFCC80
@@ -55,7 +55,7 @@ rectangle "PolyNTU" {
     usecase "View the price and\nvolume history chart" as UC19 #FFCC80
     usecase "Place a trade" as UC20 #C8E6C9
     usecase "Charge the 25 bps\ntrading fee" as UC20a #C8E6C9
-    usecase "Reject the creator's\nown trades" as UC20b #FFCC80
+    usecase "Reject the creator's\nown trades" as UC20b #C8E6C9
     usecase "View the day-long\nprobability visualization" as UC21 #FFCC80
   }
 
@@ -109,6 +109,6 @@ legend right
   Colour key
   <color:#C8E6C9>■</color> exists in the current build
   <color:#FFF9C4>■</color> partial in the current build
-  <color:#FFCC80>■</color> new, planned (ADR 0005 to 0007)
+  <color:#FFCC80>■</color> new, planned (ADR 0007 and later phases)
 endlegend
 @enduml
