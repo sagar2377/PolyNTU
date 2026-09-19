@@ -607,6 +607,69 @@ impl Store {
         Ok(view)
     }
 
+    /// Time-bucketed price and volume history for one instance (UC-19).
+    /// Prices are reconstructed by replaying trades from the opening
+    /// inventory, so each point is the price traders saw after the last fill
+    /// in that bucket. The first point carries the opening prices; later
+    /// points sit at their bucket's end.
+    pub async fn instance_history(&self, id: &str, bucket_ms: i64) -> Result<Vec<Value>> {
+        let instance = self.instance(id).await?;
+        let bucket = bucket_ms.clamp(1_000, 86_400_000);
+        let trades = sqlx::query("SELECT outcome_index,side,quantity_millis,amount_micros,created_ms FROM trades WHERE instance_id=$1 ORDER BY created_ms,id LIMIT 5000")
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await?;
+        let opening = || -> Result<Value> {
+            Ok(
+                json!({"start_ms": 0, "prices": amm::prices(&vec![0i64; instance.outcomes.len()], instance.liquidity_units)?, "volume_micros": 0}),
+            )
+        };
+        if trades.is_empty() {
+            let mut point = opening()?;
+            point["start_ms"] = json!(instance.close_ms - instance.close_ms.rem_euclid(bucket));
+            return Ok(vec![point]);
+        }
+        let mut inventory = vec![0i64; instance.outcomes.len()];
+        let mut points = Vec::new();
+        let mut volume: i64 = 0;
+        let mut current_start: Option<i64> = None;
+        for row in &trades {
+            let outcome = row.get::<i32, _>("outcome_index") as usize;
+            let quantity = row.get::<i64, _>("quantity_millis");
+            let amount = row.get::<i64, _>("amount_micros");
+            let created = row.get::<i64, _>("created_ms");
+            let bucket_start = created - created.rem_euclid(bucket);
+            match current_start {
+                None => {
+                    let mut point = opening()?;
+                    point["start_ms"] = json!(bucket_start);
+                    points.push(point);
+                }
+                Some(start) if bucket_start != start => {
+                    points.push(json!({"start_ms": start + bucket,
+                        "prices": amm::prices(&inventory, instance.liquidity_units)?,
+                        "volume_micros": volume}));
+                    volume = 0;
+                }
+                _ => {}
+            }
+            current_start = Some(bucket_start);
+            let direction = if row.get::<String, _>("side") == "buy" {
+                1
+            } else {
+                -1
+            };
+            inventory[outcome] += direction * quantity;
+            volume += amount;
+        }
+        if let Some(start) = current_start {
+            points.push(json!({"start_ms": start + bucket,
+                "prices": amm::prices(&inventory, instance.liquidity_units)?,
+                "volume_micros": volume}));
+        }
+        Ok(points)
+    }
+
     pub async fn templates(&self) -> Result<Vec<Value>> {
         let rows =
             sqlx::query("SELECT id,category,title FROM templates ORDER BY category,id LIMIT 100")
@@ -857,6 +920,37 @@ impl Store {
             .iter()
             .map(|i| instance_view(i, now))
             .collect::<Result<Vec<_>>>()?;
+        // Day view (UC-21): per-slot probabilities plus the volume-weighted
+        // probability across live brackets, computed on request from the
+        // brackets themselves, never stored.
+        let volumes: std::collections::HashMap<String, i64> = sqlx::query(
+            "SELECT t.instance_id, sum(t.amount_micros)::BIGINT AS volume FROM trades t JOIN instances i ON i.id=t.instance_id WHERE i.series_id=$1 GROUP BY t.instance_id",
+        )
+        .bind(id)
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(|r| (r.get::<String, _>("instance_id"), r.get::<i64, _>("volume")))
+        .collect();
+        let mut weighted: f64 = 0.0;
+        let mut weight_sum: i64 = 0;
+        let mut slots = Vec::new();
+        for instance in &rows {
+            let prices = amm::prices(&instance.inventory, instance.liquidity_units)?;
+            let volume = volumes.get(&instance.id).copied().unwrap_or(0);
+            if instance.state == "open" && volume > 0 {
+                weighted += prices[0] * volume as f64;
+                weight_sum += volume;
+            }
+            slots.push(json!({"bracket_start_ms": instance.bracket_start_ms, "close_ms": instance.close_ms,
+                "probability": prices[0], "volume_micros": volume, "state": instance.state,
+                "outcome_id": instance.outcomes[0].id, "outcome_label": instance.outcomes[0].label}));
+        }
+        let weighted_probability = if weight_sum > 0 {
+            json!(weighted / weight_sum as f64)
+        } else {
+            Value::Null
+        };
         Ok(json!({
             "id": series.id, "creator_account_id": series.creator_account_id,
             "title": series.title, "resolution_criterion": series.resolution_criterion,
@@ -871,6 +965,7 @@ impl Store {
                 "max_concurrency": series.max_concurrency, "end_ms": series.end_ms,
             },
             "instances": instances,
+            "day": {"weighted_probability": weighted_probability, "slots": slots},
         }))
     }
 

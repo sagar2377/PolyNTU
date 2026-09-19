@@ -1173,6 +1173,85 @@ async fn resolver_authority_voids_when_answers_stay_invalid_or_unreachable() {
     db.finish().await;
 }
 
+// UC-19 and UC-21: history buckets and the volume-weighted day view.
+#[tokio::test]
+async fn instance_history_buckets_prices_and_volume() {
+    let db = TestDb::new().await;
+    let (trader, _) = db.account().await;
+    let market = db.market(None).await;
+    buy(&db, &trader, &market, 1000).await;
+    buy(&db, &trader, &market, 2000).await;
+    let history = db.store.instance_history(&market.id, 60_000).await.unwrap();
+    assert!(history.len() >= 2, "opening point plus trade buckets");
+    let first = history.first().unwrap();
+    assert_eq!(first["volume_micros"], 0);
+    assert_eq!(first["prices"][0].as_f64().unwrap(), 0.5);
+    let last = history.last().unwrap();
+    assert!(last["volume_micros"].as_i64().unwrap() > 0);
+    assert!(last["prices"][0].as_f64().unwrap() > 0.5);
+    // An untouched market returns a single flat point at the opening prices.
+    let empty = db.market(None).await;
+    let history = db.store.instance_history(&empty.id, 60_000).await.unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0]["volume_micros"], 0);
+    assert_eq!(history[0]["prices"][0].as_f64().unwrap(), 0.5);
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn series_day_view_weights_live_brackets_by_units_bet() {
+    let db = TestDb::new().await;
+    let (creator, _) = db.creator().await;
+    let spec = rain_series(Schedule::Recurring {
+        interval_ms: 60000,
+        active_start_minute: 0,
+        active_end_minute: 1439,
+        max_concurrency: 3,
+        end_ms: None,
+    });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    let series_id = view["id"].as_str().unwrap().to_owned();
+    worker::tick(&db.store).await.unwrap();
+    let view = db.store.series_view(&series_id).await.unwrap();
+    let (trader, _) = db.account().await;
+    // Trade different volumes in the two nearest brackets.
+    let mut instances: Vec<Instance> = Vec::new();
+    for slot in view["instances"].as_array().unwrap() {
+        instances.push(
+            db.store
+                .instance(slot["id"].as_str().unwrap())
+                .await
+                .unwrap(),
+        );
+    }
+    instances.sort_by_key(|i| i.close_ms);
+    buy(&db, &trader, &instances[0], 1000).await;
+    buy(&db, &trader, &instances[1], 4000).await;
+    let view = db.store.series_view(&series_id).await.unwrap();
+    let slots = view["day"]["slots"].as_array().unwrap();
+    assert_eq!(slots.len(), 3);
+    let live: Vec<&Value> = slots
+        .iter()
+        .filter(|s| s["state"] == "open" && s["volume_micros"].as_i64().unwrap() > 0)
+        .collect();
+    assert_eq!(live.len(), 2);
+    let expected = live
+        .iter()
+        .map(|s| s["probability"].as_f64().unwrap() * s["volume_micros"].as_i64().unwrap() as f64)
+        .sum::<f64>()
+        / live
+            .iter()
+            .map(|s| s["volume_micros"].as_i64().unwrap())
+            .sum::<i64>() as f64;
+    let actual = view["day"]["weighted_probability"].as_f64().unwrap();
+    assert!((actual - expected).abs() < 1e-9);
+    db.finish().await;
+}
+
 // The seeded demo administrator reaches admin routes through its session.
 #[tokio::test]
 async fn demo_databases_seed_an_administrator_account() {

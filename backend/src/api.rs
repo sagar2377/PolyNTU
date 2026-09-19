@@ -91,6 +91,7 @@ pub fn router(state: AppState, origins: Vec<HeaderValue>) -> Router {
         .route("/series/{id}", get(series_detail))
         .route("/instances", get(instances))
         .route("/instances/{id}", get(instance))
+        .route("/instances/{id}/history", get(instance_history))
         .route("/instances/{id}/events", get(events))
         .route("/instances/{id}/resolution", post(creator_resolution))
         .route("/quotes", post(quote))
@@ -275,6 +276,21 @@ async fn instances(
 }
 async fn instance(State(s): State<AppState>, Path(id): Path<String>) -> Result<Json<Value>> {
     Ok(Json(s.store.instance_detail(&id).await?))
+}
+#[derive(Deserialize, Default)]
+struct HistoryQuery {
+    bucket_ms: Option<i64>,
+}
+async fn instance_history(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<HistoryQuery>,
+) -> Result<Json<Vec<Value>>> {
+    Ok(Json(
+        s.store
+            .instance_history(&id, query.bucket_ms.unwrap_or(60_000))
+            .await?,
+    ))
 }
 async fn create_series(
     State(s): State<AppState>,
