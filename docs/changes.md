@@ -2,6 +2,17 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026: NTU accounts, password login, and creator verification
+
+- Registration with a display name, a unique NTU email (`name@ntu.edu.sg` or `name@unit.ntu.edu.sg`, normalized to lowercase), and a password of at least 12 characters stored as an argon2id hash. Registered accounts start as members with the 10,000-unit welcome gift; the one-click demo account keeps its 1,000-unit grant and cannot log in.
+- Password login rotates the account's single session token: an account holds at most one live bearer token and each login invalidates every previous one. Unknown email and wrong password return the same error, with equal argon2 work for unknown emails so response timing cannot enumerate accounts.
+- Creator verification workflow: a member files one pending request, the administrator approves or rejects it with a recorded reason, approval permanently grants the creator role, a rejected member may re-apply, and every decision writes an administrator audit row.
+- Admin role: admin routes accept an admin-role bearer session next to the shared token, and demo databases seed an administrator account (`admin@ntu.edu.sg`, password `admin`, demo mode only).
+- Total issuance raised from 1M to 1B units as a second idempotent bootstrap transfer rather than a migration, because migrations run before the issuance account exists on a fresh database.
+- Upgraded backend dependencies (sqlx 0.9, rand 0.10, hmac 0.13, sha2 0.11, base64 0.23, tower-http 0.7, argon2 0.6) and frontend dependencies (React 19.3, Vite 8.3).
+- The account entry panel now leads with NTU registration, followed by email/password login, the demo accounts, and the access-token flow; members see a creator verification panel, and a rotated-out session clears the stored token instead of erroring.
+- The backend now has 10 unit tests, 24 integration tests, and 1 numerical test, all passing. See [ADR 0005](decisions/0005-ntu-accounts-and-creator-roles.md).
+
 ## 20 September 2026: Use case model and platform plan documented
 
 - Added the [use case model](developer/use-cases.md): six actors, a register of 24 use cases marked existing, partial, or planned, 13 business rules, the domain entities, and 12 detailed descriptions with preconditions, flows of events, and alternative flows.
@@ -65,5 +76,5 @@ This file records significant user-visible and architectural changes. Detailed r
 
 ## Deferred work
 
-Live evidence adapters, SSO, credential recovery/rotation, separate resolver roles, rate limiting, outbox retention, public deployment hardening, and budget-to-quantity entry remain future work.
+Live evidence adapters, SSO, password recovery and secret rotation, separate resolver roles, rate limiting, outbox retention, public deployment hardening, and budget-to-quantity entry remain future work.
 

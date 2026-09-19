@@ -11,8 +11,8 @@ untrusted browser input
             -> PostgreSQL constraints/triggers
 
 administrator client
-    -> shared administrator token
-        -> account/instance/evidence/clock/worker/reconciliation operations
+    -> shared administrator token or admin-role account session
+        -> account/instance/evidence/verification/clock/worker/reconciliation operations
 
 future provider
     -> adapter outside this repository
@@ -26,6 +26,7 @@ The browser, account holder, administrator input, and future evidence provider c
 | Secret | Purpose | Storage in current development flow |
 |---|---|---|
 | Account bearer token | Select one private user account | Plaintext browser local storage; SHA-256 hash in PostgreSQL |
+| Account password | Log a registered account in | Plaintext only in transit and browser memory; argon2id PHC hash in PostgreSQL |
 | Quote secret | Authenticate quote claims | Environment; generated in `.local/dev-secrets.json` for workspace demo |
 | Administrator token | Protect administrator endpoints | Environment; generated separately in `.local/dev-secrets.json` |
 | Simulation secret | Prevent public prediction of demo outcomes | Plaintext private PostgreSQL settings row |
@@ -37,24 +38,30 @@ The application checks only that quote/admin strings contain at least 32 charact
 
 Account provisioning generates 256 random bits with the operating-system RNG and returns the base64url token once. Database lookup hashes the presented value with SHA-256.
 
+Registration stores a unique, lowercased NTU email and an argon2id hash of a password of at least 12 characters; the plaintext password is never stored or logged. Login verifies the password and rotates the account's single session token: only the SHA-256 hash of the live token is stored, each login replaces it, and the previous token stops resolving immediately (in-process caches included).
+
 Security properties and limits:
 
-- a database reader does not directly receive bearer tokens;
-- bearer tokens have no expiry, scopes, rotation, or revocation endpoint;
+- a database reader does not directly receive bearer tokens or passwords (argon2id hashes only);
+- an account holds at most one live bearer token; each login invalidates every previous one;
+- unknown email and wrong password return the same 401 `invalid_credentials` message, and unknown-email attempts still run one argon2 verification so response timing cannot enumerate accounts;
+- bearer tokens have no expiry or scopes;
 - possession grants full account access;
-- there is no campus identity binding, MFA, or recovery;
+- there is no campus SSO, MFA, or password reset/recovery;
 - display names are not unique identities; and
-- sign-out deletes browser storage but does not invalidate the token.
+- sign-out deletes browser storage but does not itself invalidate the token; logging in again rotates it, and only registered accounts can log in (a demo account's token is its only credential).
 
-Do not deploy account tokens through email, logs, screenshots, or public issue reports.
+Do not deploy account tokens or passwords through email, logs, screenshots, or public issue reports.
 
 ## Administrator authentication
 
-One shared token protects all `/admin/*` routes. Comparison uses HMAC verification of a fixed message so tag comparison is constant-time.
+One shared token protects all `/admin/*` routes. Comparison uses HMAC verification of a fixed message so tag comparison is constant-time. Admin routes also accept the bearer session of an account holding the `admin` role; `AppState::require_admin` reads the role from the database on every request, so a role change takes effect immediately.
 
-There is no administrator identity, per-action role, separate resolver, expiry, rotation, or multi-party approval. Audit rows cannot identify which human used the shared token.
+Demo-mode databases seed exactly one such account, `admin@ntu.edu.sg` with password `admin`, and its seed token plaintext is discarded, so the password is the only way in. The seeded administrator therefore exists only where demo mode is fixed at initialization; non-demo databases have no admin-role accounts unless one is inserted directly.
 
-Audit coverage includes instance creation, evidence events/rejections, suspension, result finalization, simulated evidence, and demo clock advancement. Administrator account creation is represented by the account and grant ledger transfer but does not add an `admin_audit` row. Reconciliation is read-only; calling worker tick itself is not audited, although resulting state transitions may be.
+The shared token still carries no per-action identity, expiry, rotation, or multi-party approval, and audit rows cannot identify which human used it. There is no separate resolver role.
+
+Audit coverage includes instance creation, evidence events/rejections, suspension, result finalization, simulated evidence, verification decisions, and demo clock advancement. Administrator account creation is represented by the account and grant ledger transfer but does not add an `admin_audit` row. Reconciliation is read-only; calling worker tick itself is not audited, although resulting state transitions may be.
 
 ## Signed quotes
 
@@ -117,6 +124,9 @@ React escapes normal text interpolation, including titles, evidence JSON, and er
 | Double settlement | Unique claim key and transactional batches | Operational monitoring is manual |
 | Infer future demo outcome | Private persisted seed plus instance ID | Database readers can access the secret |
 | Leak attendee data | Aggregate evidence contract and documentation | No automatic reference redaction |
+| Guess a login password | argon2id hashing and the 12-character minimum | No rate limiting or lockout |
+| Enumerate accounts through login | Generic failure plus equal argon2 work for unknown emails | Timing equalization is not a rate limit |
+| Reuse a stolen old session token | Login rotates the single token hash and evicts caches | Unused tokens never expire |
 | Public abuse | Loopback demo bind | No rate limiting/public hardening |
 
 ## Logging

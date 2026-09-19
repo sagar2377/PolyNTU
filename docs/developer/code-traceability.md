@@ -25,6 +25,12 @@ This matrix helps human reviewers verify that documented promises correspond to 
 | Trading fee is charged and split with the creator | `fee` module, all-in quotes/execution, `settle_batch` fee split | `trades.fee_micros`, `instances.creator_account_id`, `fee` ledger kind | fee/creator integration test; reconciliation |
 | Public updates survive reconnect | outbox insert plus SSE cursor | durable outbox sequence/index | HTTP workload holds streams; propagation not percentile-tested |
 | Account portfolios are private | bearer-derived account ID | account foreign keys | unauthorized and account-bound quote tests |
+| Accounts register with a unique NTU email and password | `auth::valid_ntu_email`, `auth::hash_password`, `Store::register_account` | unique lowercase NTU-pattern email; email/password/role presence checks (migration 0006) | registration integration tests |
+| Registered accounts receive the 10,000-unit welcome gift | `Store::register_account`, `WELCOME_GIFT_UNITS` | balanced grant transfer; nonnegative treasury | registration gift assertion |
+| Each login invalidates every previous session | `Store::login` token rotation with `evict_account` | single `token_hash` column per account | login rotation test across two logins |
+| Login failures cannot enumerate accounts | `LOGIN_TIMING_HASH` equal-work verification | no per-account error state stored | indistinguishable-failure test |
+| Creator verification: one pending request, decided with a reason, permanent role | `create_verification_request`, `decide_verification_request` | partial unique pending index; status/role checks (migrations 0007, 0008) | verification integration tests |
+| Admin routes accept an admin-role session | `AppState::require_admin`, `Store::account_is_admin` | role check includes `admin` (migration 0008) | seeded-administrator test |
 
 ## Operational and security requirements
 
@@ -32,9 +38,9 @@ This matrix helps human reviewers verify that documented promises correspond to 
 |---|---|---|
 | Demo cannot bind publicly | `main.rs` loopback check | Does not harden non-demo deployment |
 | Quote/admin secrets differ and are long | `AppState::new` | Length is not entropy; no rotation |
-| Account token plaintext not stored in DB | `random_token`, `hash`, account lookup | Browser local storage holds plaintext; no recovery/revocation |
+| Account token plaintext not stored in DB | `random_token`, `hash`, account lookup | Browser local storage holds plaintext; demo-account tokens have no recovery (registered accounts log in again) |
 | Internal errors hidden from API | `Error::IntoResponse` | Server logs still require access control/redaction discipline |
-| Administrator endpoints protected | `require_admin` on all `/admin/*` handlers | One shared identity and incomplete admin-audit coverage |
+| Administrator endpoints protected | `require_admin` on all `/admin/*` handlers | The shared token still has no per-action identity; admin-audit coverage incomplete |
 | Evidence contains no attendee identities | Typed aggregate observations and documentation | Reference is arbitrary public text; no automatic redaction |
 | Reconciliation available | `Store::reconcile`, SQL reserve query | Detection only; no automated repair/alerting |
 | Database mode cannot silently change | `Store::initialize` | Separate database remains an operator responsibility |
@@ -77,12 +83,11 @@ When reviewing a claim:
 
 ## Planned requirements
 
-These product requirements are documented and not yet implemented. No row above claims any of them. The [use case model](use-cases.md) holds the full register, the flows, and the gap analysis, and the decisions are [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md), [ADR 0006](../decisions/0006-market-series-and-recurrence.md), and [ADR 0007](../decisions/0007-resolution-authority.md).
+These product requirements are documented and not yet implemented. No row above claims any of them. The [use case model](use-cases.md) holds the full register, the flows, and the gap analysis, and the remaining decisions are [ADR 0006](../decisions/0006-market-series-and-recurrence.md) and [ADR 0007](../decisions/0007-resolution-authority.md); [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) is implemented and its requirements moved into the core table above.
 
 | Planned requirement | Decision | Current build |
 |---|---|---|
-| NTU email registration and login with a 10,000-unit welcome gift | ADR 0005 | Display-name accounts with one-shot tokens; a 1,000-unit grant |
-| Creator verification workflow and creator-owned markets | ADR 0005, ADR 0006 | The administrator creates every instance |
+| Creator-owned market series | ADR 0006 | The administrator creates every instance |
 | Recurrence, active periods, rolling spawn, and the creator trading ban | ADR 0006 | Single fixed windows; no recurrence |
 | Creator-signed human resolution and external resolver endpoints | ADR 0007 | Evidence flows only through the administrator route |
 | Price and volume history chart, and the day-long probability view | Use case model (UC-19, UC-21) | Live probabilities and SSE updates only |

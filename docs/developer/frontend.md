@@ -27,7 +27,7 @@ The wrapper always calls `/api/v2`; health is served separately and is not used 
 
 ### Endpoint helpers
 
-The exported `api` object wraps configuration, account lookup/creation, instance lists/detail, quotes/trades, portfolio/history, demo clock advance, and event URL construction. It does not currently expose template lists, administrator instance/evidence/suspension creation, worker tick, or reconciliation.
+The exported `api` object wraps configuration, account lookup, demo account creation, NTU registration, email/password login, creator verification submission/lookup, instance lists/detail, quotes/trades, portfolio/history, demo clock advance, and event URL construction. It does not currently expose template lists, administrator instance/evidence/suspension creation, worker tick, or reconciliation.
 
 ### Exact unit functions
 
@@ -50,7 +50,7 @@ Probabilities and average prices are display `Number` values supplied by the bac
 
 ### State
 
-`App` tracks server configuration, authenticated account, current view, selected instance, refresh counter, global error, account name/token inputs, administrator token input, and a shared busy flag.
+`App` tracks server configuration, authenticated account, current view, selected instance, refresh counter, global error, registration/login form inputs, demo account name and access-token inputs, administrator token input, the current verification request, and a shared busy flag.
 
 Views are string-selected rather than URL-routed:
 
@@ -60,11 +60,19 @@ Views are string-selected rather than URL-routed:
 
 Refreshing the browser does not preserve the selected view/market, but the account and pending trade remain in local storage.
 
+### Account entry panel
+
+Before authentication, the entry panel leads with the NTU registration form (display name, NTU email, password of at least 12 characters, validated client-side to the server's rules). A collapsible email and password login form follows. In demo mode, further disclosures add the one-click demo participant and a sign-in button for the seeded administrator (`admin@ntu.edu.sg`); the access-token paste flow remains the last disclosure. Once authenticated, the header account chip shows the display name, the role when present, and the available units.
+
+### Creator verification panel
+
+Members (`account.role === "member"`) see a verification panel with three states: request creator verification, a pending-review notice, or the rejection reason with an apply-again button. `App` fetches the account's own latest request whenever the account identity or role changes and keeps it in state; sign-out clears it.
+
 ### Polling and account restoration
 
 An effect requests configuration and, when a token exists, `/me`. It repeats every five seconds and reruns after the refresh counter changes. Cleanup marks the effect cancelled and clears its timer so stale promises cannot update state.
 
-Creating a demo account stores its returned token and account. Existing-token sign-in verifies `/me` before storing it. Sign-out deletes only the account token; a pending trade is intentionally preserved so it cannot be silently lost.
+Registration, login, demo account creation, and token sign-in all store the returned token and account; token sign-in verifies `/me` first. A 401 from the polled `/me`, meaning the token was rotated out by a login elsewhere, clears the stored session and account instead of erroring on every poll. Sign-out deletes the account token and clears the verification state; a pending trade is intentionally preserved so it cannot be silently lost.
 
 ### Pending trade notice
 
@@ -171,7 +179,7 @@ Implemented semantic aids include navigation labels, form labels, fieldsets/lege
 - The bearer token is plaintext in local storage and readable by same-origin JavaScript.
 - No Content Security Policy is defined in this repository.
 - The demo UI accepts a powerful administrator token in memory.
-- Sign-out does not revoke a token at the backend.
+- Sign-out does not revoke a token at the backend; logging in again does rotate it, which signs out every other browser on the next poll.
 - Error text is displayed to the user; backend 500 messages deliberately hide details.
 - Public evidence JSON is displayed verbatim and must already be non-sensitive.
 

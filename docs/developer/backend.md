@@ -44,14 +44,16 @@ The generic 500 response advises retrying with the same idempotency key because 
 
 ## Authentication and signing: `auth.rs`
 
-- `random_token` reads 32 bytes from `OsRng` and encodes URL-safe base64 without padding.
-- `hash` returns lowercase SHA-256 hex. Account tokens are looked up by this hash.
+- `random_token` reads 32 bytes from the operating-system RNG (`SysRng`) and encodes URL-safe base64 without padding; it returns an error rather than panicking if the entropy source fails.
+- `hash` returns lowercase SHA-256 hex, building the hex string manually because the `sha2` upgrade dropped digest formatting; stored token hashes keep their exact historical encoding. Account tokens are looked up by this hash.
 - `sign` serializes a value as JSON, base64url-encodes it, and appends an HMAC-SHA256 signature over the encoded body.
 - `verify` rejects tokens longer than 4,096 characters, verifies the HMAC before decoding/deserializing, and maps failures to `Unauthorized`.
 - `valid_secret` checks only that the string has at least 32 characters. Deployment must still generate high-entropy secrets.
 - `verify_admin` derives fixed HMAC tags from configured and candidate strings and uses HMAC verification for constant-time tag comparison.
+- `valid_ntu_email` accepts only `name@ntu.edu.sg` or `name@unit.ntu.edu.sg` (further unit labels allowed, lowercase only) with bounded local/domain lengths; callers normalize to lowercase first.
+- `hash_password` returns an argon2id hash in PHC string form with a fresh random salt; `verify_password` fails closed on a malformed stored hash so every verification is treated the same way.
 
-The quote secret and administrator token must be different. There is no token rotation, expiry, account recovery, or administrator role hierarchy.
+The quote secret and administrator token must be different. Login rotates an account's single session token; tokens still have no expiry, there is no password reset or recovery, and there is no administrator role hierarchy beyond the admin role.
 
 ## Market arithmetic: `amm.rs`
 
@@ -120,7 +122,7 @@ The tagged enum contains:
 
 ## HTTP layer: `api.rs`
 
-`AppState` owns the cloned `Store` and shared quote/admin secrets. Its private helpers validate administrator headers or resolve bearer tokens to accounts.
+`AppState` owns the cloned `Store` and shared quote/admin secrets. Its private helpers resolve bearer tokens to accounts and gate administrator access: `require_admin` accepts either the configured shared `X-Admin-Token` (constant-time HMAC comparison) or the bearer session of an admin-role account, reading the role fresh from the database on every request.
 
 `router` creates a nested `/api/v2` router, explicit retired routes, global 64 KiB limit, configured CORS, request tracing, and the shared state. Handlers remain deliberately thin: authenticate/parse, call one store/service method, and serialize its result.
 
@@ -162,11 +164,17 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 `Store::connect` creates a 32-connection pool with 5-second acquisition timeout, sets 2-second PostgreSQL lock timeout and 15-second statement timeout on each connection, applies migrations, and calls `initialize`.
 
-`initialize` serializes on the singleton settings row, enforces mode consistency, creates a private simulation secret once, creates issuance/treasury accounts, and inserts an initial transfer of 1,000,000 units from issuance to treasury.
+`initialize` serializes on the singleton settings row, enforces mode consistency, creates a private simulation secret once, creates issuance/treasury accounts, and appends two idempotent issuance transfers: `initial-issuance` of 1,000,000 units and `issuance-expansion` of the remaining 999,000,000, raising total issuance to 1,000,000,000 units (`INITIAL_ISSUANCE_UNITS`, `TOTAL_ISSUANCE_UNITS`). In demo mode it also seeds the administrator account `demo-admin` (`admin@ntu.edu.sg`, password `admin`, role `admin`); the seed token's plaintext is discarded, so the password is the only way in.
 
 ### Accounts and instances
 
-`account_for_token` hashes a bearer token up to 200 characters and returns only a user account. `create_account` validates the display name, generates a token/UUID, locks treasury and new account, checks budget, and transfers a 1,000-unit grant.
+`account_for_token` hashes a bearer token up to 200 characters and returns only a user account. `create_account` validates the display name, generates a token/UUID, locks treasury and new account, checks budget, and transfers a 1,000-unit grant (`DEMO_GRANT_UNITS`); demo accounts carry no email, password, or role.
+
+`register_account` validates the display name, a unique NTU email (`auth::valid_ntu_email`), and a password of at least 12 characters, inserts the account with role `member` and an argon2id hash, and transfers the 10,000-unit welcome gift (`WELCOME_GIFT_UNITS`).
+
+`login` looks the account up by email, verifies the argon2 hash, and rotates the single session token: the new plaintext is returned once, the row's `token_hash` is replaced, and `evict_account` drops the previous token from the cache so it stops resolving immediately. Unknown emails verify against the fixed `LOGIN_TIMING_HASH` so unknown-email and wrong-password failures cost the same argon2 work and return the same `InvalidCredentials` error.
+
+`create_verification_request` lets a member file one pending creator request under an account lock, `verification_request`/`verification_requests` read the requester's latest request and the administrator's filtered review list, and `decide_verification_request` approves or rejects under a row lock, permanently setting the role to `creator` on approval and always appending a `verification_decision` audit row. `account_is_admin` reads the role fresh on every admin request.
 
 `instance`, `instance_detail`, `templates`, and `instances` construct public views. Detail includes the selected evidence payload. `create_instance` validates/derives the full definition, creates/funds a reserve, inserts the immutable instance, and appends event/audit rows.
 
@@ -198,7 +206,7 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 ## Caches: `cache.rs`
 
-`Cache` holds the read-through instance map (2-second TTL, 10,000-entry capacity), the immutable token-to-account map (50,000-entry capacity), and the demo clock offset behind an atomic. `apply_trade` updates a cached instance's inventory/version under a version guard so the in-process write-through and the notification listener can both apply the same committed trade idempotently; `invalidate` drops an entry whose state changed in ways the cache cannot reconstruct. `now_ms` combines the system clock with the cached offset.
+`Cache` holds the read-through instance map (2-second TTL, 10,000-entry capacity), the token-to-account map (50,000-entry capacity), and the demo clock offset behind an atomic. Token entries are immutable for the life of a session; `evict_account` drops the one token a login rotated out so it stops resolving immediately in this process. `apply_trade` updates a cached instance's inventory/version under a version guard so the in-process write-through and the notification listener can both apply the same committed trade idempotently; `invalidate` drops an entry whose state changed in ways the cache cannot reconstruct. `now_ms` combines the system clock with the cached offset.
 
 ## Event fan-out: `events.rs`
 

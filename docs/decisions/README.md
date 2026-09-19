@@ -8,7 +8,7 @@ Architectural decision records explain important choices, the alternatives consi
 | [0002](0002-lmsr-accounting.md) | Accepted and implemented | Use LMSR outcome shares with micro-unit accounting and reserve-backed issuance |
 | [0003](0003-evidence-resolution.md) | Accepted and implemented | Resolve immutable market definitions from revisioned evidence, then settle in resumable batches |
 | [0004](0004-trade-fees.md) | Accepted and implemented | Charge a 25 bps per-trade fee and split the settled pot with the market creator |
-| [0005](0005-ntu-accounts-and-creator-roles.md) | Proposed | Register accounts with NTU email, passwords, and creator roles |
+| [0005](0005-ntu-accounts-and-creator-roles.md) | Accepted and implemented | Register accounts with NTU email, passwords, and creator roles |
 | [0006](0006-market-series-and-recurrence.md) | Proposed | Recurring and perpetual markets as creator-owned series with rolling spawn |
 | [0007](0007-resolution-authority.md) | Proposed | Creator-signed human resolution and contracted external resolvers |
 

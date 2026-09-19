@@ -20,11 +20,13 @@ This document describes the HTTP behaviour exposed to clients. For handler-to-se
 
 | Credential | Header | Used by |
 |---|---|---|
-| Account bearer token | `Authorization: Bearer <token>` | `/me`, private portfolio/history, quotes, and trades |
-| Administrator token | `X-Admin-Token: <token>` | Account provisioning, instance/evidence/suspension/clock/worker/reconciliation administration |
-| None | — | Configuration, markets, instances, health, and public instance events |
+| Account bearer token | `Authorization: Bearer <token>` | `/me`, private portfolio/history, quotes, trades, and creator verification requests |
+| Administrator token | `X-Admin-Token: <token>` | Account provisioning, verification review, instance/evidence/suspension/clock/worker/reconciliation administration |
+| None | (none) | Registration, login, configuration, markets, instances, health, and public instance events |
 
-Account tokens are returned once when an account is created. Inputs never provide their own account ID; the server derives ownership from the bearer token.
+Account tokens are returned once: at registration, at login, or when a demo/administrator-provisioned account is created. Login rotates the token; an account holds at most one live bearer token, and each login invalidates every previous token. Inputs never provide their own account ID; the server derives ownership from the bearer token.
+
+Administrator routes accept either the configured shared `X-Admin-Token` or the bearer session of an account holding the `admin` role. Demo-mode databases seed exactly one such account, `admin@ntu.edu.sg` with password `admin`, so it can sign in through login; its seed token was discarded, so the password is the only way in.
 
 ## Error envelope
 
@@ -43,6 +45,7 @@ Application errors use:
 |---:|---|---|
 | 400 | `invalid_request` | Shape or domain validation failed. |
 | 401 | `unauthorized` | Account token or signed quote authentication failed. |
+| 401 | `invalid_credentials` | Login email/password pair does not match an account; the same message covers unknown email and wrong password. |
 | 403 | `forbidden` | Administrator access or mode permission is missing. |
 | 404 | `not_found` | Instance or route does not exist. |
 | 409 | `conflict` | Valid request conflicts with current state, version, time, holdings, balance, revision, or idempotency history. |
@@ -58,7 +61,9 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `GET /health` | None | Checks PostgreSQL and identifies the Rust engine. Outside `/api/v2`. |
 | `GET /api/v2/config` | None | Demo mode, authoritative time, unit scales, and quote lifetime. |
 | `POST /api/v2/auth/demo` | None; demo mode only | Creates a funded demo account and returns its token once. |
-| `GET /api/v2/me` | Account | Current account identity and available balance. |
+| `POST /api/v2/auth/register` | None | Registers an NTU-email account with a password and returns its token once. |
+| `POST /api/v2/auth/login` | None | Verifies email and password, rotates the session token, and returns it once. |
+| `GET /api/v2/me` | Account | Current account identity, email/role, and available balance. |
 | `GET /api/v2/markets` | None | Up to 100 templates ordered by category and ID. |
 | `GET /api/v2/instances` | None | Paginated instances across templates. |
 | `GET /api/v2/markets/{id}/instances` | None | Paginated instances for one template ID. |
@@ -68,8 +73,12 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `POST /api/v2/trades` | Account plus idempotency header | Executes or retrieves one exact quoted trade. |
 | `GET /api/v2/me/portfolio` | Account | Paginated positions and settlement credits. |
 | `GET /api/v2/me/trades` | Account | Paginated private trade history. |
+| `POST /api/v2/verification-requests` | Account | A member files one pending creator verification request. |
+| `GET /api/v2/verification-requests` | Account | The requester's own latest verification request, or null. |
 | `POST /api/v2/admin/accounts` | Administrator | Creates a funded account in either mode; primarily needed outside public demo enrollment. |
 | `POST /api/v2/admin/instances` | Administrator | Validates, funds, and immediately opens an immutable instance. |
+| `GET /api/v2/admin/verification-requests` | Administrator | Verification review list, optionally filtered by status. |
+| `POST /api/v2/admin/verification-requests/{id}/decision` | Administrator | Approves or rejects a pending verification request. |
 | `POST /api/v2/admin/instances/{id}/evidence` | Administrator | Appends a manual evidence revision. |
 | `POST /api/v2/admin/instances/{id}/suspension` | Administrator | Suspends or resumes trading on an open instance. |
 | `POST /api/v2/admin/clock/advance` | Administrator; demo mode only | Advances demo time and runs a worker cycle. |
@@ -126,12 +135,66 @@ Successful response:
   "account": {
     "id": "account-uuid",
     "display_name": "Alex",
+    "email": null,
+    "role": null,
     "balance_micros": "1000000000"
   }
 }
 ```
 
-The grant is 1,000 simulated units transferred from the finite treasury.
+The grant is 1,000 simulated units transferred from the finite treasury. Demo and administrator-provisioned accounts carry no email, password, or role, so they cannot use login; the returned token is their only credential.
+
+### Register an NTU account
+
+`POST /api/v2/auth/register`:
+
+```json
+{
+  "display_name": "Alex",
+  "email": "Alex@SCSE.NTU.EDU.SG",
+  "password": "at-least-12-characters"
+}
+```
+
+- The trimmed display name must be 2–60 characters and contain no control characters.
+- The email is trimmed and normalized to lowercase, must be an NTU address (`name@ntu.edu.sg` or `name@unit.ntu.edu.sg`; further unit labels are accepted), and must be unique.
+- The password must contain at least 12 characters. It is stored only as an argon2id hash.
+
+Successful response:
+
+```json
+{
+  "token": "returned-only-now",
+  "account": {
+    "id": "account-uuid",
+    "display_name": "Alex",
+    "email": "alex@scse.ntu.edu.sg",
+    "role": "member",
+    "balance_micros": "10000000000"
+  }
+}
+```
+
+The new account receives the `member` role and the 10,000-unit welcome gift (10,000,000,000 micros) from the treasury.
+
+Errors: 400 `invalid_request` for a bad display name, a non-NTU email, or a short password; 409 `conflict` when the email is already registered or the treasury gift budget is exhausted.
+
+### Log in with email and password
+
+`POST /api/v2/auth/login`:
+
+```json
+{
+  "email": "alex@scse.ntu.edu.sg",
+  "password": "at-least-12-characters"
+}
+```
+
+The email is normalized to lowercase exactly as at registration. The successful response repeats the register shape with the account's current balance.
+
+Login rotates the account's single session token: the new plaintext token is returned once and every previous token stops working immediately. An account holds at most one live bearer token.
+
+Errors: unknown email and wrong password both return 401 `invalid_credentials` with the same message. Unknown-email attempts still perform one argon2 verification, so response timing cannot enumerate registered addresses. Demo and administrator-provisioned accounts have no email and cannot log in.
 
 ### `GET /api/v2/me`
 
@@ -139,9 +202,13 @@ The grant is 1,000 simulated units transferred from the finite treasury.
 {
   "id": "account-uuid",
   "display_name": "Alex",
+  "email": "alex@scse.ntu.edu.sg",
+  "role": "member",
   "balance_micros": "994875052"
 }
 ```
+
+`email` and `role` are null for demo and administrator-provisioned accounts. For registered accounts, `role` is `member`, `creator`, or `admin`.
 
 ## Markets and instances
 
@@ -300,6 +367,69 @@ The same `limit` and `offset` are applied independently to the positions query a
 ### `GET /api/v2/me/trades?limit=100&offset=0`
 
 Returns private trades ordered newest first. Each entry contains trade/instance IDs, title, outcome label, side, quantity, amount string, and creation time. This endpoint has pagination independent from the portfolio request.
+
+## Creator verification
+
+### `POST /api/v2/verification-requests`
+
+An authenticated member files one pending creator verification request:
+
+```json
+{
+  "id": "request-uuid",
+  "account_id": "account-uuid",
+  "status": "pending",
+  "created_ms": 1788912000000
+}
+```
+
+- Only a `member` may apply. Creators, administrators, and demo accounts (which have no email) are each rejected with a specific 400 `invalid_request` message.
+- At most one pending request may exist per account; a second returns 409 `conflict`.
+- A member whose previous request was rejected may apply again.
+
+### `GET /api/v2/verification-requests`
+
+Returns the requester's own latest request, or `null` when none exists:
+
+```json
+{
+  "id": "request-uuid",
+  "status": "rejected",
+  "reason": "Insufficient public activity record",
+  "created_ms": 1788912000000,
+  "decided_ms": 1788915600000
+}
+```
+
+`reason` and `decided_ms` are null while the request is pending.
+
+### `GET /api/v2/admin/verification-requests?status=pending`
+
+Administrator route. Returns up to 200 requests ordered newest first, each including the requester's `display_name` and `email` alongside the fields above. The optional `status` filter must be `pending`, `approved`, or `rejected`; anything else is 400 `invalid_request`.
+
+### `POST /api/v2/admin/verification-requests/{id}/decision`
+
+```json
+{
+  "approve": false,
+  "reason": "Insufficient public activity record"
+}
+```
+
+- A rejection requires a nonblank `reason` (400 `invalid_request` otherwise); a reason is optional for approval.
+- Only a pending request can be decided; any other ID returns 404 `not_found`.
+- Approval permanently sets the requester's role to `creator`. If the requester is no longer an eligible member, approval returns 409 `conflict` and the request stays pending.
+- Every decision appends an administrator audit row with action `verification_decision`.
+
+Successful response:
+
+```json
+{
+  "id": "request-uuid",
+  "account_id": "account-uuid",
+  "status": "rejected"
+}
+```
 
 ## Instance administration
 

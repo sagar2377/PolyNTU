@@ -10,6 +10,10 @@ PostgreSQL stores all active v2 state. SQLx embeds and applies the numbered migr
 | `0002_immutable_rules.sql` | Protect published instance fields, enforce version/lifecycle updates, and allow reserve-release transfers. |
 | `0003_account_lock_mode.sql` | Replace balance trigger account locks with `FOR NO KEY UPDATE` to avoid foreign-key lock-upgrade deadlocks. |
 | `0004_private_simulation_seed.sql` | Add private database-persisted simulator secret. |
+| `0005_trade_fees.sql` | Record per-trade fees, add the `fee` ledger kind, and fix immutable creator attribution on instances. |
+| `0006_ntu_accounts.sql` | Add the unique NTU email, argon2 password hash, and role columns with consistency checks. |
+| `0007_creator_verification.sql` | Add the `verification_requests` table and its one-pending-per-account partial unique index. |
+| `0008_admin_role.sql` | Extend the role check with the `admin` role. |
 
 Never edit an applied migration. Add a numbered migration and verify both fresh creation and upgrade.
 
@@ -32,6 +36,7 @@ templates <----- instances -----> reserve account
                     +--> admin_audit (logical optional reference)
 
 idempotency -> participant account
+verification_requests -> participant account
 ```
 
 `admin_audit.instance_id` is intentionally not declared as a foreign key, allowing an attempted action to be retained even when no referenced instance row is available.
@@ -57,11 +62,18 @@ Account kinds are `issuance`, `treasury`, `user`, and `reserve`.
 | `id` | Text primary key; UUID for users, `reserve:<instance>`, or fixed platform ID. |
 | `display_name` | Human-readable name. |
 | `kind` | Constrained account role. |
-| `token_hash` | Unique SHA-256 hex for users; null for non-users. |
+| `token_hash` | Unique SHA-256 hex for users; null for non-users. One column per account, so an account holds at most one live session token. |
+| `email` | Unique normalized NTU address for registered accounts; null otherwise (migration 0006). |
+| `password_hash` | argon2id PHC string; present exactly when email is present. |
+| `role` | `member`, `creator`, or `admin`; present exactly when email is present. |
 | `balance_micros` | Materialized ledger balance. Nonnegative except issuance. |
 | `created_ms` | Database wall-clock default for direct inserts; application normally provides transfer times separately. |
 
 The constraint `(kind='user') = (token_hash IS NOT NULL)` prevents credentials on platform/reserve accounts and requires them on users.
+
+Migration 0006 keeps `email`, `password_hash`, and `role` all present or all absent, requires a lowercase email matching the NTU pattern at the database level, and enforces email uniqueness. Demo and platform accounts leave the three columns null, and the one-click demo flow is unaffected. Migration 0008 extends the role check with `admin` for administrator accounts that reach the admin routes through their bearer session.
+
+Demo-mode initialization also seeds one administrator account: id `demo-admin`, email `admin@ntu.edu.sg`, password `admin`, role `admin`. The seed token hash is random and its plaintext is discarded, so the password is the only way in. The seed is `ON CONFLICT (email) DO NOTHING`, so it appears once per database.
 
 ## Ledger
 
@@ -75,11 +87,30 @@ The `apply_transfer` trigger locks both account rows in sorted ID order with `FO
 
 `immutable_ledger` rejects updates and deletes. Corrections require a new compensating transfer with a new unique business reference; no general correction endpoint currently exists.
 
+Unit issuance is two idempotent bootstrap transfers from `issuance` to `treasury`, inserted by application initialization: `initial-issuance` (1,000,000 units) and `issuance-expansion` (the remaining 999,000,000, raising total issuance to 1,000,000,000 units). The raise is appended by `initialize` rather than a migration because migrations run before the issuance account exists on a fresh database; both transfers carry fixed IDs and `ON CONFLICT DO NOTHING`, so re-running initialization changes nothing.
+
 Indexes support account/time reads by source and destination.
 
 ### `ledger_entries` view
 
 The view expands each transfer into one negative source entry and one positive destination entry. Reconciliation sums these entries and compares them with materialized account balances.
+
+## Account verification
+
+### `verification_requests`
+
+One row per creator verification request (migration 0007):
+
+| Column | Notes |
+|---|---|
+| `id` | Text UUID primary key. |
+| `account_id` | Requesting participant account. |
+| `status` | `pending`, `approved`, or `rejected`. |
+| `reason` | Administrator's recorded reason; required for a rejection, null otherwise. |
+| `created_ms` | Request creation time. |
+| `decided_ms` | Decision time; null while pending. |
+
+The partial unique index `verification_requests_pending` on `account_id WHERE status='pending'` allows at most one pending request per account while leaving re-application open after a rejection. A review index covers status plus creation time. Approval permanently updates the account role to `creator`; every decision appends an `admin_audit` row with action `verification_decision`.
 
 ## Market definitions
 
@@ -194,4 +225,4 @@ Keep transactions short and acquire shared resource classes in the documented or
 
 ## Backup priorities
 
-A useful v2 backup must include the entire PostgreSQL database, not selected application tables. The settings secret/offset, idempotency receipts, evidence, claims, outbox, migrations table, and ledger are all required for consistent recovery. Protect backups as sensitive because they contain token hashes, public evidence payloads, private simulation state, and operational history.
+A useful v2 backup must include the entire PostgreSQL database, not selected application tables. The settings secret/offset, idempotency receipts, evidence, claims, outbox, migrations table, and ledger are all required for consistent recovery. Protect backups as sensitive because they contain token hashes, password hashes, public evidence payloads, private simulation state, and operational history.

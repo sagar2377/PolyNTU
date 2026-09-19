@@ -6,7 +6,7 @@ This is the use case model of the planned PolyNTU platform: the actors, the comp
 - **partial**: a smaller or earlier version works in the current build;
 - **new**: planned, not built.
 
-Statements about existing behavior are verified against the current build. Everything marked new or partial describes the plan, recorded in [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) (NTU accounts and creator roles), [ADR 0006](../decisions/0006-market-series-and-recurrence.md) (market series and recurrence), and [ADR 0007](../decisions/0007-resolution-authority.md) (resolution authority).
+Statements about existing behavior are verified against the current build. Everything marked new or partial describes the plan, recorded in [ADR 0006](../decisions/0006-market-series-and-recurrence.md) (market series and recurrence) and [ADR 0007](../decisions/0007-resolution-authority.md) (resolution authority). [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) (NTU accounts and creator roles) is implemented; its use cases are marked exists.
 
 ## Actors
 
@@ -15,7 +15,7 @@ Statements about existing behavior are verified against the current build. Every
 | Visitor | Primary | An unauthenticated person who registers. UC-1 turns a Visitor into a Trader. |
 | Trader | Primary | An account holder who browses markets, views quotes and probabilities, trades outcome shares, and tracks a portfolio. |
 | Market Creator | Primary | A verified trader who also defines markets. The role generalizes Trader, with one restriction: a creator cannot trade in their own markets, and the fee share is their compensation. |
-| Platform Admin | Primary | The operator account, one shared token today. Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. Today it also creates every instance and records evidence; by design it cannot resolve creator-owned markets. |
+| Platform Admin | Primary | The operator, reached through the shared token or an admin-role account session (the seeded demo administrator in demo mode). Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. Today it also creates every instance and records evidence; by design it cannot resolve creator-owned markets. |
 | External Resolver | Secondary system | An automated external API the settlement worker calls at finalize time, for example a bus timing service or a queue counter. Secondary actor in UC-13. |
 | Scheduler | Internal system | The background process that spawns bracket instances for recurring series on a rolling schedule (UC-12). |
 | Settlement Worker | Internal system | The background process that closes instances, resolves them, settles and pays out claims, and voids on missing or invalid evidence (UC-13, UC-15 to UC-17). |
@@ -30,13 +30,13 @@ The source is `docs/diagrams/use-case.puml`; re-render it with `scripts/render-d
 
 | Area | ID | Use case | Primary actor | Status |
 |---|---|---|---|---|
-| Account and access | UC-1 | Create an account with an NTU email | Visitor | new |
-| Account and access | UC-2 | Log in with email and password | Trader | new |
-| Account and access | UC-3 | Receive the 10,000-unit welcome gift | Trader | partial |
+| Account and access | UC-1 | Create an account with an NTU email | Visitor | exists |
+| Account and access | UC-2 | Log in with email and password | Trader | exists |
+| Account and access | UC-3 | Receive the 10,000-unit welcome gift | Trader | exists |
 | Account and access | UC-4 | View portfolio, trades, and pending receipts | Trader | exists |
 | Account and access | UC-5 | Browse and search markets | Trader | exists |
-| Creator lifecycle | UC-6 | Request creator verification | Trader | new |
-| Creator lifecycle | UC-7 | Approve or reject a creator request | Platform Admin | new |
+| Creator lifecycle | UC-6 | Request creator verification | Trader | exists |
+| Creator lifecycle | UC-7 | Approve or reject a creator request | Platform Admin | exists |
 | Market definition | UC-8 | Create a one-time market | Market Creator | new |
 | Market definition | UC-9 | Create a recurring or perpetual market | Market Creator | new |
 | Market definition | UC-10 | Configure automatic resolution | Market Creator | new |
@@ -58,14 +58,14 @@ The source is `docs/diagrams/use-case.puml`; re-render it with `scripts/render-d
 Notes:
 
 - Visitor is the unauthenticated role that UC-1 turns into a Trader.
-- UC-3 is partial: a 1,000-unit grant exists today; the planned gift is 10,000 units.
+- UC-3: the 10,000-unit gift applies to registered accounts; the one-click demo account keeps its 1,000-unit grant as a development fixture.
 - UC-20 exists today; its creator self-trading ban is a planned alternative flow (see the detailed description).
 - The diagram also shows four relationship use cases that this register does not number: Validate the response against the options (included by UC-13), Verify the ed25519 signature (included by UC-14), Charge the 25 bps trading fee (included by UC-20), and Reject the creator's own trades (extends UC-20).
 
 ## Business rules
 
-1. Accounts require an NTU email. The address must match `^[^@\s]+@([a-z0-9-]+\.)*ntu\.edu\.sg$` (case-insensitive), so `billy@ntu.edu.sg` and `billy@scse.ntu.edu.sg` pass and anything else is rejected.
-2. New accounts receive a 10,000-unit welcome gift from the treasury. Total issuance rises from 1M to 1B units in a migration, so the gift budget is not exhausted after 100 users.
+1. Accounts require an NTU email (existing; [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)). The address must match `^[^@\s]+@([a-z0-9-]+\.)*ntu\.edu\.sg$` (case-insensitive), so `billy@ntu.edu.sg` and `billy@scse.ntu.edu.sg` pass and anything else is rejected.
+2. Registered accounts receive a 10,000-unit welcome gift from the treasury; the demo account keeps its 1,000-unit grant (existing; ADR 0005). Total issuance rises from 1M to 1B units, applied as a second idempotent bootstrap transfer rather than a migration, so the gift budget is not exhausted after 100 users.
 3. Every trade pays a 25-basis-point fee on the LMSR amount, included in the quoted all-in amount, accumulated in the market reserve, and split 50/50 between the creator and the treasury at settlement (existing; [ADR 0004](../decisions/0004-trade-fees.md)).
 4. Creators cannot trade in their own markets; the fee share is their compensation.
 5. A perpetual market is a recurring market with no end date: it recurs forever with automatically refreshing resolution times.
@@ -82,8 +82,8 @@ Notes:
 
 | Entity | Status | Purpose |
 |---|---|---|
-| Account | extended | Identity and balance. Extended with a unique NTU email, an argon2 password hash, and a role (member or creator). |
-| VerificationRequest | new | A member's creator request with status and the administrator's decision and reason. |
+| Account | existing | Identity and balance. Registered accounts carry a unique NTU email, an argon2 password hash, and a role (member, creator, or admin). |
+| VerificationRequest | existing | A member's creator request with status and the administrator's decision and reason. |
 | MarketSeries | new | A creator-owned definition with options, rule, recurrence rule (interval, active period, maximum concurrency, optional end date), and resolution authority. |
 | Instance | extended | One concrete occurrence with its own inventory, reserve, evidence, and result. Extended with a series reference and bracket slot. |
 | ResolverConfig | new | The endpoint URL and fixed request contract for automatic authority. |
@@ -124,7 +124,7 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 
 1. The account holder submits the email address and password.
 2. The server verifies the password with argon2.
-3. The server issues the existing bearer session token, returns it once, and stores only its SHA-256 hash.
+3. The server issues a fresh bearer session token, returns it once, and stores only its SHA-256 hash. Each login invalidates every previous token: an account holds at most one live session.
 
 **Alternative flows:**
 
@@ -140,11 +140,11 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 1. The member submits a verification request.
 2. The server stores the request as pending.
 3. The request becomes visible to the administrator.
-4. Once approved through UC-7, the account can create markets without re-verifying.
+4. Once approved through UC-7, the account holds the creator role permanently without re-verifying (creating markets as a creator is UC-8, still planned).
 
 **Alternative flows:**
 
-- The account is already a creator: the request is rejected.
+- The account is already a creator, an administrator, or a demo account without an email: the request is rejected with a specific message.
 - A pending request already exists: the request is rejected.
 
 ### UC-7: Approve or reject a creator request
@@ -155,12 +155,12 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 
 1. The administrator reviews the pending request.
 2. The administrator approves it.
-3. The account role becomes creator.
-4. The requester is notified and can create markets without re-verifying.
+3. The account role becomes creator, permanently, and the decision is recorded in the administrator audit.
+4. The requester is notified and keeps the creator role without re-verifying (creating markets as a creator is UC-8, still planned).
 
 **Alternative flows:**
 
-- Reject: the administrator records a reason with the rejection and the requester is notified.
+- Reject: the administrator records a reason with the rejection and the requester is notified; the member may apply again.
 
 ### UC-8: Create a one-time market
 
@@ -311,8 +311,6 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 | Planned capability | Current build | Size |
 |---|---|---|
-| Accounts with NTU email, password login, roles | Display-name accounts with one-shot tokens, no login, a 1,000-unit grant | large |
-| Creator verification workflow | None; the administrator creates every instance | medium |
 | Creator-owned market series (one-time, recurring, perpetual) | Administrator-created single-window instances | large |
 | Recurrence: interval, active period, maximum concurrency, rolling spawn | None; the bus demo hardcodes a 10-minute window | medium |
 | Creator trading ban | None | small |
@@ -320,7 +318,9 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 | Automatic resolution via an external API contract | None; live adapters are deferred | medium |
 | Price and volume history chart with live refresh | Live probabilities and SSE exist; no volume display or history | medium |
 | Day-long probability visualization | None | medium |
-| 10,000-unit welcome gift | 1,000-unit grant | small |
+| Accounts with NTU email, password login, roles | Shipped ([ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)) | none |
+| Creator verification workflow | Shipped ([ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)) | none |
+| 10,000-unit welcome gift | Shipped ([ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)) | none |
 | Fee share for creators | Shipped ([ADR 0004](../decisions/0004-trade-fees.md)) | none |
 | Live quotes and probabilities | Shipped | none |
 | Settlement, void policy, reconciliation | Shipped | none |
@@ -329,7 +329,7 @@ Method: each planned capability was compared against the current build as verifi
 
 ## Implementation phases
 
-1. Accounts and access (ADR 0005): registration, login, welcome gift, roles, verification workflow.
+1. Accounts and access (ADR 0005): registration, login, welcome gift, roles, verification workflow. Implemented.
 2. Market series (ADR 0006): series entity, recurrence, scheduler, the bus demo as a rolling 2-minute series with maximum concurrency 5, creator trading ban.
 3. Resolution authority (ADR 0007): signed human resolution with admin exclusion, the external resolver contract.
 4. Market experience: volume statistics, the price and volume history chart, the day-long visualization.
