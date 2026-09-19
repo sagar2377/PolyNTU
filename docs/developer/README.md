@@ -16,6 +16,7 @@ Start with the repository-level [developer guide](../developer-guide.md), then u
 | [Operations](operations.md) | Process model, scheduler, observability, reconciliation, backup, and incident checks |
 | [Testing and verification](testing-and-verification.md) | Test inventory, invariant coverage, fixture generation, benchmarks, and reproduction commands |
 | [Code traceability](code-traceability.md) | Human-review matrix from product behaviour to source, schema, tests, and documentation |
+| [Use case model](use-cases.md) | Actors, use case register, business rules, and detailed flows for the planned platform |
 | [Glossary](glossary.md) | Domain, pricing, accounting, evidence, and lifecycle terms |
 
-These documents describe the working tree audited on 9 September 2026. The [documentation register](../README.md) explains authority, maintenance, and the uncommitted-baseline caveat.
+These documents describe the working tree audited on 9 September 2026. The [documentation register](../README.md) explains authority, maintenance, and the uncommitted-baseline caveat. The [use case model](use-cases.md) is the exception to the working-tree rule: it describes the planned platform and marks each use case as existing, partial, or new.

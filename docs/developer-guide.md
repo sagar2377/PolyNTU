@@ -14,6 +14,7 @@ This guide is the entry point for engineers who need to understand, review, modi
 8. [Security and privacy](developer/security-and-privacy.md).
 9. [Operations](developer/operations.md) and [development setup](development.md).
 10. [Testing and verification](developer/testing-and-verification.md) and [traceability](developer/code-traceability.md).
+11. [Use case model](developer/use-cases.md) for the planned platform: actors, the use case register, business rules, and the gap against the current build. Nothing it marks as new is implemented yet.
 
 Use the [glossary](developer/glossary.md) when a domain or accounting term is unfamiliar.
 

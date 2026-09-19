@@ -1,0 +1,114 @@
+@startuml
+!pragma layout smetana
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultFontSize 14
+skinparam usecaseBorderColor #7A7A7A
+skinparam arrowFontSize 14
+skinparam legendFontSize 14
+title PolyNTU use case model
+
+actor Visitor
+actor Trader
+actor "Market Creator" as Creator
+Creator --|> Trader
+actor "Platform Admin" as Admin
+
+rectangle "PolyNTU" {
+  actor "Scheduler" as Scheduler
+  actor "Settlement Worker" as Worker
+
+  package "Account and access" {
+    usecase "Create an account\nwith an NTU email" as UC1 #FFCC80
+    usecase "Log in with email\nand password" as UC2 #FFCC80
+    usecase "Receive the 10,000-unit\nwelcome gift" as UC3 #FFF9C4
+    usecase "View portfolio, trades,\nand pending receipts" as UC4 #C8E6C9
+    usecase "Browse and\nsearch markets" as UC5 #C8E6C9
+  }
+
+  package "Creator lifecycle" {
+    usecase "Request creator\nverification" as UC6 #FFCC80
+    usecase "Approve or reject\na creator request" as UC7 #FFCC80
+  }
+
+  package "Market definition" {
+    usecase "Create a\none-time market" as UC8 #FFCC80
+    usecase "Create a recurring\nor perpetual market" as UC9 #FFCC80
+    usecase "Configure\nautomatic resolution" as UC10 #FFCC80
+    usecase "Declare human,\ncreator-only resolution" as UC11 #FFCC80
+  }
+
+  package "Instance lifecycle" {
+    usecase "Spawn the next bracket\non a rolling schedule" as UC12 #FFCC80
+    usecase "Resolve automatically via\nthe external resolver API" as UC13 #FFCC80
+    usecase "Validate the response\nagainst the options" as UC13a #FFCC80
+    usecase "Submit a signed\nhuman resolution" as UC14 #FFCC80
+    usecase "Verify the ed25519\nsignature" as UC14a #FFCC80
+    usecase "Settle and pay out" as UC15 #C8E6C9
+    usecase "Split the fee pot\nwith the creator" as UC16 #C8E6C9
+    usecase "Void on missing or\ninvalid evidence" as UC17 #C8E6C9
+  }
+
+  package "Trading" {
+    usecase "View live quotes\nand probabilities" as UC18 #C8E6C9
+    usecase "View the price and\nvolume history chart" as UC19 #FFCC80
+    usecase "Place a trade" as UC20 #C8E6C9
+    usecase "Charge the 25 bps\ntrading fee" as UC20a #C8E6C9
+    usecase "Reject the creator's\nown trades" as UC20b #FFCC80
+    usecase "View the day-long\nprobability visualization" as UC21 #FFCC80
+  }
+
+  package "Admin and ops" {
+    usecase "Suspend an instance" as UC22 #C8E6C9
+    usecase "Grant units\nfrom the treasury" as UC23 #C8E6C9
+    usecase "Run reconciliation" as UC24 #C8E6C9
+  }
+}
+
+rectangle "External resolver API\nfixed request and response contract" as ResolverBoundary #F5F5F5 {
+  actor "External Resolver\n(bus timing service,\nqueue counter, ...)" as Resolver
+}
+
+Visitor --> UC1
+Trader --> UC2
+Trader --> UC4
+Trader --> UC5
+Trader --> UC18
+Trader --> UC19
+Trader --> UC20
+Trader --> UC21
+
+Creator --> UC6
+Creator --> UC8
+Creator --> UC9
+Creator --> UC10
+Creator --> UC11
+Creator --> UC14
+
+Admin --> UC7
+Admin --> UC22
+Admin --> UC23
+Admin --> UC24
+
+Scheduler --> UC12
+Worker --> UC13
+Worker --> UC15
+Worker --> UC17
+Resolver --> UC13
+
+UC1 ..> UC3 : <<include>>
+UC13 ..> UC13a : <<include>>
+UC14 ..> UC14a : <<include>>
+UC15 ..> UC16 : <<include>>
+UC20 ..> UC20a : <<include>>
+UC17 ..> UC15 : <<extend>>
+UC20b ..> UC20 : <<extend>>
+
+legend right
+  Colour key
+  <color:#C8E6C9>■</color> exists in the current build
+  <color:#FFF9C4>■</color> partial in the current build
+  <color:#FFCC80>■</color> new, planned (ADR 0005 to 0007)
+endlegend
+@enduml

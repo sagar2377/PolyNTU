@@ -75,6 +75,18 @@ When reviewing a claim:
 6. verify the documented working-tree/commit baseline; and
 7. report differences instead of choosing whichever statement is more convenient.
 
+## Planned requirements
+
+These product requirements are documented and not yet implemented. No row above claims any of them. The [use case model](use-cases.md) holds the full register, the flows, and the gap analysis, and the decisions are [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md), [ADR 0006](../decisions/0006-market-series-and-recurrence.md), and [ADR 0007](../decisions/0007-resolution-authority.md).
+
+| Planned requirement | Decision | Current build |
+|---|---|---|
+| NTU email registration and login with a 10,000-unit welcome gift | ADR 0005 | Display-name accounts with one-shot tokens; a 1,000-unit grant |
+| Creator verification workflow and creator-owned markets | ADR 0005, ADR 0006 | The administrator creates every instance |
+| Recurrence, active periods, rolling spawn, and the creator trading ban | ADR 0006 | Single fixed windows; no recurrence |
+| Creator-signed human resolution and external resolver endpoints | ADR 0007 | Evidence flows only through the administrator route |
+| Price and volume history chart, and the day-long probability view | Use case model (UC-19, UC-21) | Live probabilities and SSE updates only |
+
 ## Known unverified areas
 
 The frontend interaction model, visual layout/accessibility, Docker runtime, hosted CI, backup restoration, public hardening, multi-process capacity, and live evidence-provider behaviour do not currently have complete retained verification. Their documentation describes design or procedure and labels the gap.

@@ -2,6 +2,13 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026: Use case model and platform plan documented
+
+- Added the [use case model](developer/use-cases.md): six actors, a register of 24 use cases marked existing, partial, or planned, 13 business rules, the domain entities, and 12 detailed descriptions with preconditions, flows of events, and alternative flows.
+- Added the use case diagram as PlantUML source at `docs/diagrams/use-case.puml` with the rendered image beside it, regenerate with `scripts/render-diagrams.ps1`.
+- Recorded three proposed decisions: [ADR 0005](decisions/0005-ntu-accounts-and-creator-roles.md) (NTU email accounts, passwords, creator roles), [ADR 0006](decisions/0006-market-series-and-recurrence.md) (creator-owned series, recurrence, rolling spawn, creator trading ban), and [ADR 0007](decisions/0007-resolution-authority.md) (creator-signed human resolution, contracted external resolvers, administrator excluded).
+- Documented the gap between the plan and the current build, with four implementation phases. No platform behaviour changed in this record.
+
 ## 20 September 2026 — CI runs only the areas a commit affects
 
 - Added a `changes` job that detects whether a commit touched the backend, the frontend, or neither, and made the `verify` and `performance` jobs conditional on the result: backend changes gate the Rust checks and the performance benchmark, frontend changes gate the frontend lint and build, and commits touching neither skip both jobs.
