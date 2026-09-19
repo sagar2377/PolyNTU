@@ -669,16 +669,6 @@ pub fn demo_specs(now: i64) -> Vec<NewInstance> {
     let close = (now / 900000 + 1) * 900000;
     let definitions = vec![
         (
-            "bus-blue",
-            "Blue line · arrival at North Spine",
-            Rule::Bus {
-                route_id: "NTU-blue".into(),
-                direction: "clockwise".into(),
-                stop_id: "north-spine".into(),
-            },
-            600000,
-        ),
-        (
             "weather-rain",
             "Rainfall · campus weather station",
             Rule::Weather {
@@ -757,6 +747,31 @@ pub fn demo_specs(now: i64) -> Vec<NewInstance> {
     }).collect()
 }
 
+/// The demo bus market (ADR 0006): a rolling, fee-free welfare series. A new
+/// bracket every 2 minutes, at most 5 live at once, covering a rolling
+/// 10-minute horizon, only during operating hours.
+pub fn demo_series_spec() -> NewSeries {
+    NewSeries {
+        title: "Blue line · arrival at North Spine".into(),
+        resolution_criterion: "Yes if at least one matching bus arrives in the published [start, end) window. No requires complete observation coverage with no matching arrival. This market exists for student welfare: crowd-sourced arrival estimation, so no trading fee is charged.".into(),
+        rule: Rule::Bus {
+            route_id: "NTU-blue".into(),
+            direction: "clockwise".into(),
+            stop_id: "north-spine".into(),
+        },
+        source_id: "polyntu-simulator-v1".into(),
+        liquidity_units: 100,
+        fee_charged: false,
+        schedule: Schedule::Recurring {
+            interval_ms: 120000,
+            active_start_minute: 360,
+            active_end_minute: 1439,
+            max_concurrency: 5,
+            end_ms: None,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,8 +803,10 @@ mod tests {
     #[test]
     fn all_categories_have_deterministic_matching_evidence() {
         let specs = demo_specs(1000);
-        let categories: std::collections::HashSet<_> =
+        let mut categories: std::collections::HashSet<_> =
             specs.iter().map(|s| s.rule.category()).collect();
+        let series = demo_series_spec();
+        categories.insert(series.rule.category());
         assert_eq!(categories.len(), 5);
         for spec in specs {
             spec.validate(1000, true).unwrap();
@@ -809,6 +826,15 @@ mod tests {
                     .is_some()
             );
         }
+        series.validate(1000).unwrap();
+        let observation = series.rule.simulated("fixed-id", 0, 120000);
+        assert!(
+            series
+                .rule
+                .evaluate(&observation, 0, 120000)
+                .unwrap()
+                .is_some()
+        );
     }
     #[test]
     fn active_window_is_interpreted_in_singapore_time() {

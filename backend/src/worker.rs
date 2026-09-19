@@ -1,6 +1,6 @@
 use crate::{
     error::{Error, Result},
-    market::{EvidenceInput, Instance, demo_specs},
+    market::{EvidenceInput, Instance, demo_series_spec, demo_specs},
     store::Store,
 };
 
@@ -9,6 +9,18 @@ pub async fn seed_demo(store: &Store) -> Result<()> {
         return Ok(());
     }
     let now = store.now().await?;
+    // The bus demo is a rolling, fee-free welfare series (ADR 0006): a new
+    // bracket every 2 minutes, 5 live at once, during operating hours.
+    let seeded: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM market_series WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue')",
+    )
+    .fetch_one(&store.pool)
+    .await?;
+    if !seeded {
+        store
+            .create_series(None, &demo_series_spec(), "simulated")
+            .await?;
+    }
     for spec in demo_specs(now) {
         // One upcoming occurrence per template; elections are a single demo event.
         let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM instances WHERE template_id=$1 AND (close_ms>$2 OR category='elections'))")

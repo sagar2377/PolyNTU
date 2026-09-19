@@ -87,7 +87,7 @@ impl TestDb {
     }
     async fn spec(&self) -> NewInstance {
         let now = self.store.now().await.unwrap();
-        let mut spec = demo_specs(now).remove(1);
+        let mut spec = demo_specs(now).remove(0);
         spec.template_id = Uuid::new_v4().to_string();
         spec.data_mode = "manual".into();
         spec.source_id = "test-observer".into();
@@ -781,6 +781,64 @@ async fn creators_cannot_trade_in_their_own_markets() {
     db.finish().await;
 }
 
+#[tokio::test]
+async fn the_demo_bus_is_a_rolling_fee_free_series() {
+    let db = TestDb::new().await;
+    worker::seed_demo(&db.store).await.unwrap();
+    // Move the simulated clock inside the 06:00 to 23:59 operating window so
+    // the test does not depend on wall-clock time.
+    let now = db.store.now().await.unwrap();
+    let sgt_minute = (now / 60000 + 480) % 1440;
+    if !(360..=1370).contains(&sgt_minute) {
+        db.store
+            .advance_demo_clock((390 - sgt_minute + 1440) % 1440)
+            .await
+            .unwrap();
+    }
+    worker::tick(&db.store).await.unwrap();
+    let series_id: String = sqlx::query_scalar(
+        "SELECT id FROM market_series WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue'",
+    )
+    .fetch_one(&db.store.pool)
+    .await
+    .unwrap();
+    let view = db.store.series_view(&series_id).await.unwrap();
+    assert_eq!(view["fee_charged"], false);
+    assert_eq!(view["schedule"]["interval_ms"], 120000);
+    assert_eq!(view["schedule"]["max_concurrency"], 5);
+    assert_eq!(view["schedule"]["active_start_minute"], 360);
+    let live: Vec<&Value> = view["instances"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|i| i["state"] == "open")
+        .collect();
+    assert_eq!(
+        live.len(),
+        5,
+        "five live brackets cover a rolling 10 minutes"
+    );
+    let mut closes: Vec<i64> = live
+        .iter()
+        .map(|i| i["close_ms"].as_i64().unwrap())
+        .collect();
+    closes.sort_unstable();
+    for pair in closes.windows(2) {
+        assert_eq!(pair[1] - pair[0], 120000);
+    }
+    for bracket in &live {
+        assert_eq!(bracket["fee_charged"], false);
+        assert_eq!(bracket["category"], "bus");
+    }
+    // The old one-shot bus template is gone.
+    let templates: i64 = sqlx::query_scalar("SELECT count(*) FROM templates WHERE id='bus-blue'")
+        .fetch_one(&db.store.pool)
+        .await
+        .unwrap();
+    assert_eq!(templates, 0);
+    db.finish().await;
+}
+
 // The seeded demo administrator reaches admin routes through its session.
 #[tokio::test]
 async fn demo_databases_seed_an_administrator_account() {
@@ -1184,7 +1242,7 @@ async fn http_all_five_categories_buy_sell_resolve_and_authorization() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(instances.as_array().unwrap().len(), 7);
+    assert_eq!(instances.as_array().unwrap().len(), 6);
     for instance in instances.as_array().unwrap() {
         for (side, qty) in [("buy", 10000), ("sell", 5000)] {
             let (status,q)=http(&app,"POST","/api/v2/quotes",json!({"instance_id":instance["id"],"outcome_id":instance["outcomes"][0]["id"],"side":side,"quantity_millis":qty}),Some(&token),false,None).await;
@@ -1240,7 +1298,7 @@ async fn http_all_five_categories_buy_sell_resolve_and_authorization() {
     )
     .await
     .1;
-    assert_eq!(portfolio["settlements"].as_array().unwrap().len(), 7);
+    assert_eq!(portfolio["settlements"].as_array().unwrap().len(), 6);
     assert!(
         portfolio["positions"]
             .as_array()
@@ -1253,7 +1311,7 @@ async fn http_all_five_categories_buy_sell_resolve_and_authorization() {
         .fetch_one(&db.store.pool)
         .await
         .unwrap();
-    assert_eq!(count, 7);
+    assert_eq!(count, 6);
     db.finish().await;
 }
 
