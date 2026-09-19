@@ -730,6 +730,14 @@ impl Store {
         let mut tx = self.pool.begin().await?;
         let now = db_now(&mut tx).await?;
         spec.validate(now)?;
+        if let Some(crate::market::ResolutionSpec::Creator { .. }) = &spec.resolution {
+            // Human authority needs an account to hold the signing key.
+            if creator.is_none() {
+                return Err(invalid(
+                    "Creator resolution authority requires a creator-owned series",
+                ));
+            }
+        }
         if let Some(creator) = creator {
             let record = sqlx::query(
                 "SELECT role FROM accounts WHERE id=$1 AND kind='user' FOR NO KEY UPDATE",
@@ -774,8 +782,17 @@ impl Store {
                     *end_ms,
                 ),
             };
+        let (authority, public_key, endpoint) = match &spec.resolution {
+            None => ("admin", None, None),
+            Some(crate::market::ResolutionSpec::Creator { public_key }) => {
+                ("creator", Some(public_key.trim()), None)
+            }
+            Some(crate::market::ResolutionSpec::Resolver { endpoint }) => {
+                ("resolver", None, Some(endpoint.trim()))
+            }
+        };
         sqlx::query(
-            "INSERT INTO market_series(id,creator_account_id,title,resolution_criterion,rule,source_id,data_mode,liquidity_units,fee_charged,recurrence,interval_ms,active_start_minute,active_end_minute,max_concurrency,end_ms,anchor_ms,state,created_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'active',$17)",
+            "INSERT INTO market_series(id,creator_account_id,title,resolution_criterion,rule,source_id,data_mode,liquidity_units,fee_charged,recurrence,interval_ms,active_start_minute,active_end_minute,max_concurrency,end_ms,anchor_ms,resolution_authority,resolution_public_key,resolver_endpoint,state,created_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'active',$20)",
         )
         .bind(&id)
         .bind(creator)
@@ -793,6 +810,9 @@ impl Store {
         .bind(concurrency)
         .bind(end)
         .bind(now)
+        .bind(authority)
+        .bind(public_key)
+        .bind(endpoint)
         .bind(now)
         .execute(&mut *tx)
         .await?;
@@ -843,6 +863,8 @@ impl Store {
             "rule": series.rule.0, "source_id": series.source_id, "data_mode": series.data_mode,
             "liquidity_units": series.liquidity_units, "fee_charged": series.fee_charged,
             "state": series.state, "created_ms": series.created_ms,
+            "resolution": {"authority": series.resolution_authority,
+                "public_key": series.resolution_public_key, "endpoint": series.resolver_endpoint},
             "schedule": {
                 "kind": series.recurrence, "interval_ms": series.interval_ms,
                 "active_start_minute": series.active_start_minute, "active_end_minute": series.active_end_minute,

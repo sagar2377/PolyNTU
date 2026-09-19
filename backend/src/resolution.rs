@@ -61,6 +61,22 @@ impl Store {
                 "Resolution is already final; evidence cannot change credited results",
             ));
         }
+        // ADR 0007: the administrator cannot resolve a market whose authority
+        // is fixed to its creator or an external resolver, even with full API
+        // access; no valid signature or resolver answer can be produced here.
+        if !simulator && let Some(series_id) = &instance.series_id {
+            let authority: String =
+                sqlx::query_scalar("SELECT resolution_authority FROM market_series WHERE id=$1")
+                    .bind(series_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+            if authority != "admin" {
+                tx.commit().await?;
+                return Err(invalid(
+                    "This market's resolution authority is fixed at creation; administrator evidence cannot resolve it",
+                ));
+            }
+        }
         let replay = simulator
             && self.demo_mode
             && instance.data_mode == "simulated"

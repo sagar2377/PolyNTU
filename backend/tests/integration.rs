@@ -13,8 +13,8 @@ use polyntu::{
     execution::{QuoteRequest, TradeRequest},
     fee,
     market::{
-        EvidenceInput, Instance, NewInstance, NewSeries, Observation, Resolution, Rule, Schedule,
-        demo_specs,
+        EvidenceInput, Instance, NewInstance, NewSeries, Observation, Resolution, ResolutionSpec,
+        Rule, Schedule, demo_specs,
     },
     store::{Account, Store, db_now, transfer},
     worker,
@@ -484,6 +484,7 @@ fn rain_series(schedule: Schedule) -> NewSeries {
         source_id: "campus-observer".into(),
         liquidity_units: 100,
         fee_charged: true,
+        resolution: None,
         schedule,
     }
 }
@@ -836,6 +837,101 @@ async fn the_demo_bus_is_a_rolling_fee_free_series() {
         .await
         .unwrap();
     assert_eq!(templates, 0);
+    db.finish().await;
+}
+
+// ADR 0007: resolution authority is fixed at creation.
+#[tokio::test]
+async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
+    let db = TestDb::new().await;
+    let (creator, _) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    // Thirty-two zero bytes: structurally a valid ed25519 public key.
+    let public_key = format!("{}=", "A".repeat(43));
+    let mut spec = rain_series(Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    });
+    spec.resolution = Some(ResolutionSpec::Creator {
+        public_key: public_key.clone(),
+    });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    assert_eq!(view["resolution"]["authority"], "creator");
+    assert_eq!(view["resolution"]["public_key"], public_key);
+    let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+    let instance = db.store.instance(&instance_id).await.unwrap();
+    // The administrator evidence route rejects the creator-owned market.
+    let evidence = EvidenceInput {
+        source_id: instance.source_id.clone(),
+        event_id: "admin-attempt".into(),
+        source_revision: 0,
+        window_start_ms: instance.observation_start_ms,
+        window_end_ms: instance.observation_end_ms,
+        observation: Observation::Weather {
+            station_id: "demo-campus".into(),
+            total_milli_mm: 300,
+            complete: true,
+        },
+        reference: "administrator attempt on a creator-owned market".into(),
+    };
+    let rejected = db
+        .store
+        .ingest_evidence(&instance_id, &evidence)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        rejected.to_string(),
+        "This market's resolution authority is fixed at creation; administrator evidence cannot resolve it"
+    );
+    // Resolver authority stores the endpoint.
+    let mut resolver_spec = rain_series(Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    });
+    resolver_spec.resolution = Some(ResolutionSpec::Resolver {
+        endpoint: "https://resolver.example.com/answer".into(),
+    });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &resolver_spec, "manual")
+        .await
+        .unwrap();
+    assert_eq!(view["resolution"]["authority"], "resolver");
+    assert_eq!(
+        view["resolution"]["endpoint"],
+        "https://resolver.example.com/answer"
+    );
+    // Malformed authority inputs are rejected.
+    let mut short_key = resolver_spec.clone();
+    short_key.resolution = Some(ResolutionSpec::Creator {
+        public_key: "AAAA".into(),
+    });
+    assert!(
+        db.store
+            .create_series(Some(&creator.id), &short_key, "manual")
+            .await
+            .is_err()
+    );
+    let mut insecure = resolver_spec.clone();
+    insecure.resolution = Some(ResolutionSpec::Resolver {
+        endpoint: "http://insecure.example.com".into(),
+    });
+    assert!(
+        db.store
+            .create_series(Some(&creator.id), &insecure, "manual")
+            .await
+            .is_err()
+    );
     db.finish().await;
 }
 

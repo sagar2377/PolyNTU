@@ -3,6 +3,7 @@ use crate::{
     amm,
     error::{Result, invalid},
 };
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{FromRow, types::Json};
@@ -435,6 +436,9 @@ pub struct Series {
     pub max_concurrency: i64,
     pub end_ms: Option<i64>,
     pub anchor_ms: i64,
+    pub resolution_authority: String,
+    pub resolution_public_key: Option<String>,
+    pub resolver_endpoint: Option<String>,
     pub state: String,
     pub created_ms: i64,
 }
@@ -509,6 +513,49 @@ pub enum Schedule {
     },
 }
 
+/// How a series resolves (ADR 0007), fixed at creation. Absent means the
+/// platform administrator resolves it, as before.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ResolutionSpec {
+    /// Human authority: the creator signs every resolution with an ed25519
+    /// key this platform never holds; only the public key is published.
+    Creator { public_key: String },
+    /// Automatic authority: an external API that must answer with exactly
+    /// one of the published outcome identifiers.
+    Resolver { endpoint: String },
+}
+
+impl ResolutionSpec {
+    pub fn validate(&self) -> Result<()> {
+        match self {
+            Self::Creator { public_key } => {
+                let decoded = base64::engine::general_purpose::STANDARD
+                    .decode(public_key.trim())
+                    .map_err(|_| invalid("The resolution public key must be base64 encoded"))?;
+                if decoded.len() != 32 {
+                    return Err(invalid(
+                        "The resolution public key must be a 32-byte ed25519 key in base64",
+                    ));
+                }
+            }
+            Self::Resolver { endpoint } => {
+                let endpoint = endpoint.trim();
+                if !endpoint.starts_with("https://")
+                    || endpoint.len() < 12
+                    || endpoint.len() > 500
+                    || endpoint.chars().any(char::is_whitespace)
+                {
+                    return Err(invalid(
+                        "The resolver endpoint must be an https URL without whitespace",
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NewSeries {
@@ -521,6 +568,10 @@ pub struct NewSeries {
     /// fee and pay no creator share (welfare markets like bus timing).
     #[serde(default = "default_fee_charged")]
     pub fee_charged: bool,
+    /// Resolution authority fixed at creation (ADR 0007); absent means the
+    /// platform administrator resolves.
+    #[serde(default)]
+    pub resolution: Option<ResolutionSpec>,
     pub schedule: Schedule,
 }
 
@@ -627,6 +678,9 @@ impl NewSeries {
             return Err(invalid(
                 "Publish a title, source and a specific resolution criterion",
             ));
+        }
+        if let Some(resolution) = &self.resolution {
+            resolution.validate()?;
         }
         self.schedule.validate(now)
     }
@@ -762,6 +816,7 @@ pub fn demo_series_spec() -> NewSeries {
         source_id: "polyntu-simulator-v1".into(),
         liquidity_units: 100,
         fee_charged: false,
+        resolution: None,
         schedule: Schedule::Recurring {
             interval_ms: 120000,
             active_start_minute: 360,
