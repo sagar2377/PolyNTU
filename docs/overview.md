@@ -15,6 +15,7 @@ The current application deliberately uses direct outcomes rather than the call/p
 | Outcome share | A simulated claim on one mutually exclusive result. |
 | Probability | The current marginal LMSR price shown as a percentage. It reflects trading, not a provider forecast. |
 | Quote | A short-lived preview of the exact cost or proceeds for one proposed trade. |
+| Fee | A 0.25% trading fee included in every quote and trade. It accumulates in the market's reserve and is split between the platform and the recorded market creator when the market settles. |
 | Position | The shares an account currently owns in an instance/outcome. |
 | Evidence | A normalized observation submitted after the published observation window. |
 | Settlement claim | The unique final credit recorded for one account in one instance. |
@@ -37,7 +38,7 @@ The same pricing, ledger, quote, execution, and settlement infrastructure suppor
 1. A participant creates a demo account or receives an administrator-provisioned account token.
 2. The browser lists persisted market instances and their current outcome probabilities.
 3. The participant selects an outcome, buy or sell, and a share quantity.
-4. The backend calculates a signed quote without changing market state.
+4. The backend calculates a signed quote, including the trading fee, without changing market state.
 5. After confirmation, the browser saves the exact request and a new idempotency key before sending it.
 6. The backend rechecks the quote, account, market version, cutoff, balance, holdings, and reserve inside one database transaction.
 7. A successful commit updates the ledger, position, inventory, durable receipt, and public outbox event together.

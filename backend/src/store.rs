@@ -121,6 +121,7 @@ pub fn instance_view(instance: &Instance, now: i64) -> Result<Value> {
         "observation_start_ms": instance.observation_start_ms, "observation_end_ms": instance.observation_end_ms,
         "finalize_after_ms": instance.finalize_after_ms, "evidence_deadline_ms": instance.evidence_deadline_ms,
         "liquidity_units": instance.liquidity_units, "result": instance.result,
+        "creator_account_id": instance.creator_account_id,
         "evidence_id": instance.evidence_id, "server_time_ms": now,
         "void_policy": "Each outcome share redeems for 1/n units; aggregate account credits round down to a micro-unit."
     }))
@@ -372,6 +373,15 @@ impl Store {
                 "An instance already exists for this template and close time",
             ));
         }
+        if let Some(creator) = &spec.creator_account_id {
+            let kind: Option<String> = sqlx::query_scalar("SELECT kind FROM accounts WHERE id=$1")
+                .bind(creator)
+                .fetch_optional(&mut *tx)
+                .await?;
+            if kind.as_deref() != Some("user") {
+                return Err(invalid("Creator must be an existing participant account"));
+            }
+        }
         sqlx::query("INSERT INTO accounts(id,display_name,kind) VALUES($1,$2,'reserve')")
             .bind(&reserve)
             .bind(&spec.title)
@@ -391,11 +401,12 @@ impl Store {
             now,
         )
         .await?;
-        sqlx::query("INSERT INTO instances(id,template_id,category,title,resolution_criterion,rule,outcomes,source_id,data_mode,close_ms,observation_start_ms,observation_end_ms,finalize_after_ms,evidence_deadline_ms,liquidity_units,inventory,reserve_account_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)")
+        sqlx::query("INSERT INTO instances(id,template_id,category,title,resolution_criterion,rule,outcomes,source_id,data_mode,close_ms,observation_start_ms,observation_end_ms,finalize_after_ms,evidence_deadline_ms,liquidity_units,inventory,reserve_account_id,creator_account_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)")
             .bind(&id).bind(&spec.template_id).bind(spec.rule.category()).bind(&spec.title).bind(&spec.resolution_criterion)
             .bind(Json(&spec.rule)).bind(Json(&outcomes)).bind(&spec.source_id).bind(&spec.data_mode)
             .bind(spec.close_ms).bind(spec.observation_start_ms).bind(spec.observation_end_ms).bind(spec.finalize_after_ms)
-            .bind(spec.evidence_deadline_ms).bind(spec.liquidity_units).bind(vec![0i64; outcomes.len()]).bind(&reserve).execute(&mut *tx).await?;
+            .bind(spec.evidence_deadline_ms).bind(spec.liquidity_units).bind(vec![0i64; outcomes.len()]).bind(&reserve)
+            .bind(&spec.creator_account_id).execute(&mut *tx).await?;
         event(&mut tx, &id, 0, "opened", now).await?;
         audit(&mut tx, "create_instance", Some(&id), json!(spec), now).await?;
         tx.commit().await?;

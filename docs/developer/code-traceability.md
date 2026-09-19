@@ -22,6 +22,7 @@ This matrix helps human reviewers verify that documented promises correspond to 
 | Evidence revisions append-only/deduplicated | `record_evidence` | unique event/revision; immutable trigger | out-of-order/idempotency test |
 | Settlement resumes without double credit | `settle_batch` selection/batching | claim primary key, unique ledger reference | failed/resumed batch tests |
 | Reserve remains funded | trade liability check, settlement balance check | nonnegative reserve account | properties, reconcile, settlement workload |
+| Trading fee is charged and split with the creator | `fee` module, all-in quotes/execution, `settle_batch` fee split | `trades.fee_micros`, `instances.creator_account_id`, `fee` ledger kind | fee/creator integration test; reconciliation |
 | Public updates survive reconnect | outbox insert plus SSE cursor | durable outbox sequence/index | HTTP workload holds streams; propagation not percentile-tested |
 | Account portfolios are private | bearer-derived account ID | account foreign keys | unauthorized and account-bound quote tests |
 

@@ -2,6 +2,13 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026 — Trading fees and market-creator revenue share
+
+- Every trade now pays a 25-basis-point fee on the LMSR amount, rounded against the trader. Quotes and receipts expose all-in amounts with the fee reported separately; `limit_micros` bounds the all-in amount, so existing clients that echo the quoted amount are unaffected.
+- The fee rides inside the single trader/reserve transfer and accumulates in the reserve as a per-instance pot, avoiding a per-trade hot row on the treasury account.
+- At settlement the pot is split 50/50 between the platform treasury and the instance's recorded market creator (`instances.creator_account_id`, optional and immutable); platform-created markets pay their whole pot to the treasury.
+- The pure LMSR engine, its fixtures, and the reserve-coverage invariant are unchanged; the fee is policy in the new `fee` module. See [ADR 0004](decisions/0004-trade-fees.md).
+
 ## 20 September 2026 — CI workflow fixes and action updates
 
 - Fixed the `performance` job's `rust-cache` step, which failed with `spawn ENOTDIR` before any cache work: the `workspaces` input takes the workspace root directory, not a `Cargo.toml` path, because the action runs `cargo metadata` with that value as its working directory. The action logged the error but exited successfully, so the job stayed green while silently skipping both cache restore and save.

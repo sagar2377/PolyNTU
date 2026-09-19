@@ -69,7 +69,7 @@ The constraint `(kind='user') = (token_hash IS NOT NULL)` prevents credentials o
 
 Each row represents one balanced movement. Required fields are source, destination, nonnegative amount, kind, unique reference, and time. Source and destination must differ.
 
-Kinds are `issuance`, `grant`, `subsidy`, `buy`, `sell`, `resolution`, and `release`.
+Kinds are `issuance`, `grant`, `subsidy`, `buy`, `sell`, `resolution`, `release`, and `fee`.
 
 The `apply_transfer` trigger locks both account rows in sorted ID order with `FOR NO KEY UPDATE`, subtracts from the source, and adds to the destination. Account constraints abort the entire transaction if a non-issuance balance becomes negative.
 
@@ -96,7 +96,8 @@ One row owns a concrete market occurrence:
 - five absolute times;
 - fixed liquidity;
 - millishare inventory array and version;
-- unique reserve-account reference; and
+- unique reserve-account reference;
+- optional immutable creator-account reference, used to split the settled fee pot; and
 - selected result/evidence references.
 
 Important constraints:
@@ -111,9 +112,9 @@ Important constraints:
 
 The partial due index covers nonterminal states; the browse index covers template and reverse close time.
 
-The `protect_instance` trigger introduced in migration 0002:
+The `protect_instance` trigger introduced in migration 0002 (creator attribution added in migration 0005):
 
-1. rejects any change to published definition/funding fields;
+1. rejects any change to published definition/funding/creator fields;
 2. requires `version = old.version + 1` for every update;
 3. rejects updates to terminal rows;
 4. keeps a fixed result immutable;
@@ -138,7 +139,7 @@ Rows are not currently expired or compacted. Their foreign key to accounts parti
 
 ### `trades`
 
-Trades record account, instance, outcome index, side, positive quantity, nonnegative amount, resulting instance version, engine version, and time. `(instance_id, instance_version)` is unique, enforcing one trade per consumed version.
+Trades record account, instance, outcome index, side, positive quantity, nonnegative all-in amount, the fee component (`fee_micros`, migration 0005), resulting instance version, engine version, and time. `(instance_id, instance_version)` is unique, enforcing one trade per consumed version. The settled fee pot of an instance is `sum(fee_micros)`.
 
 The table is append-only. Account/time index supports private history.
 

@@ -7,11 +7,12 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use polyntu::{
-    amm::Side,
+    amm::{self, Side},
     api::{AppState, router},
     auth,
     execution::{QuoteRequest, TradeRequest},
-    market::{EvidenceInput, Instance, Observation, Resolution, Rule, demo_specs},
+    fee,
+    market::{EvidenceInput, Instance, NewInstance, Observation, Resolution, Rule, demo_specs},
     store::{Account, Store, db_now, transfer},
     worker,
 };
@@ -62,7 +63,7 @@ impl TestDb {
         let token = session["token"].as_str().unwrap().to_owned();
         (self.store.account_for_token(&token).await.unwrap(), token)
     }
-    async fn market(&self, rule: Option<Rule>) -> Instance {
+    async fn spec(&self) -> NewInstance {
         let now = self.store.now().await.unwrap();
         let mut spec = demo_specs(now).remove(1);
         spec.template_id = Uuid::new_v4().to_string();
@@ -73,9 +74,18 @@ impl TestDb {
         spec.observation_end_ms = now + 120000;
         spec.finalize_after_ms = now + 240000;
         spec.evidence_deadline_ms = now + 360000;
+        spec
+    }
+    async fn market(&self, rule: Option<Rule>) -> Instance {
+        let mut spec = self.spec().await;
         if let Some(rule) = rule {
             spec.rule = rule;
         }
+        self.store.create_instance(&spec).await.unwrap()
+    }
+    async fn market_by(&self, creator: &str) -> Instance {
+        let mut spec = self.spec().await;
+        spec.creator_account_id = Some(creator.into());
         self.store.create_instance(&spec).await.unwrap()
     }
     async fn finish(self) {
@@ -742,5 +752,129 @@ async fn settlement_resumes_after_a_committed_batch() {
         "resolved"
     );
     reopened.pool.close().await;
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn trading_fees_are_charged_and_split_with_the_creator() {
+    let db = TestDb::new().await;
+    let (trader, _) = db.account().await;
+    let (creator, _) = db.account().await;
+    let mut bad = db.spec().await;
+    bad.creator_account_id = Some("treasury".into());
+    assert!(db.store.create_instance(&bad).await.is_err());
+    let market = db.market_by(&creator.id).await;
+    let plain = db.market(None).await;
+    assert_eq!(
+        db.store
+            .instance(&market.id)
+            .await
+            .unwrap()
+            .creator_account_id,
+        Some(creator.id.clone())
+    );
+
+    // The quoted and charged amount is all-in; the fee rides inside it.
+    let receipt = buy(&db, &trader, &market, 10000).await;
+    assert_eq!(receipt["amount_micros"], "5137761");
+    assert_eq!(receipt["fee_micros"], "12813");
+    assert_eq!(receipt["balance_micros"], "994862239");
+    let engine_sell = amm::calculate(&[10000, 0], 100, 0, Side::Sell, 10000)
+        .unwrap()
+        .amount_micros;
+    let sell_fee = fee::trade_fee(engine_sell);
+    let sold = db
+        .store
+        .execute(
+            &trader.id,
+            &Uuid::new_v4().to_string(),
+            &quote(&db, &trader, &market, Side::Sell, 10000).await,
+            SECRET,
+        )
+        .await
+        .unwrap();
+    assert_eq!(sold["fee_micros"], sell_fee.to_string());
+    assert_eq!(sold["amount_micros"], (engine_sell - sell_fee).to_string());
+
+    // A platform-created market keeps its whole fee pot for the treasury.
+    let plain_engine = amm::calculate(&[0, 0], 100, 0, Side::Buy, 5000)
+        .unwrap()
+        .amount_micros;
+    buy(&db, &trader, &plain, 5000).await;
+
+    db.store.advance_demo_clock(3).await.unwrap();
+    db.store.close_due().await.unwrap();
+    for instance in [&market, &plain] {
+        db.store
+            .ingest_evidence(&instance.id, &rain(instance, 1, 500))
+            .await
+            .unwrap();
+    }
+    db.store.advance_demo_clock(2).await.unwrap();
+    for instance in [&market, &plain] {
+        db.store.settle_batch(&instance.id).await.unwrap();
+        assert_eq!(
+            db.store.instance(&instance.id).await.unwrap().state,
+            "resolved"
+        );
+    }
+    async fn ledger(pool: &sqlx::PgPool, reference: String) -> i64 {
+        sqlx::query_scalar("SELECT amount_micros FROM ledger_transfers WHERE reference=$1")
+            .bind(reference)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+    let pot = 12813 + sell_fee;
+    let creator_cut = fee::creator_share(pot, true);
+    assert_eq!(
+        ledger(&db.store.pool, format!("fee:{}:creator", market.id)).await,
+        creator_cut
+    );
+    assert_eq!(
+        ledger(&db.store.pool, format!("fee:{}:treasury", market.id)).await,
+        pot - creator_cut
+    );
+    assert_eq!(
+        ledger(&db.store.pool, format!("fee:{}:treasury", plain.id)).await,
+        fee::trade_fee(plain_engine)
+    );
+    let orphaned: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM ledger_transfers WHERE reference=$1")
+            .bind(format!("fee:{}:creator", plain.id))
+            .fetch_one(&db.store.pool)
+            .await
+            .unwrap();
+    assert_eq!(orphaned, 0);
+    // The trader's surviving position settles at one unit per share; the
+    // creator account earned only its fee share.
+    assert_eq!(
+        db.store
+            .account_by_id(&trader.id)
+            .await
+            .unwrap()
+            .balance_micros,
+        (994_862_239 + engine_sell - sell_fee + 5_000_000
+            - fee::charged(plain_engine, true).unwrap())
+        .to_string()
+    );
+    assert_eq!(
+        db.store
+            .account_by_id(&creator.id)
+            .await
+            .unwrap()
+            .balance_micros,
+        (1_000_000_000 + creator_cut).to_string()
+    );
+    for instance in [&market, &plain] {
+        let reserve: i64 = sqlx::query_scalar(
+            "SELECT a.balance_micros FROM accounts a JOIN instances i ON i.reserve_account_id=a.id WHERE i.id=$1",
+        )
+        .bind(&instance.id)
+        .fetch_one(&db.store.pool)
+        .await
+        .unwrap();
+        assert_eq!(reserve, 0);
+    }
     db.finish().await;
 }

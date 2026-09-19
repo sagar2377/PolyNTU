@@ -313,6 +313,10 @@ pub struct NewInstance {
     pub finalize_after_ms: i64,
     pub evidence_deadline_ms: i64,
     pub liquidity_units: i64,
+    /// Participant account credited with the creator's half of the settled fee
+    /// pot. Absent for platform-created instances, whose fees go to the treasury.
+    #[serde(default)]
+    pub creator_account_id: Option<String>,
 }
 
 impl NewInstance {
@@ -377,6 +381,7 @@ pub struct Instance {
     pub inventory: Vec<i64>,
     pub version: i64,
     pub reserve_account_id: String,
+    pub creator_account_id: Option<String>,
     pub result: Option<Json<Resolution>>,
     pub evidence_id: Option<String>,
 }
@@ -492,7 +497,7 @@ pub fn demo_specs(now: i64) -> Vec<NewInstance> {
         NewInstance { template_id: id.into(), title: title.into(), resolution_criterion: format!("{criterion} Demo: deterministic simulated evidence. Missing final evidence voids shares at 1/n units each."),
             rule, source_id: "polyntu-simulator-v1".into(), data_mode: "simulated".into(), close_ms: close,
             observation_start_ms: close, observation_end_ms: close + duration, finalize_after_ms: close + duration + 1000,
-            evidence_deadline_ms: close + duration + 60000, liquidity_units: 100 }
+            evidence_deadline_ms: close + duration + 60000, liquidity_units: 100, creator_account_id: None }
     }).collect()
 }
 

@@ -7,6 +7,7 @@ pub mod cache;
 pub mod error;
 pub mod events;
 pub mod execution;
+pub mod fee;
 pub mod market;
 pub mod resolution;
 pub mod store;

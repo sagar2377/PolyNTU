@@ -1,6 +1,7 @@
 use crate::{
     auth,
     error::{Error, Result, conflict, invalid},
+    fee,
     market::{EvidenceInput, Instance, Resolution},
     store::{Store, audit, balance, db_now, event, lock_accounts, transfer},
 };
@@ -247,6 +248,9 @@ impl Store {
         let mut locks = accounts.clone();
         locks.push(instance.reserve_account_id.clone());
         locks.push("treasury".into());
+        if let Some(creator) = &instance.creator_account_id {
+            locks.push(creator.clone());
+        }
         lock_accounts(&mut tx, &locks).await?;
         for account in &accounts {
             let holdings = sqlx::query("SELECT outcome_index,quantity_millis FROM positions WHERE instance_id=$1 AND account_id=$2")
@@ -288,16 +292,50 @@ impl Store {
             .bind(id).fetch_one(&mut *tx).await?;
         if !outstanding {
             let unused = balance(&mut tx, &instance.reserve_account_id).await?;
+            // Trading fees accumulated inside the reserve are split between the
+            // treasury and the recorded creator; the remainder is the subsidy
+            // plus trading surplus released back to the platform.
+            let fees: i64 = sqlx::query_scalar(
+                "SELECT coalesce(sum(fee_micros),0)::BIGINT FROM trades WHERE instance_id=$1",
+            )
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
+            let creator_cut = fee::creator_share(fees, instance.creator_account_id.is_some());
             transfer(
                 &mut tx,
                 &instance.reserve_account_id,
                 "treasury",
-                unused,
+                unused - fees,
                 "release",
                 &format!("release:{id}"),
                 now,
             )
             .await?;
+            if fees - creator_cut > 0 {
+                transfer(
+                    &mut tx,
+                    &instance.reserve_account_id,
+                    "treasury",
+                    fees - creator_cut,
+                    "fee",
+                    &format!("fee:{id}:treasury"),
+                    now,
+                )
+                .await?;
+            }
+            if let (Some(creator), true) = (&instance.creator_account_id, creator_cut > 0) {
+                transfer(
+                    &mut tx,
+                    &instance.reserve_account_id,
+                    creator,
+                    creator_cut,
+                    "fee",
+                    &format!("fee:{id}:creator"),
+                    now,
+                )
+                .await?;
+            }
             let terminal = if matches!(result, Resolution::Void { .. }) {
                 "voided"
             } else {

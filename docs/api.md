@@ -170,6 +170,7 @@ Instance list and detail endpoints share the following core fields:
 | timing fields | `close_ms`, `observation_start_ms`, `observation_end_ms`, `finalize_after_ms`, and `evidence_deadline_ms`. |
 | `liquidity_units` | Fixed LMSR parameter `b`. |
 | `result` | `null`, `{"kind":"winner","outcome":0}`, or `{"kind":"void","reason":"..."}`. |
+| `creator_account_id` | Optional participant account credited with the creator's half of the settled trading-fee pot. |
 | `evidence_id` | Selected highest-revision evidence record, when present. |
 | `server_time_ms` | Authoritative time used to build the view. |
 | `void_policy` | Human-readable uniform fractional redemption policy. |
@@ -223,17 +224,18 @@ Example response:
   "outcome_id": "yes",
   "side": "buy",
   "quantity_millis": 10000,
-  "amount_micros": "5124948",
+  "amount_micros": "5137761",
+  "fee_micros": "12813",
   "version": 0,
   "expires_ms": 1788912015000,
   "server_time_ms": 1788912000000,
-  "average_price": 0.5124948,
+  "average_price": 0.5137761,
   "price_before": 0.5,
   "price_after": 0.5249791875
 }
 ```
 
-The exact price fields depend on inventory and liquidity. The token embeds the authoritative rounded amount and expires after at most 15 seconds.
+`amount_micros` is the all-in debit (buy) or credit (sell): the LMSR amount plus a 25-basis-point trading fee, reported separately as `fee_micros` and rounded against the trader. `average_price` divides the all-in amount by the quantity. The exact fields depend on inventory and liquidity. The token embeds the authoritative rounded amount and fee and expires after at most 15 seconds.
 
 ## Trades and idempotency
 
@@ -257,6 +259,7 @@ The idempotency key must contain 1–120 ASCII letters, digits, hyphens, or unde
 
 - For a buy, `limit_micros` is the maximum debit.
 - For a sale, it is the minimum credit.
+- Amounts are all-in: they include the 25-basis-point trading fee.
 - Using the quoted amount confirms exactly the previewed financial result.
 - Reusing a key with the identical body returns its stored response.
 - Reusing it with another body returns 409.
@@ -271,8 +274,9 @@ Successful response:
   "outcome_id": "yes",
   "side": "buy",
   "quantity_millis": 10000,
-  "amount_micros": "5124948",
-  "balance_micros": "994875052",
+  "amount_micros": "5137761",
+  "fee_micros": "12813",
+  "balance_micros": "994862239",
   "owned_millis": 10000,
   "version": 1,
   "created_ms": 1788912001000
@@ -320,7 +324,8 @@ Returns private trades ordered newest first. Each entry contains trade/instance 
   "observation_end_ms": 1788836400000,
   "finalize_after_ms": 1788836460000,
   "evidence_deadline_ms": 1788837000000,
-  "liquidity_units": 100
+  "liquidity_units": 100,
+  "creator_account_id": "optional-participant-account-uuid"
 }
 ```
 
@@ -331,7 +336,8 @@ Validation includes:
 - valid typed rule and derived category/outcomes;
 - future `close <= observation start < observation end <= finalize < deadline`;
 - evidence deadline within one year of creation;
-- liquidity 10–100,000; and
+- liquidity 10–100,000;
+- `creator_account_id`, when present, must be an existing participant account and is immutable after publication; and
 - simulated mode only in demo mode with source `polyntu-simulator-v1`.
 
 Creation immediately funds and opens the instance. There is no draft/edit endpoint.

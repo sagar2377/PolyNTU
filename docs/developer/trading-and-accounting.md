@@ -65,11 +65,19 @@ This formula avoids subtracting two large approximate cost totals. The supported
 At uniform binary inventory `[0,0]`, liquidity `b=100`, and a buy of 10 shares (`10,000` millishares) in outcome 0, the retained reference result is:
 
 ```text
-amount_micros = 5,124,948
-average price = 5.124948 units / 10 shares = 0.5124948
+LMSR amount  = 5,124,948 microcredits
+fee          = 12,813 microcredits (0.25%, rounded up)
+amount_micros = 5,137,761 microcredits (all-in debit)
+average price = 5.137761 units / 10 shares = 0.5137761
 ```
 
-The marginal price begins at 0.5 and ends above 0.5. Selling the same 10 shares immediately returns no more than the debit; the tested rounding difference is at most one microcredit.
+The marginal price begins at 0.5 and ends above 0.5. The LMSR part of a round trip returns everything except at most one microcredit of rounding; the fee does not return.
+
+## Trading fees
+
+Every trade pays `fee::trade_fee(amount) = ceil(amount × 25 / 10,000)` on the pure LMSR amount, rounded against the trader on both sides, so the fee never exceeds its amount and a sale never credits below zero. Quotes and receipts expose all-in amounts: `amount_micros` includes the fee and `fee_micros` states it separately.
+
+The fee rides inside the single trader/reserve ledger transfer and accumulates in the reserve as an implicit per-instance pot (the sum of `trades.fee_micros`). At settlement, after the last claim, the pot leaves the reserve as explicit `fee` transfers: the creator's floor half to the recorded creator account and the remainder to the treasury, which keeps any odd microcredit. Platform-created instances have no creator, so their whole pot is treasury revenue. Direct per-trade transfers to the treasury were rejected because they would serialize all trades on the treasury account row; see [ADR 0004](../decisions/0004-trade-fees.md).
 
 ## Quote contract
 
@@ -78,7 +86,7 @@ A quote reads current instance state and creates signed `QuoteClaims` containing
 - authenticated account ID;
 - instance and outcome IDs;
 - side and quantity;
-- exact rounded amount;
+- exact rounded LMSR amount and its fee;
 - instance version;
 - expiry at `min(now + 15 seconds, close)`; and
 - engine compatibility version.
@@ -87,10 +95,10 @@ The JSON body is base64url-encoded and authenticated with HMAC-SHA256. Clients m
 
 ## User limits
 
-`limit_micros` is always a nonnegative integer string:
+`limit_micros` is always a nonnegative integer string bounding the all-in amount:
 
-- buy: reject when recalculated debit is greater than the limit;
-- sell: reject when recalculated proceeds are less than the limit.
+- buy: reject when recalculated debit including the fee is greater than the limit;
+- sell: reject when recalculated proceeds after the fee is less than the limit.
 
 The current UI uses the quoted amount, confirming exactly the displayed financial result. The field leaves room for future clients to express a compatible bound without trusting the displayed floating-point probability.
 
@@ -129,9 +137,9 @@ After waiting for locks, execution rechecks:
 2. persisted state is open and not suspended;
 3. signed account and engine are correct;
 4. signed version equals current instance version;
-5. recomputed rounded amount equals the signed amount;
-6. user limit accepts the amount;
-7. buyer balance covers the debit or seller holdings cover the quantity; and
+5. recomputed rounded amount and fee equal the signed values;
+6. user limit accepts the all-in amount;
+7. buyer balance covers the all-in debit or seller holdings cover the quantity; and
 8. resulting reserve balance covers maximum inventory liability.
 
 Checking time after locking prevents a request queued before close from executing after close.
@@ -140,11 +148,11 @@ Checking time after locking prevents a request queued before close from executin
 
 A successful trade transaction writes:
 
-1. a ledger transfer (`buy` user→reserve or `sell` reserve→user);
+1. a ledger transfer of the all-in amount (`buy` user→reserve or `sell` reserve→user), which carries the fee into the reserve;
 2. updated materialized balances through the transfer trigger;
 3. the account/outcome position;
 4. new instance inventory and exactly one version increment;
-5. one immutable trade using that resulting version;
+5. one immutable trade using that resulting version, recording the all-in amount and the fee separately;
 6. the durable idempotency receipt; and
 7. one `trade` outbox event.
 
@@ -152,7 +160,7 @@ The commit occurs before the HTTP response. A failure at any insertion rolls all
 
 ## Receipt fields
 
-The receipt identifies the trade and instance/outcome, repeats side/quantity/amount, and returns post-trade balance, post-trade owned quantity, resulting instance version, and server creation time. It is stored as JSON in the idempotency row, so future exact retries return byte-equivalent data after serialization.
+The receipt identifies the trade and instance/outcome, repeats side/quantity/all-in amount plus the fee, and returns post-trade balance, post-trade owned quantity, resulting instance version, and server creation time. It is stored as JSON in the idempotency row, so future exact retries return byte-equivalent data after serialization.
 
 ## Ledger flows
 
@@ -160,10 +168,12 @@ The receipt identifies the trade and instance/outcome, repeats side/quantity/amo
 issuance --initial issuance--> treasury
 treasury --grant-------------> user
 treasury --subsidy-----------> reserve
-user     --buy---------------> reserve
-reserve  --sell--------------> user
+user     --buy (all-in)-----> reserve
+reserve  --sell (all-in)----> user
 reserve  --resolution--------> user
 reserve  --release-----------> treasury
+reserve  --fee---------------> treasury  (settled fee pot, creatorless share)
+reserve  --fee---------------> creator   (settled fee pot, creator share)
 ```
 
 The issuance account is deliberately negative by the total issued amount. All other account kinds have database nonnegative checks. Summing every account balance should remain zero.
@@ -171,6 +181,8 @@ The issuance account is deliberately negative by the total issued amount. All ot
 ## Settlement accounting
 
 For a winner, each winning millishare credits 1,000 microcredits. For a void across `n` outcomes, the account's positive millishares across all outcomes are summed, multiplied by 1,000, divided by `n`, and rounded down by integer division.
+
+When the last claim is credited, the accumulated fee pot is paid out of the reserve before the remaining balance releases to the treasury: the creator's floor half (when the instance records a creator) and the treasury's remainder.
 
 Historical positions remain; a unique settlement claim records the actual aggregate credit. This prevents a multi-outcome account credit from appearing once per position.
 

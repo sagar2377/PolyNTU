@@ -2,7 +2,7 @@ use crate::{
     amm::{self, Side},
     auth,
     error::{Error, Result, conflict, invalid},
-    events,
+    events, fee,
     market::Instance,
     store::{Store, transfer},
 };
@@ -28,6 +28,7 @@ pub struct QuoteClaims {
     pub side: Side,
     pub quantity_millis: i64,
     pub amount_micros: i64,
+    pub fee_micros: i64,
     pub version: i64,
     pub expires_ms: i64,
     pub engine: String,
@@ -72,6 +73,9 @@ impl Store {
             request.side,
             request.quantity_millis,
         )?;
+        let fee_micros = fee::trade_fee(calculation.amount_micros);
+        // The signed amount is the all-in debit/credit the trader confirms.
+        let total_micros = fee::charged(calculation.amount_micros, request.side == Side::Buy)?;
         let claims = QuoteClaims {
             account_id: account_id.into(),
             instance_id: instance.id.clone(),
@@ -79,6 +83,7 @@ impl Store {
             side: request.side,
             quantity_millis: request.quantity_millis,
             amount_micros: calculation.amount_micros,
+            fee_micros,
             version: instance.version,
             expires_ms: (now + 15000).min(instance.close_ms),
             engine: amm::ENGINE_VERSION.into(),
@@ -86,8 +91,8 @@ impl Store {
         Ok(
             json!({"quote_token":auth::sign(&claims, secret.as_bytes())?,"instance_id":claims.instance_id,
             "outcome_id":request.outcome_id,"side":request.side,"quantity_millis":request.quantity_millis,
-            "amount_micros":calculation.amount_micros.to_string(),"version":instance.version,"expires_ms":claims.expires_ms,
-            "server_time_ms":now,"average_price":calculation.amount_micros as f64 / (request.quantity_millis as f64 * 1000.0),
+            "amount_micros":total_micros.to_string(),"fee_micros":fee_micros.to_string(),"version":instance.version,"expires_ms":claims.expires_ms,
+            "server_time_ms":now,"average_price":total_micros as f64 / (request.quantity_millis as f64 * 1000.0),
             "price_before":calculation.prices_before[outcome],"price_after":calculation.prices_after[outcome]}),
         )
     }
@@ -151,8 +156,8 @@ impl Store {
             DO UPDATE SET quantity_millis=EXCLUDED.quantity_millis
             RETURNING account_id
         ), trade AS (
-            INSERT INTO trades(id,account_id,instance_id,outcome_index,side,quantity_millis,amount_micros,instance_version,engine_version,created_ms)
-            VALUES($8,$2,$1,$6,$9,$10,$11,$5,$12,$13) RETURNING id
+            INSERT INTO trades(id,account_id,instance_id,outcome_index,side,quantity_millis,amount_micros,fee_micros,instance_version,engine_version,created_ms)
+            VALUES($8,$2,$1,$6,$9,$10,$11,$16,$5,$12,$13) RETURNING id
         ), reply AS (
             UPDATE idempotency SET response=$14
             WHERE account_id=$2 AND key=$3 RETURNING key
@@ -228,8 +233,15 @@ impl Store {
             return Err(conflict("Quote calculation changed. Request a new quote"));
         }
         let amount = calculation.amount_micros;
+        let fee_micros = fee::trade_fee(amount);
+        if fee_micros != claims.fee_micros {
+            return Err(conflict("Quote calculation changed. Request a new quote"));
+        }
+        // The ledger moves one all-in amount; the fee rides inside it and is
+        // split out of the reserve when the instance settles.
+        let total = fee::charged(amount, claims.side == Side::Buy)?;
         let is_buy = claims.side == Side::Buy;
-        if is_buy && amount > limit || !is_buy && amount < limit {
+        if is_buy && total > limit || !is_buy && total < limit {
             return Err(conflict("Trade exceeds your cost/proceeds limit"));
         }
         // Lock both accounts and read balances and the current position in
@@ -255,7 +267,7 @@ impl Store {
             .ok_or_else(|| Error::Internal("User account row missing under lock".into()))?;
         let reserve_balance = balance_of(&instance.reserve_account_id)
             .ok_or_else(|| Error::Internal("Reserve account row missing under lock".into()))?;
-        if is_buy && user_balance < amount {
+        if is_buy && user_balance < total {
             return Err(conflict("Insufficient simulated units"));
         }
         if !is_buy && current < claims.quantity_millis {
@@ -267,7 +279,7 @@ impl Store {
             } else {
                 -claims.quantity_millis
             };
-        let remaining_reserve = reserve_balance + if is_buy { amount } else { -amount };
+        let remaining_reserve = reserve_balance + if is_buy { total } else { -total };
         let liability = calculation.inventory.iter().max().copied().unwrap_or(0) * 1000;
         if remaining_reserve < liability {
             return Err(conflict(
@@ -285,16 +297,17 @@ impl Store {
             &mut tx,
             from,
             to,
-            amount,
+            total,
             side,
             &format!("trade:{trade_id}"),
             now,
         )
         .await?;
-        let balance_after = user_balance + if is_buy { -amount } else { amount };
+        let balance_after = user_balance + if is_buy { -total } else { total };
         let version = instance.version + 1;
         let response = json!({"trade_id":trade_id,"instance_id":instance.id,"outcome_id":claims.outcome_id,
-            "side":claims.side,"quantity_millis":claims.quantity_millis,"amount_micros":amount.to_string(),
+            "side":claims.side,"quantity_millis":claims.quantity_millis,"amount_micros":total.to_string(),
+            "fee_micros":fee_micros.to_string(),
             "balance_micros":balance_after.to_string(),"owned_millis":owned,
             "version":version,"created_ms":now});
         let finalized = sqlx::query(Self::FINALIZE_TRADE)
@@ -308,11 +321,12 @@ impl Store {
             .bind(&trade_id)
             .bind(side)
             .bind(claims.quantity_millis)
-            .bind(amount)
+            .bind(total)
             .bind(amm::ENGINE_VERSION)
             .bind(now)
             .bind(Json(&response))
             .bind(events::CHANNEL)
+            .bind(fee_micros)
             .fetch_one(&mut *tx)
             .await?;
         if finalized.get::<i64, _>("updated_count") != 1

@@ -28,7 +28,7 @@ The instance reserve starts with at least `b * ln(n)` units, rounded up with one
 - Financial values cross JSON as integer strings when JavaScript precision could be unsafe.
 - A full winning share credits exactly one unit.
 - Participant buys round up to a microcredit; sales round down.
-- There are no extra fees, margin, leverage, or short selling.
+- There is no margin, leverage, or short selling. Trading fees were later added by [ADR 0004](0004-trade-fees.md); they are charged outside this engine.
 
 ## Numerical policy
 
