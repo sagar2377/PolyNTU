@@ -89,6 +89,21 @@ Each trade workflow performs a separate preview, so total quote traffic was appr
 
 An earlier workload overlapped with compilation and skipped 330 scheduled requests at the client's in-flight cap. It is retained as [`benchmarks/2026-09-09-build-contention.json`](benchmarks/2026-09-09-build-contention.json) and is not the clean baseline.
 
+### Repeat measurement, 20 September 2026 (four-phase build)
+
+Raw artifacts: [`benchmarks/2026-09-20-http.json`](benchmarks/2026-09-20-http.json) (retained) and [`benchmarks/2026-09-20-http-repeat.json`](benchmarks/2026-09-20-http-repeat.json) (first run, kept to document repeatability). The client was Node v26.8.1; the 9 September baseline ran v25.7.0.
+
+The same workload with the same parameters ran twice. The two runs agreed within six percent on every percentile, and the first overlapped a concurrent integration test suite against the same PostgreSQL cluster, so the workload is insensitive to that level of background load. In the retained run all 12,000 trade workflows committed with zero stale-version conflicts, and there were zero unexpected errors, skipped requests, or reconciliation discrepancies in either run.
+
+| Five-minute phase and request | Successful samples | p50 HTTP ms | p95 HTTP ms | p99 HTTP ms |
+|---|---:|---:|---:|---:|
+| Spread quotes | 29,999 | 6.13 | 17.72 | 18.30 |
+| Spread committed trades | 5,999 | 17.19 | 21.21 | 23.92 |
+| 80% concentrated quotes | 30,001 | 10.39 | 17.25 | 17.69 |
+| 80% concentrated committed trades | 6,001 | 19.07 | 21.64 | 24.07 |
+
+The percentiles are four to eight times the 9 September baselines, and the four-phase server changes are not the cause: a closed-loop KPI run on this same build (`./scripts/run-benchmark.ps1 -Workload benchmark-kpi.mjs -Seconds 15`) measured quotes at 4,883/s with p50 1.68 ms and trades at 1,193/s with p50 4.07 ms, against the recorded post-optimization KPI numbers of 5,916/s and 1,110/s, within the spread the KPI section already documents for this shared machine. The scheduled client changed major version between baselines (25.7.0 to 26.8.1) and holds 200 SSE streams open, so the delta sits in the measurement environment rather than the server. Treat the two dates as separate baselines; neither may be quoted as the other's capacity.
+
 ## Settlement workload
 
 Raw artifact: [`benchmarks/2026-09-09-settlement.json`](benchmarks/2026-09-09-settlement.json)
