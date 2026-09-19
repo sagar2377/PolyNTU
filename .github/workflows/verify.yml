@@ -1,7 +1,53 @@
 name: Verify Rust outcome markets
 on: [push, pull_request]
 jobs:
+  # Path-scoped verification: each job below runs only when the commit could
+  # have affected it. Backend/trading changes gate the Rust checks and the
+  # performance job; frontend changes gate the frontend build; anything else
+  # (docs, scripts) skips both.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect changed areas
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+          # First push of a branch, force push, or missing base: verify everything.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          backend=false
+          frontend=false
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FILES=$(git diff --name-only "$BASE...$HEAD")
+          else
+            FILES=$(git diff --name-only "$BASE" "$HEAD")
+          fi
+          while IFS= read -r file; do
+            case "$file" in
+              backend|backend/*|scripts/benchmark-kpi.mjs|.github/workflows/verify.yml) backend=true ;;
+              frontend|frontend/*) frontend=true ;;
+            esac
+          done <<< "$FILES"
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+
   verify:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -19,26 +65,36 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
+        if: needs.changes.outputs.frontend == 'true'
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: rustup toolchain install 1.88.0 --profile minimal --component rustfmt --component clippy
+        if: needs.changes.outputs.backend == 'true'
       - run: rustup override set 1.88.0
+        if: needs.changes.outputs.backend == 'true'
       # Must run after the toolchain is selected so the cache key reflects the
       # Rust version that actually builds. `workspaces` takes the workspace
       # root directory, not a Cargo.toml path: the action passes the value as
       # the cwd of `cargo metadata`, and a file path fails with spawn ENOTDIR.
       - uses: Swatinem/rust-cache@v2
+        if: needs.changes.outputs.backend == 'true'
         with:
           workspaces: backend
       - run: cargo fmt --manifest-path backend/Cargo.toml -- --check
+        if: needs.changes.outputs.backend == 'true'
       - run: cargo test --manifest-path backend/Cargo.toml --locked -- --test-threads=4
+        if: needs.changes.outputs.backend == 'true'
       - run: cargo clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings
+        if: needs.changes.outputs.backend == 'true'
       - run: npm ci && npm run lint && npm run build
+        if: needs.changes.outputs.frontend == 'true'
         working-directory: frontend
 
   performance:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:

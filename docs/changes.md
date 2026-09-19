@@ -2,6 +2,10 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026 — CI runs only the areas a commit affects
+
+- Added a `changes` job that detects whether a commit touched the backend, the frontend, or neither, and made the `verify` and `performance` jobs conditional on the result: backend changes gate the Rust checks and the performance benchmark, frontend changes gate the frontend lint and build, and commits touching neither skip both jobs.
+
 ## 20 September 2026 — Trading fees and market-creator revenue share
 
 - Every trade now pays a 25-basis-point fee on the LMSR amount, rounded against the trader. Quotes and receipts expose all-in amounts with the fee reported separately; `limit_micros` bounds the all-in amount, so existing clients that echo the quoted amount are unaffected.
