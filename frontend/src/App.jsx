@@ -3,6 +3,8 @@ import { api, TOKEN_KEY, units, pendingTrade } from "./api";
 import MarketBrowse from "./pages/MarketBrowse";
 import MarketPage from "./pages/MarketPage";
 import Portfolio from "./pages/Portfolio";
+import SeriesPage from "./pages/SeriesPage";
+import CreateMarket from "./pages/CreateMarket";
 import "./App.css";
 
 export default function App() {
@@ -10,6 +12,7 @@ export default function App() {
   const [account, setAccount] = useState(null);
   const [view, setView] = useState("browse");
   const [selected, setSelected] = useState(null);
+  const [selectedSeries, setSelectedSeries] = useState(null);
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
@@ -82,7 +85,7 @@ export default function App() {
   const pending = pendingTrade();
   return <div className="app">
     <header className="topbar"><button className="wordmark" onClick={() => setView("browse")}>Poly<span>NTU</span></button>
-      <nav aria-label="Main navigation"><button className={view !== "portfolio" ? "active" : ""} onClick={() => setView("browse")}>Markets</button><button className={view === "portfolio" ? "active" : ""} onClick={() => setView("portfolio")}>Portfolio</button></nav>
+      <nav aria-label="Main navigation"><button className={view !== "portfolio" && view !== "create" ? "active" : ""} onClick={() => setView("browse")}>Markets</button><button className={view === "portfolio" ? "active" : ""} onClick={() => setView("portfolio")}>Portfolio</button>{account?.role === "creator" && <button className={view === "create" ? "active" : ""} onClick={() => setView("create")}>Create market</button>}</nav>
       {account && <div className="account-chip"><span>{account.display_name}{account.role ? ` · ${account.role}` : ""}</span><strong>{units(account.balance_micros)} units</strong></div>}
     </header>
     <div className="notice">Academic campus markets · simulated units only{config?.demo_mode ? " · Demo observations" : ""}</div>
@@ -117,8 +120,10 @@ export default function App() {
         : verification?.status === "rejected" ? <div><p className="muted">Your last request was rejected: {verification.reason}</p><button disabled={busy} onClick={requestVerification}>Apply again</button></div>
         : <div><p className="muted">Verified creators publish their own markets and earn half of every trading fee. Request verification to get started.</p><button className="primary" disabled={busy} onClick={requestVerification}>Request creator verification</button></div>}
     </section>}
-    {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} />}
-    {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView("browse")} />}
+    {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} onOpenSeries={(id) => { setSelectedSeries(id); setView("series"); }} />}
+    {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView("browse")} onOpenSeries={(id) => { setSelectedSeries(id); setView("series"); }} />}
+    {view === "series" && selectedSeries && <SeriesPage key={selectedSeries} id={selectedSeries} refresh={refresh} onError={setError} onBack={() => setView("browse")} onSelect={(id) => { setSelected(id); setView("market"); }} />}
+    {view === "create" && account?.role === "creator" && <CreateMarket onCreated={(id) => { setSelectedSeries(id); setView("series"); setRefresh((n) => n + 1); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} />}
     <footer><span>PolyNTU · Outcome markets</span>{account && <button className="link-button" onClick={signOut}>Sign out</button>}</footer>
     {account && <details className="account-settings"><summary>Account access</summary><p>Logging in again invalidates every other session. Demo accounts restore only through their token; registered accounts simply log in again.</p><button onClick={copyToken}>Copy account token</button></details>}
