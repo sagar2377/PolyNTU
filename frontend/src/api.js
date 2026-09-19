@@ -1,6 +1,7 @@
 const BASE = import.meta.env.VITE_API_URL || "";
 export const TOKEN_KEY = "polyntu.v2.token";
 export const PENDING_KEY = "polyntu.v2.pending-trade";
+export const SERIES_KEYS_KEY = "polyntu.v2.series-keys";
 export class ApiError extends Error {
   constructor(message, status = 0) { super(message); this.status = status; }
 }
@@ -37,6 +38,7 @@ export const api = {
   seriesList: () => request("/series"),
   series: (id) => request(`/series/${encodeURIComponent(id)}`),
   createSeries: (body) => request("/series", { method: "POST", body }),
+  resolveMarket: (instanceId, body) => request(`/instances/${encodeURIComponent(instanceId)}/resolution`, { method: "POST", body }),
   quote: (body) => request("/quotes", { method: "POST", body }),
   trade: (body, key) => request("/trades", { method: "POST", body, key }),
   portfolio: (offset = 0) => request(`/me/portfolio?limit=100&offset=${offset}`),
@@ -64,4 +66,39 @@ export function timestamp(ms) {
 }
 export function pendingTrade() {
   try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch { return null; }
+}
+
+function toBase64(buffer) {
+  let binary = "";
+  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/// Generate an ed25519 keypair for creator resolution (ADR 0007). The
+/// private key never leaves the browser; only the public key is published.
+export async function generateResolutionKeyPair() {
+  const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  return {
+    public_key: toBase64(await crypto.subtle.exportKey("raw", pair.publicKey)),
+    private_key: toBase64(await crypto.subtle.exportKey("pkcs8", pair.privateKey)),
+  };
+}
+
+export async function signResolution(privateKeyB64, instanceId, outcomeId, nonce) {
+  const bytes = Uint8Array.from(atob(privateKeyB64), (char) => char.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", bytes, { name: "Ed25519" }, false, ["sign"]);
+  const message = new TextEncoder().encode(`polyntu.resolution.v1:${instanceId}:${outcomeId}:${nonce}`);
+  return toBase64(await crypto.subtle.sign({ name: "Ed25519" }, key, message));
+}
+
+export function loadSeriesKeys() {
+  try { return JSON.parse(localStorage.getItem(SERIES_KEYS_KEY) || "{}"); } catch { return {}; }
+}
+export function storeSeriesKey(seriesId, keys) {
+  const all = loadSeriesKeys();
+  all[seriesId] = keys;
+  localStorage.setItem(SERIES_KEYS_KEY, JSON.stringify(all));
+}
+export function seriesKey(seriesId) {
+  return loadSeriesKeys()[seriesId] || null;
 }

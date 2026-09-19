@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, categories } from "../api";
+import { api, categories, generateResolutionKeyPair, storeSeriesKey } from "../api";
 
 const localToMs = (value) => value ? new Date(value).getTime() : null;
 const minutesOfDay = (value) => {
@@ -23,6 +23,9 @@ export default function CreateMarket({ onCreated, onError, onBack }) {
   const [liquidity, setLiquidity] = useState("100");
   const [feeCharged, setFeeCharged] = useState(true);
   const [scheduleKind, setScheduleKind] = useState("once");
+  const [resolutionKind, setResolutionKind] = useState("admin");
+  const [resolverEndpoint, setResolverEndpoint] = useState("");
+  const [keyPair, setKeyPair] = useState(null);
   const [closeAt, setCloseAt] = useState("");
   const [observationMinutes, setObservationMinutes] = useState("10");
   const [intervalMinutes, setIntervalMinutes] = useState("2");
@@ -31,6 +34,13 @@ export default function CreateMarket({ onCreated, onError, onBack }) {
   const [concurrency, setConcurrency] = useState("5");
   const [endAt, setEndAt] = useState("");
   const [busy, setBusy] = useState(false);
+  const chooseResolution = async (kind) => {
+    setResolutionKind(kind);
+    if (kind === "creator" && !keyPair) {
+      try { setKeyPair(await generateResolutionKeyPair()); }
+      catch { onError("This browser cannot generate ed25519 keys"); setResolutionKind("admin"); }
+    }
+  };
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); onError("");
     try {
@@ -46,7 +56,13 @@ export default function CreateMarket({ onCreated, onError, onBack }) {
       } else {
         schedule = { kind: "recurring", interval_ms: Number(intervalMinutes) * 60000, active_start_minute: minutesOfDay(windowStart), active_end_minute: minutesOfDay(windowEnd), max_concurrency: Number(concurrency), end_ms: localToMs(endAt) };
       }
-      const created = await api.createSeries({ title: title.trim(), resolution_criterion: criterion.trim(), rule, source_id: sourceId.trim(), liquidity_units: Number(liquidity), fee_charged: feeCharged, schedule });
+      const resolution = resolutionKind === "creator"
+        ? { kind: "creator", public_key: keyPair?.public_key }
+        : resolutionKind === "resolver"
+          ? { kind: "resolver", endpoint: resolverEndpoint.trim() }
+          : undefined;
+      const created = await api.createSeries({ title: title.trim(), resolution_criterion: criterion.trim(), rule, source_id: sourceId.trim(), liquidity_units: Number(liquidity), fee_charged: feeCharged, resolution, schedule });
+      if (resolutionKind === "creator" && keyPair) storeSeriesKey(created.id, keyPair);
       onCreated(created.id);
     } catch (e) { onError(e.message); } finally { setBusy(false); }
   };
@@ -103,6 +119,18 @@ export default function CreateMarket({ onCreated, onError, onBack }) {
             <option value="no">No, a welfare market</option>
           </select></div>
       </div>
+      <label htmlFor="market-resolution">Resolution authority</label>
+      <select id="market-resolution" value={resolutionKind} onChange={(e) => chooseResolution(e.target.value)}>
+        <option value="admin">Platform administrator records evidence</option>
+        <option value="creator">I sign each resolution with a key from this browser</option>
+        <option value="resolver">An external API answers automatically</option>
+      </select>
+      {resolutionKind === "creator" && <p className="muted small">{keyPair ? "An ed25519 keypair was generated in this browser. The private key never leaves it and is saved locally for this series; losing it voids the market at its deadline." : "Generating the browser keypair…"}</p>}
+      {resolutionKind === "resolver" && <>
+        <label htmlFor="market-resolver-endpoint">Resolver endpoint (https URL)</label>
+        <input id="market-resolver-endpoint" value={resolverEndpoint} maxLength={500} required onChange={(e) => setResolverEndpoint(e.target.value)} placeholder="https://example.com/polyntu-resolver" />
+        <p className="muted small">PolyNTU posts the instance identifier, bracket window, and rule; your endpoint must answer with one published outcome identifier or pending.</p>
+      </>}
       <label htmlFor="market-schedule">Schedule</label>
       <select id="market-schedule" value={scheduleKind} onChange={(e) => setScheduleKind(e.target.value)}>
         <option value="once">One-time market</option>

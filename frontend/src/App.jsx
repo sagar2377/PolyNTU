@@ -122,7 +122,7 @@ export default function App() {
     </section>}
     {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} onOpenSeries={(id) => { setSelectedSeries(id); setView("series"); }} />}
     {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView("browse")} onOpenSeries={(id) => { setSelectedSeries(id); setView("series"); }} />}
-    {view === "series" && selectedSeries && <SeriesPage key={selectedSeries} id={selectedSeries} refresh={refresh} onError={setError} onBack={() => setView("browse")} onSelect={(id) => { setSelected(id); setView("market"); }} />}
+    {view === "series" && selectedSeries && <SeriesPage key={selectedSeries} id={selectedSeries} account={account} refresh={refresh} onError={setError} onBack={() => setView("browse")} onSelect={(id) => { setSelected(id); setView("market"); }} />}
     {view === "create" && account?.role === "creator" && <CreateMarket onCreated={(id) => { setSelectedSeries(id); setView("series"); setRefresh((n) => n + 1); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} />}
     <footer><span>PolyNTU · Outcome markets</span>{account && <button className="link-button" onClick={signOut}>Sign out</button>}</footer>
