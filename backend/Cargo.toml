@@ -8,20 +8,20 @@ description = "PolyNTU outcome markets: deterministic pricing and transactional 
 [dependencies]
 axum = { version = "0.8", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "json", "migrate", "macros"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "json", "migrate", "macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rust_decimal = { version = "1", features = ["maths"] }
 uuid = { version = "1", features = ["v4"] }
-rand = "0.8"
-hmac = "0.12"
-sha2 = "0.10"
-base64 = "0.22"
+rand = { version = "0.10", features = ["sys_rng"] }
+hmac = "0.13"
+sha2 = "0.11"
+base64 = "0.23"
 argon2 = "0.6"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "limit", "fs"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "limit", "fs"] }
 async-stream = "0.3"
 futures-core = "0.3"
 

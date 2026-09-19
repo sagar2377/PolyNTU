@@ -198,7 +198,7 @@ impl Store {
         }
         sqlx::query("UPDATE settings SET demo_mode=$1,simulation_secret=COALESCE(simulation_secret,$2) WHERE singleton")
             .bind(self.demo_mode)
-            .bind(auth::random_token())
+            .bind(auth::random_token()?)
             .execute(&mut *tx)
             .await?;
         sqlx::query("INSERT INTO accounts(id,display_name,kind) VALUES('issuance','Unit issuance','issuance'),('treasury','Platform subsidy budget','treasury') ON CONFLICT DO NOTHING")
@@ -282,7 +282,7 @@ impl Store {
             ));
         }
         let id = Uuid::new_v4().to_string();
-        let token = auth::random_token();
+        let token = auth::random_token()?;
         let grant = DEMO_GRANT_UNITS * amm::CREDIT_SCALE;
         let mut tx = self.pool.begin().await?;
         let now = db_now(&mut tx).await?;
@@ -339,7 +339,7 @@ impl Store {
             return Err(invalid("Password must be at least 12 characters"));
         }
         let id = Uuid::new_v4().to_string();
-        let token = auth::random_token();
+        let token = auth::random_token()?;
         let grant = WELCOME_GIFT_UNITS * amm::CREDIT_SCALE;
         let mut tx = self.pool.begin().await?;
         let now = db_now(&mut tx).await?;

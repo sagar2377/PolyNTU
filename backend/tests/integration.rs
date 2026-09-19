@@ -17,7 +17,7 @@ use polyntu::{
     worker,
 };
 use serde_json::{Value, json};
-use sqlx::PgPool;
+use sqlx::{AssertSqlSafe, PgPool};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -36,7 +36,9 @@ impl TestDb {
             .expect("Set TEST_DATABASE_URL for PostgreSQL integration tests");
         let admin = PgPool::connect(&base).await.unwrap();
         let name = format!("polyntu_test_{}", Uuid::new_v4().simple());
-        sqlx::query(&format!("CREATE DATABASE {name}"))
+        // The name is polyntu_test_ plus a simple UUID (alphanumeric and
+        // underscores only), so interpolating it cannot inject SQL.
+        sqlx::query(AssertSqlSafe(format!("CREATE DATABASE {name}")))
             .execute(&admin)
             .await
             .unwrap();
@@ -98,10 +100,13 @@ impl TestDb {
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || c == '_')
         );
-        sqlx::query(&format!("DROP DATABASE {} WITH (FORCE)", self.name))
-            .execute(&self.admin)
-            .await
-            .unwrap();
+        sqlx::query(AssertSqlSafe(format!(
+            "DROP DATABASE {} WITH (FORCE)",
+            self.name
+        )))
+        .execute(&self.admin)
+        .await
+        .unwrap();
         self.admin.close().await;
     }
 }

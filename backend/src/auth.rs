@@ -4,18 +4,25 @@ use argon2::{
     password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use hmac::{Hmac, Mac};
-use rand::{RngCore, rngs::OsRng};
+use hmac::{Hmac, KeyInit, Mac};
+use rand::{TryRng, rngs::SysRng};
 use serde::{Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 
-pub fn random_token() -> String {
+pub fn random_token() -> Result<String> {
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
+    SysRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|e| Error::Internal(e.to_string()))?;
+    Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 pub fn hash(value: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(value))
+    // sha2 0.11 no longer formats digests as hex, and the stored token hashes
+    // must keep their exact historical encoding.
+    Sha256::digest(value)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 pub fn sign<T: Serialize>(value: &T, secret: &[u8]) -> Result<String> {
     let payload = serde_json::to_vec(value).map_err(|e| Error::Internal(e.to_string()))?;
