@@ -92,6 +92,7 @@ pub fn router(state: AppState, origins: Vec<HeaderValue>) -> Router {
         .route("/instances", get(instances))
         .route("/instances/{id}", get(instance))
         .route("/instances/{id}/events", get(events))
+        .route("/instances/{id}/resolution", post(creator_resolution))
         .route("/quotes", post(quote))
         .route("/trades", post(trade))
         .route(
@@ -394,6 +395,32 @@ async fn evidence(
 ) -> Result<Json<Value>> {
     s.require_admin(&headers).await?;
     Ok(Json(s.store.ingest_evidence(&id, &req).await?))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResolutionInput {
+    outcome_id: String,
+    nonce: String,
+    signature: String,
+}
+async fn creator_resolution(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<ResolutionInput>,
+) -> Result<Json<Value>> {
+    let account = s.account(&headers).await?;
+    Ok(Json(
+        s.store
+            .record_creator_resolution(
+                &id,
+                &account.id,
+                &req.outcome_id,
+                &req.nonce,
+                &req.signature,
+            )
+            .await?,
+    ))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

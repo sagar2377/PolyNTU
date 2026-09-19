@@ -5,6 +5,8 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use base64::Engine as _;
+use ed25519_dalek::{Signer, SigningKey};
 use http_body_util::BodyExt;
 use polyntu::{
     amm::{self, Side},
@@ -932,6 +934,128 @@ async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
             .await
             .is_err()
     );
+    db.finish().await;
+}
+
+// ADR 0007: creators resolve their markets with signed statements.
+#[tokio::test]
+async fn creators_resolve_their_markets_with_signed_statements() {
+    let db = TestDb::new().await;
+    let (creator, token) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    // A real ed25519 keypair, as the creator's browser would hold it.
+    let signing = SigningKey::from_bytes(&[7u8; 32]);
+    let public_key =
+        base64::engine::general_purpose::STANDARD.encode(signing.verifying_key().as_bytes());
+    let mut spec = rain_series(Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    });
+    spec.resolution = Some(ResolutionSpec::Creator { public_key });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+    let instance = db.store.instance(&instance_id).await.unwrap();
+    let (trader, _) = db.account().await;
+    buy(&db, &trader, &instance, 1000).await;
+    // The market closes and the observation window ends.
+    db.store.advance_demo_clock(3).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    let signature = |nonce: &str| {
+        base64::engine::general_purpose::STANDARD
+            .encode(
+                signing
+                    .sign(auth::resolution_message(&instance_id, "yes", nonce).as_bytes())
+                    .to_bytes(),
+            )
+            .to_string()
+    };
+    // A signature over a different nonce does not verify.
+    let wrong_nonce = db
+        .store
+        .record_creator_resolution(
+            &instance_id,
+            &creator.id,
+            "yes",
+            "nonce-1",
+            &signature("other"),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(wrong_nonce.to_string(), "Signature verification failed");
+    // Only the creator may submit; even a valid signature from another
+    // account is forbidden, and the administrator cannot use this route.
+    let (outsider, _) = db.account().await;
+    let forbidden = db
+        .store
+        .record_creator_resolution(
+            &instance_id,
+            &outsider.id,
+            "yes",
+            "nonce-1",
+            &signature("nonce-1"),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(forbidden, polyntu::error::Error::Forbidden));
+    // The seeded administrator account cannot use this route either: only
+    // the series creator may submit, and the admin cannot sign.
+    let admin = db.store.login("admin@ntu.edu.sg", "admin").await.unwrap();
+    let app = db.app();
+    let (status, _) = http(
+        &app,
+        "POST",
+        &format!("/api/v2/instances/{instance_id}/resolution"),
+        json!({"outcome_id": "yes", "nonce": "nonce-1", "signature": signature("nonce-1")}),
+        Some(admin["token"].as_str().unwrap()),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // The valid signed resolution settles the market.
+    let resolution = db
+        .store
+        .record_creator_resolution(
+            &instance_id,
+            &creator.id,
+            "yes",
+            "nonce-1",
+            &signature("nonce-1"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resolution["evaluated_result"]["kind"], "winner");
+    assert_eq!(resolution["evaluated_result"]["outcome"], 0);
+    // Replays are rejected: one resolution per instance.
+    let replay = db
+        .store
+        .record_creator_resolution(
+            &instance_id,
+            &creator.id,
+            "yes",
+            "nonce-1",
+            &signature("nonce-1"),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        replay.to_string(),
+        "This market already has a creator resolution"
+    );
+    db.store.advance_demo_clock(5).await.unwrap();
+    for _ in 0..2 {
+        worker::tick(&db.store).await.unwrap();
+    }
+    let settled = db.store.instance(&instance_id).await.unwrap();
+    assert_eq!(settled.state, "resolved");
+    let _ = token;
     db.finish().await;
 }
 

@@ -2,7 +2,7 @@ use crate::{
     auth,
     error::{Error, Result, conflict, invalid},
     fee,
-    market::{EvidenceInput, Instance, Resolution},
+    market::{EvidenceInput, Instance, Resolution, Series},
     store::{Store, audit, balance, db_now, event, lock_accounts, transfer},
 };
 use serde_json::{Value, json};
@@ -12,6 +12,98 @@ use uuid::Uuid;
 impl Store {
     pub async fn ingest_evidence(&self, id: &str, input: &EvidenceInput) -> Result<Value> {
         self.record_evidence(id, input, false).await
+    }
+
+    /// A creator's signed human resolution (ADR 0007). The signature covers
+    /// (instance id, outcome, nonce) with the key fixed at series creation;
+    /// the platform stores only the public key, so it can verify but never
+    /// forge a resolution. One resolution per instance.
+    pub async fn record_creator_resolution(
+        &self,
+        id: &str,
+        submitter: &str,
+        outcome_id: &str,
+        nonce: &str,
+        signature: &str,
+    ) -> Result<Value> {
+        let nonce = nonce.trim();
+        let signature = signature.trim();
+        if nonce.is_empty() || nonce.len() > 120 {
+            return Err(invalid("Supply a nonce of 1–120 characters"));
+        }
+        let mut tx = self.pool.begin().await?;
+        let instance: Instance = sqlx::query_as("SELECT * FROM instances WHERE id=$1 FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let now = db_now(&mut tx).await?;
+        let series: Series = sqlx::query_as("SELECT * FROM market_series WHERE id=$1")
+            .bind(&instance.series_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| invalid("This market has no series resolution authority"))?;
+        if series.resolution_authority != "creator" {
+            return Err(invalid("This market is not resolved by its creator"));
+        }
+        if series.creator_account_id.as_deref() != Some(submitter) {
+            return Err(Error::Forbidden);
+        }
+        if instance.state != "closed" {
+            return Err(conflict(
+                "Creator resolution requires the market to be closed and not yet final",
+            ));
+        }
+        if now < instance.observation_end_ms {
+            return Err(conflict("The observation window has not ended"));
+        }
+        if now >= instance.evidence_deadline_ms {
+            return Err(conflict("The published evidence deadline has passed"));
+        }
+        let already: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM evidence WHERE instance_id=$1 AND source_id='creator-signature')",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if already {
+            return Err(conflict("This market already has a creator resolution"));
+        }
+        let public_key = series.resolution_public_key.as_deref().unwrap_or_default();
+        if !auth::verify_ed25519(
+            public_key,
+            &auth::resolution_message(id, outcome_id, nonce),
+            signature,
+        ) {
+            return Err(invalid("Signature verification failed"));
+        }
+        let outcome = instance.outcome_index(outcome_id)?;
+        let result = Resolution::Winner { outcome };
+        let payload = json!({"outcome_id": outcome_id, "nonce": nonce,
+            "signature": signature, "public_key": public_key});
+        let encoded = serde_json::to_vec(&payload).map_err(|e| Error::Internal(e.to_string()))?;
+        let evidence_id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO evidence(id,instance_id,source_id,event_id,source_revision,received_ms,parser_version,payload,payload_hash,evaluated_result) VALUES($1,$2,'creator-signature',$3,0,$4,'creator-signature-v1',$5,$6,$7)")
+            .bind(&evidence_id).bind(id).bind(format!("resolution:{id}")).bind(now)
+            .bind(Json(&payload)).bind(auth::hash(&encoded)).bind(Json(&result))
+            .execute(&mut *tx).await?;
+        sqlx::query("UPDATE instances SET evidence_id=$2,version=version+1 WHERE id=$1")
+            .bind(id)
+            .bind(&evidence_id)
+            .execute(&mut *tx)
+            .await?;
+        audit(
+            &mut tx,
+            "creator_resolution",
+            Some(id),
+            json!({"evidence_id":evidence_id,"outcome_id":outcome_id}),
+            now,
+        )
+        .await?;
+        event(&mut tx, id, instance.version + 1, "evidence", now).await?;
+        tx.commit().await?;
+        self.cache.invalidate(id);
+        Ok(json!({"evidence_id":evidence_id,"evaluated_result":result,"outcome_id":outcome_id}))
     }
 
     pub(crate) async fn record_evidence(

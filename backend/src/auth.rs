@@ -115,6 +115,41 @@ pub fn verify_password(stored: &str, password: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// The exact bytes a creator signs for a human resolution (ADR 0007).
+pub fn resolution_message(instance_id: &str, outcome_id: &str, nonce: &str) -> String {
+    format!("polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}")
+}
+
+/// Verify a creator's ed25519 signature over the resolution message. The
+/// platform holds only the public key, so it can check but never forge a
+/// resolution. Malformed inputs fail closed.
+pub fn verify_ed25519(public_key_b64: &str, message: &str, signature_b64: &str) -> bool {
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+    let decode = |value: &str| {
+        base64::engine::general_purpose::STANDARD
+            .decode(value.trim())
+            .ok()
+    };
+    let (Some(key_bytes), Some(signature_bytes)) = (decode(public_key_b64), decode(signature_b64))
+    else {
+        return false;
+    };
+    let key_bytes: [u8; 32] = match key_bytes.try_into() {
+        Ok(bytes) => bytes,
+        Err(_) => return false,
+    };
+    let signature_bytes: [u8; 64] = match signature_bytes.try_into() {
+        Ok(bytes) => bytes,
+        Err(_) => return false,
+    };
+    VerifyingKey::from_bytes(&key_bytes)
+        .map(|key| {
+            key.verify(message.as_bytes(), &Signature::from_bytes(&signature_bytes))
+                .is_ok()
+        })
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
