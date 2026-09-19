@@ -14,13 +14,13 @@ Push-Location frontend
 npm ci
 Pop-Location
 
-# Start PostgreSQL, build React, and run the Rust backend.
-./scripts/run-dev.ps1
+# Start PostgreSQL, build React, and run the release backend.
+./scripts/run-prod.ps1
 ```
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Create a demo account, open a market, preview a trade, and confirm it. In demo mode, the administrator token stored in `.local/dev-secrets.json` can advance the demonstration clock. Keep that file private.
 
-For other platforms, Docker, separate frontend development, and environment variables, see [development setup](docs/development.md).
+For other platforms, Docker, separate frontend development, and environment variables, see [development setup](docs/development.md). For fast backend iteration, `./scripts/run-dev.ps1` runs a debug backend and skips the frontend build; keep the Vite dev server (`npm run dev` in `frontend/`) running for the interface.
 
 ## What the system provides
 

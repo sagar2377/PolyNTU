@@ -24,11 +24,13 @@ Push-Location frontend
 npm ci
 Pop-Location
 
-# Start local PostgreSQL, configure secrets, build React, and run Rust.
-./scripts/run-dev.ps1
+# Start local PostgreSQL, configure secrets, build React, and run the release backend.
+./scripts/run-prod.ps1
 ```
 
 The database listens only on `127.0.0.1:55432` and uses trust authentication. Never reuse this development configuration for a network-accessible database.
+
+`./scripts/run-dev.ps1` is the fast backend iteration variant: debug build, no frontend build. Keep `npm run dev` running in `frontend/` for the interface.
 
 Stop a foreground application with Ctrl+C. If a previous verification session left a recorded hidden preview on port 8000, run:
 
@@ -86,7 +88,7 @@ Never log bearer tokens, administrator tokens, quote bodies, or `.local/dev-secr
 | `scripts/rust-env.ps1` | Locates project-local Cargo and installed MSVC/Windows SDK libraries. Changes only the current shell environment. |
 | `scripts/configure-dev.ps1` | Generates distinct persistent development secrets once and exports local settings. |
 | `scripts/start-local-db.ps1` | Initializes/starts loopback PostgreSQL and creates the `polyntu` database if needed. |
-| `scripts/run-dev.ps1` | Runs environment setup, database startup, frontend build, and a debug backend (`cargo run`, unlocked) for fast iteration. |
+| `scripts/run-dev.ps1` | Runs environment setup, database startup, and a debug backend (`cargo run`, unlocked). No frontend build; use the Vite dev server or `run-prod.ps1`. |
 | `scripts/run-prod.ps1` | Runs the same pipeline with the locked, optimised release backend. |
 | `scripts/stop-preview.ps1` | Stops only the verified hidden preview recorded by this workspace. |
 | `scripts/generate-math-fixtures.py` | Rebuilds high-precision LMSR reference JSON using fixed-seed Python Decimal calculations. |

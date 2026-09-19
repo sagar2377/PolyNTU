@@ -6,6 +6,7 @@ This file records significant user-visible and architectural changes. Detailed r
 
 - Made the helper scripts run under both Windows PowerShell 5.1 and PowerShell 7: replaced a .NET-Core-only random-number API and removed a native stderr redirect that 5.1 turns into a terminating error.
 - Split the local launcher: `scripts/run-dev.ps1` now runs a debug backend without `--locked` for fast iteration, and the previous locked release behaviour is available as `scripts/run-prod.ps1`.
+- Removed the frontend build from `run-dev.ps1`; the quick start uses `run-prod.ps1`, and `run-dev.ps1` pairs with the Vite dev server.
 
 ## 9 September 2026 — Documentation verification and two-depth reference
 
