@@ -981,7 +981,7 @@ impl Store {
                 json!({"id": s.id, "creator_account_id": s.creator_account_id, "title": s.title,
                     "category": s.rule.0.category(), "state": s.state, "recurrence": s.recurrence,
                     "interval_ms": s.interval_ms, "max_concurrency": s.max_concurrency,
-                    "end_ms": s.end_ms, "created_ms": s.created_ms})
+                    "fee_charged": s.fee_charged, "end_ms": s.end_ms, "created_ms": s.created_ms})
             })
             .collect())
     }
