@@ -298,6 +298,10 @@ impl Rule {
     }
 }
 
+fn default_fee_charged() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NewInstance {
@@ -313,10 +317,21 @@ pub struct NewInstance {
     pub finalize_after_ms: i64,
     pub evidence_deadline_ms: i64,
     pub liquidity_units: i64,
+    /// Whether trades on this instance pay the 25-basis-point fee. Fee-free
+    /// markets exist for student welfare, like the crowd-sourced bus series;
+    /// they collect no fee and pay no creator share.
+    #[serde(default = "default_fee_charged")]
+    pub fee_charged: bool,
     /// Participant account credited with the creator's half of the settled fee
     /// pot. Absent for platform-created instances, whose fees go to the treasury.
     #[serde(default)]
     pub creator_account_id: Option<String>,
+    /// Series this instance is a bracket of, with its slot start. Absent for
+    /// direct administrator-created instances.
+    #[serde(default)]
+    pub series_id: Option<String>,
+    #[serde(default)]
+    pub bracket_start_ms: Option<i64>,
 }
 
 impl NewInstance {
@@ -381,7 +396,10 @@ pub struct Instance {
     pub inventory: Vec<i64>,
     pub version: i64,
     pub reserve_account_id: String,
+    pub fee_charged: bool,
     pub creator_account_id: Option<String>,
+    pub series_id: Option<String>,
+    pub bracket_start_ms: Option<i64>,
     pub result: Option<Json<Resolution>>,
     pub evidence_id: Option<String>,
 }
@@ -398,6 +416,54 @@ impl Instance {
     }
 }
 
+/// A published market series (ADR 0006).
+#[derive(Debug, Clone, FromRow)]
+pub struct Series {
+    pub id: String,
+    pub creator_account_id: Option<String>,
+    pub title: String,
+    pub resolution_criterion: String,
+    pub rule: Json<Rule>,
+    pub source_id: String,
+    pub data_mode: String,
+    pub liquidity_units: i64,
+    pub fee_charged: bool,
+    pub recurrence: String,
+    pub interval_ms: Option<i64>,
+    pub active_start_minute: Option<i32>,
+    pub active_end_minute: Option<i32>,
+    pub max_concurrency: i64,
+    pub end_ms: Option<i64>,
+    pub anchor_ms: i64,
+    pub state: String,
+    pub created_ms: i64,
+}
+
+impl Series {
+    /// The instance spec for the bracket occupying [slot, slot + interval).
+    pub fn bracket_spec(&self, slot_start_ms: i64) -> NewInstance {
+        let interval = self.interval_ms.unwrap_or(60_000);
+        NewInstance {
+            template_id: self.id.clone(),
+            title: self.title.clone(),
+            resolution_criterion: self.resolution_criterion.clone(),
+            rule: self.rule.0.clone(),
+            source_id: self.source_id.clone(),
+            data_mode: self.data_mode.clone(),
+            close_ms: slot_start_ms,
+            observation_start_ms: slot_start_ms,
+            observation_end_ms: slot_start_ms + interval,
+            finalize_after_ms: slot_start_ms + interval + BRACKET_FINALIZE_MARGIN_MS,
+            evidence_deadline_ms: slot_start_ms + interval + BRACKET_DEADLINE_MARGIN_MS,
+            liquidity_units: self.liquidity_units,
+            fee_charged: self.fee_charged,
+            creator_account_id: self.creator_account_id.clone(),
+            series_id: Some(self.id.clone()),
+            bracket_start_ms: Some(slot_start_ms),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceInput {
@@ -408,6 +474,195 @@ pub struct EvidenceInput {
     pub window_end_ms: i64,
     pub observation: Observation,
     pub reference: String,
+}
+
+/// Series brackets finalize shortly after their observation window so the
+/// rolling horizon does not pile up unsettled instances.
+pub const BRACKET_FINALIZE_MARGIN_MS: i64 = 1_000;
+pub const BRACKET_DEADLINE_MARGIN_MS: i64 = 60_000;
+
+/// A series schedule: one explicit window, or a recurrence rule whose slots
+/// the scheduler keeps filled on a rolling grid (ADR 0006).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Schedule {
+    Once {
+        close_ms: i64,
+        observation_start_ms: i64,
+        observation_end_ms: i64,
+        finalize_after_ms: i64,
+        evidence_deadline_ms: i64,
+    },
+    Recurring {
+        /// Slot spacing, one minute to one day.
+        interval_ms: i64,
+        /// Daily operating window in Singapore time (UTC+8, no daylight
+        /// saving), as minutes of day; slots never start outside it.
+        active_start_minute: i32,
+        active_end_minute: i32,
+        /// How many upcoming slots stay live; the covered horizon is
+        /// max_concurrency multiplied by interval_ms. Capped at 50.
+        max_concurrency: i64,
+        /// Optional series end; absent means perpetual.
+        #[serde(default)]
+        end_ms: Option<i64>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewSeries {
+    pub title: String,
+    pub resolution_criterion: String,
+    pub rule: Rule,
+    pub source_id: String,
+    pub liquidity_units: i64,
+    /// Whether trades pay the 25-basis-point fee. Fee-free series collect no
+    /// fee and pay no creator share (welfare markets like bus timing).
+    #[serde(default = "default_fee_charged")]
+    pub fee_charged: bool,
+    pub schedule: Schedule,
+}
+
+/// Slot starts inside the creator-set daily operating window, interpreted in
+/// Singapore time (UTC+8, no daylight saving).
+pub fn inside_active_window(slot_start_ms: i64, start_minute: i32, end_minute: i32) -> bool {
+    let minute_of_day = ((slot_start_ms / 60_000 + 8 * 60) % 1440) as i32;
+    (start_minute..end_minute).contains(&minute_of_day)
+}
+
+impl Schedule {
+    pub fn validate(&self, now: i64) -> Result<()> {
+        match self {
+            Self::Once {
+                close_ms,
+                observation_start_ms,
+                observation_end_ms,
+                finalize_after_ms,
+                evidence_deadline_ms,
+            } => {
+                if *close_ms <= now
+                    || *observation_start_ms < *close_ms
+                    || *observation_end_ms <= *observation_start_ms
+                    || *finalize_after_ms < *observation_end_ms
+                    || *evidence_deadline_ms <= *finalize_after_ms
+                    || *evidence_deadline_ms > now + 366 * 86_400_000
+                {
+                    return Err(invalid(
+                        "Use future close <= observation start < end <= finalization < evidence deadline, within one year",
+                    ));
+                }
+            }
+            Self::Recurring {
+                interval_ms,
+                active_start_minute,
+                active_end_minute,
+                max_concurrency,
+                end_ms,
+            } => {
+                if !(60_000..=86_400_000).contains(interval_ms) {
+                    return Err(invalid(
+                        "Recurrence interval must be between 1 minute and 1 day",
+                    ));
+                }
+                if !(1..=50).contains(max_concurrency) {
+                    return Err(invalid("Maximum concurrency must be between 1 and 50"));
+                }
+                if !(0..=1438).contains(active_start_minute)
+                    || !(1..=1439).contains(active_end_minute)
+                    || active_start_minute >= active_end_minute
+                {
+                    return Err(invalid(
+                        "Active period must be a daily window like 06:00 to 23:59 Singapore time",
+                    ));
+                }
+                if end_ms.is_some_and(|end| end <= now + interval_ms) {
+                    return Err(invalid(
+                        "Series end must leave room for at least one more slot",
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The instance timing for one bracket slot starting at `slot_start_ms`.
+    pub fn bracket_timing(&self, slot_start_ms: i64) -> (i64, i64, i64, i64, i64) {
+        match self {
+            Self::Once {
+                close_ms,
+                observation_start_ms,
+                observation_end_ms,
+                finalize_after_ms,
+                evidence_deadline_ms,
+            } => (
+                *close_ms,
+                *observation_start_ms,
+                *observation_end_ms,
+                *finalize_after_ms,
+                *evidence_deadline_ms,
+            ),
+            Self::Recurring { interval_ms, .. } => (
+                slot_start_ms,
+                slot_start_ms,
+                slot_start_ms + interval_ms,
+                slot_start_ms + interval_ms + BRACKET_FINALIZE_MARGIN_MS,
+                slot_start_ms + interval_ms + BRACKET_DEADLINE_MARGIN_MS,
+            ),
+        }
+    }
+}
+
+impl NewSeries {
+    pub fn validate(&self, now: i64) -> Result<()> {
+        self.rule.validate()?;
+        amm::funding(self.liquidity_units, self.rule.outcomes().len())?;
+        if self.title.trim().len() < 5
+            || self.title.len() > 240
+            || self.resolution_criterion.trim().len() < 30
+            || self.resolution_criterion.len() > 4000
+            || self.source_id.trim().is_empty()
+            || self.source_id.len() > 120
+        {
+            return Err(invalid(
+                "Publish a title, source and a specific resolution criterion",
+            ));
+        }
+        self.schedule.validate(now)
+    }
+
+    /// Build the instance spec for one bracket of this series.
+    pub fn instance_spec(
+        &self,
+        series_id: &str,
+        slot_start_ms: i64,
+        creator_account_id: Option<String>,
+        data_mode: &str,
+    ) -> NewInstance {
+        let (close, start, end, finalize, deadline) = self.schedule.bracket_timing(slot_start_ms);
+        NewInstance {
+            template_id: series_id.into(),
+            title: self.title.clone(),
+            resolution_criterion: self.resolution_criterion.clone(),
+            rule: self.rule.clone(),
+            source_id: self.source_id.clone(),
+            data_mode: data_mode.into(),
+            close_ms: close,
+            observation_start_ms: start,
+            observation_end_ms: end,
+            finalize_after_ms: finalize,
+            evidence_deadline_ms: deadline,
+            liquidity_units: self.liquidity_units,
+            fee_charged: self.fee_charged,
+            creator_account_id,
+            series_id: Some(series_id.into()),
+            bracket_start_ms: if matches!(self.schedule, Schedule::Recurring { .. }) {
+                Some(slot_start_ms)
+            } else {
+                None
+            },
+        }
+    }
 }
 
 pub fn demo_specs(now: i64) -> Vec<NewInstance> {
@@ -497,7 +752,8 @@ pub fn demo_specs(now: i64) -> Vec<NewInstance> {
         NewInstance { template_id: id.into(), title: title.into(), resolution_criterion: format!("{criterion} Demo: deterministic simulated evidence. Missing final evidence voids shares at 1/n units each."),
             rule, source_id: "polyntu-simulator-v1".into(), data_mode: "simulated".into(), close_ms: close,
             observation_start_ms: close, observation_end_ms: close + duration, finalize_after_ms: close + duration + 1000,
-            evidence_deadline_ms: close + duration + 60000, liquidity_units: 100, creator_account_id: None }
+            evidence_deadline_ms: close + duration + 60000, liquidity_units: 100, fee_charged: true, creator_account_id: None,
+            series_id: None, bracket_start_ms: None }
     }).collect()
 }
 
@@ -553,6 +809,18 @@ mod tests {
                     .is_some()
             );
         }
+    }
+    #[test]
+    fn active_window_is_interpreted_in_singapore_time() {
+        // The Unix epoch is 08:00 Singapore time: minute of day 480.
+        assert!(inside_active_window(0, 480, 496));
+        assert!(!inside_active_window(0, 0, 480));
+        assert!(!inside_active_window(0, 496, 600));
+        // 15 minutes past the epoch is 08:15 SGT.
+        assert!(inside_active_window(900_000, 480, 496));
+        assert!(!inside_active_window(900_000, 480, 495));
+        // One day later wraps to the same minute of day.
+        assert!(inside_active_window(86_400_000, 480, 496));
     }
     #[test]
     fn elections_require_distinct_fictional_candidates() {

@@ -28,6 +28,7 @@ pub async fn seed_demo(store: &Store) -> Result<()> {
 
 pub async fn tick(store: &Store) -> Result<usize> {
     store.close_due().await?;
+    store.spawn_due_brackets().await?;
     let now = store.now().await?;
     // Select actionable rows so markets awaiting evidence cannot fill the batch
     // indefinitely and starve later instances whose results are ready.

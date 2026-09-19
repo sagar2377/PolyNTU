@@ -3,7 +3,7 @@ use crate::{
     cache::{AuthAccount, Cache},
     error::{Error, Result, conflict, invalid},
     events,
-    market::{Instance, NewInstance},
+    market::{Instance, NewInstance, NewSeries, Series, inside_active_window},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -145,8 +145,9 @@ pub fn instance_view(instance: &Instance, now: i64) -> Result<Value> {
         "version": instance.version, "close_ms": instance.close_ms,
         "observation_start_ms": instance.observation_start_ms, "observation_end_ms": instance.observation_end_ms,
         "finalize_after_ms": instance.finalize_after_ms, "evidence_deadline_ms": instance.evidence_deadline_ms,
-        "liquidity_units": instance.liquidity_units, "result": instance.result,
+        "liquidity_units": instance.liquidity_units, "result": instance.result, "fee_charged": instance.fee_charged,
         "creator_account_id": instance.creator_account_id,
+        "series_id": instance.series_id, "bracket_start_ms": instance.bracket_start_ms,
         "evidence_id": instance.evidence_id, "server_time_ms": now,
         "void_policy": "Each outcome share redeems for 1/n units; aggregate account credits round down to a micro-unit."
     }))
@@ -691,18 +692,253 @@ impl Store {
             now,
         )
         .await?;
-        sqlx::query("INSERT INTO instances(id,template_id,category,title,resolution_criterion,rule,outcomes,source_id,data_mode,close_ms,observation_start_ms,observation_end_ms,finalize_after_ms,evidence_deadline_ms,liquidity_units,inventory,reserve_account_id,creator_account_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)")
+        sqlx::query("INSERT INTO instances(id,template_id,category,title,resolution_criterion,rule,outcomes,source_id,data_mode,close_ms,observation_start_ms,observation_end_ms,finalize_after_ms,evidence_deadline_ms,liquidity_units,inventory,reserve_account_id,fee_charged,creator_account_id,series_id,bracket_start_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)")
             .bind(&id).bind(&spec.template_id).bind(spec.rule.category()).bind(&spec.title).bind(&spec.resolution_criterion)
             .bind(Json(&spec.rule)).bind(Json(&outcomes)).bind(&spec.source_id).bind(&spec.data_mode)
             .bind(spec.close_ms).bind(spec.observation_start_ms).bind(spec.observation_end_ms).bind(spec.finalize_after_ms)
             .bind(spec.evidence_deadline_ms).bind(spec.liquidity_units).bind(vec![0i64; outcomes.len()]).bind(&reserve)
-            .bind(&spec.creator_account_id).execute(&mut *tx).await?;
+            .bind(spec.fee_charged).bind(&spec.creator_account_id).bind(&spec.series_id).bind(spec.bracket_start_ms).execute(&mut *tx).await?;
         event(&mut tx, &id, 0, "opened", now).await?;
-        audit(&mut tx, "create_instance", Some(&id), json!(spec), now).await?;
+        // Scheduler-spawned brackets publish through the outbox; only direct
+        // creations are administrator audit records.
+        if spec.series_id.is_none() {
+            audit(&mut tx, "create_instance", Some(&id), json!(spec), now).await?;
+        }
         tx.commit().await?;
         let instance = self.instance(&id).await?;
         self.cache.put_instance(instance.clone());
         Ok(instance)
+    }
+
+    /// Publish a market series (ADR 0006). `creator` must hold the creator
+    /// role; None seeds a platform-owned series. One-time schedules publish
+    /// their single instance immediately.
+    pub async fn create_series(
+        &self,
+        creator: Option<&str>,
+        spec: &NewSeries,
+        data_mode: &str,
+    ) -> Result<Value> {
+        if !matches!(data_mode, "manual" | "simulated")
+            || (data_mode == "simulated"
+                && (!self.demo_mode || spec.source_id != "polyntu-simulator-v1"))
+        {
+            return Err(invalid(
+                "Simulated series require demo mode and source polyntu-simulator-v1; creators publish manual series",
+            ));
+        }
+        let mut tx = self.pool.begin().await?;
+        let now = db_now(&mut tx).await?;
+        spec.validate(now)?;
+        if let Some(creator) = creator {
+            let record = sqlx::query(
+                "SELECT role FROM accounts WHERE id=$1 AND kind='user' FOR NO KEY UPDATE",
+            )
+            .bind(creator)
+            .fetch_optional(&mut *tx)
+            .await?;
+            if record
+                .as_ref()
+                .and_then(|row| row.get::<Option<String>, _>("role"))
+                .as_deref()
+                != Some("creator")
+            {
+                return Err(Error::Forbidden);
+            }
+        }
+        let id = Uuid::new_v4().to_string();
+        // The templates row doubles as the browse grouping for the brackets.
+        sqlx::query(
+            "INSERT INTO templates(id,category,title) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+        )
+        .bind(&id)
+        .bind(spec.rule.category())
+        .bind(&spec.title)
+        .execute(&mut *tx)
+        .await?;
+        let (recurrence, interval, start_minute, end_minute, concurrency, end) =
+            match &spec.schedule {
+                crate::market::Schedule::Once { .. } => ("once", None, None, None, 1, None),
+                crate::market::Schedule::Recurring {
+                    interval_ms,
+                    active_start_minute,
+                    active_end_minute,
+                    max_concurrency,
+                    end_ms,
+                } => (
+                    "recurring",
+                    Some(*interval_ms),
+                    Some(*active_start_minute),
+                    Some(*active_end_minute),
+                    *max_concurrency,
+                    *end_ms,
+                ),
+            };
+        sqlx::query(
+            "INSERT INTO market_series(id,creator_account_id,title,resolution_criterion,rule,source_id,data_mode,liquidity_units,fee_charged,recurrence,interval_ms,active_start_minute,active_end_minute,max_concurrency,end_ms,anchor_ms,state,created_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'active',$17)",
+        )
+        .bind(&id)
+        .bind(creator)
+        .bind(&spec.title)
+        .bind(&spec.resolution_criterion)
+        .bind(Json(&spec.rule))
+        .bind(&spec.source_id)
+        .bind(data_mode)
+        .bind(spec.liquidity_units)
+        .bind(spec.fee_charged)
+        .bind(recurrence)
+        .bind(interval)
+        .bind(start_minute)
+        .bind(end_minute)
+        .bind(concurrency)
+        .bind(end)
+        .bind(now)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        audit(
+            &mut tx,
+            "create_series",
+            None,
+            json!({"series_id": id, "creator_account_id": creator, "recurrence": recurrence}),
+            now,
+        )
+        .await?;
+        tx.commit().await?;
+        if let crate::market::Schedule::Once { .. } = spec.schedule {
+            // The single bracket publishes now; if it cannot be funded the
+            // series row is removed again so nothing half-published remains.
+            let bracket = spec.instance_spec(&id, 0, creator.map(str::to_string), data_mode);
+            if let Err(e) = self.create_instance(&bracket).await {
+                let _ = sqlx::query("DELETE FROM market_series WHERE id=$1")
+                    .bind(&id)
+                    .execute(&self.pool)
+                    .await;
+                return Err(e);
+            }
+        }
+        self.series_view(&id).await
+    }
+
+    pub async fn series_view(&self, id: &str) -> Result<Value> {
+        let series: Series = sqlx::query_as("SELECT * FROM market_series WHERE id=$1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let rows: Vec<Instance> = sqlx::query_as(
+            "SELECT * FROM instances WHERE series_id=$1 ORDER BY close_ms DESC,id LIMIT 100",
+        )
+        .bind(id)
+        .fetch_all(&self.pool)
+        .await?;
+        let now = self.now().await?;
+        let instances = rows
+            .iter()
+            .map(|i| instance_view(i, now))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(json!({
+            "id": series.id, "creator_account_id": series.creator_account_id,
+            "title": series.title, "resolution_criterion": series.resolution_criterion,
+            "rule": series.rule.0, "source_id": series.source_id, "data_mode": series.data_mode,
+            "liquidity_units": series.liquidity_units, "fee_charged": series.fee_charged,
+            "state": series.state, "created_ms": series.created_ms,
+            "schedule": {
+                "kind": series.recurrence, "interval_ms": series.interval_ms,
+                "active_start_minute": series.active_start_minute, "active_end_minute": series.active_end_minute,
+                "max_concurrency": series.max_concurrency, "end_ms": series.end_ms,
+            },
+            "instances": instances,
+        }))
+    }
+
+    pub async fn series_list(&self) -> Result<Vec<Value>> {
+        let rows: Vec<Series> =
+            sqlx::query_as("SELECT * FROM market_series ORDER BY (state='active') DESC,created_ms DESC,id LIMIT 100")
+                .fetch_all(&self.pool)
+                .await?;
+        Ok(rows
+            .iter()
+            .map(|s| {
+                json!({"id": s.id, "creator_account_id": s.creator_account_id, "title": s.title,
+                    "category": s.rule.0.category(), "state": s.state, "recurrence": s.recurrence,
+                    "interval_ms": s.interval_ms, "max_concurrency": s.max_concurrency,
+                    "end_ms": s.end_ms, "created_ms": s.created_ms})
+            })
+            .collect())
+    }
+
+    /// Rolling spawn (ADR 0006): keep every upcoming grid slot of each active
+    /// recurring series published, up to its maximum concurrency, never
+    /// outside the active period and never past the series end. Failures are
+    /// logged per series so one broken series cannot stall the others.
+    pub async fn spawn_due_brackets(&self) -> Result<usize> {
+        let now = self.now().await?;
+        let series: Vec<Series> = sqlx::query_as(
+            "SELECT * FROM market_series WHERE state='active' AND recurrence='recurring'",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let mut spawned = 0;
+        for s in &series {
+            match self.spawn_series_brackets(s, now).await {
+                Ok(n) => spawned += n,
+                Err(e) => {
+                    tracing::error!(series_id=%s.id, error=%e, "bracket spawn failed; will retry")
+                }
+            }
+        }
+        // A series ends when its last non-terminal bracket settles; a
+        // once-series whose single instance is terminal ends too.
+        sqlx::query(
+            "UPDATE market_series s SET state='ended' WHERE s.state='active' AND (
+                (s.recurrence='once' AND EXISTS(SELECT 1 FROM instances i WHERE i.series_id=s.id))
+                OR (s.recurrence='recurring' AND s.end_ms IS NOT NULL AND s.end_ms<=$1)
+            ) AND NOT EXISTS(SELECT 1 FROM instances i WHERE i.series_id=s.id AND i.state IN ('open','closed','resolving'))",
+        )
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+        Ok(spawned)
+    }
+
+    async fn spawn_series_brackets(&self, series: &Series, now: i64) -> Result<usize> {
+        let Some(interval) = series.interval_ms else {
+            return Ok(0);
+        };
+        let start_minute = series.active_start_minute.unwrap_or(0);
+        let end_minute = series.active_end_minute.unwrap_or(1439);
+        // Grid points strictly after now, newest bound by max concurrency.
+        let k_min = (now - series.anchor_ms).div_euclid(interval) + 1;
+        let mut spawned = 0;
+        for k in k_min..k_min + series.max_concurrency {
+            let slot = series.anchor_ms + k * interval;
+            if series.end_ms.is_some_and(|end| slot >= end) {
+                continue;
+            }
+            if !inside_active_window(slot, start_minute, end_minute) {
+                continue;
+            }
+            let exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM instances WHERE series_id=$1 AND bracket_start_ms=$2)",
+            )
+            .bind(&series.id)
+            .bind(slot)
+            .fetch_one(&self.pool)
+            .await?;
+            if exists {
+                continue;
+            }
+            match self.create_instance(&series.bracket_spec(slot)).await {
+                Ok(_) => spawned += 1,
+                Err(Error::Conflict(message))
+                    if message == "An instance already exists for this template and close time" => {
+                }
+                // a competing scheduler won the race
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(spawned)
     }
 
     pub async fn portfolio(&self, account: &str, limit: i64, offset: i64) -> Result<Value> {

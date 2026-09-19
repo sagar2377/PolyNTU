@@ -4,7 +4,7 @@ use crate::{
     error::{Error, Result},
     events::EventBus,
     execution::{QuoteRequest, TradeRequest},
-    market::{EvidenceInput, NewInstance},
+    market::{EvidenceInput, NewInstance, NewSeries},
     store::{Account, Store, instance_view},
     worker,
 };
@@ -87,6 +87,8 @@ pub fn router(state: AppState, origins: Vec<HeaderValue>) -> Router {
         .route("/me/trades", get(trades))
         .route("/markets", get(markets))
         .route("/markets/{id}/instances", get(template_instances))
+        .route("/series", post(create_series).get(list_series))
+        .route("/series/{id}", get(series_detail))
         .route("/instances", get(instances))
         .route("/instances/{id}", get(instance))
         .route("/instances/{id}/events", get(events))
@@ -272,6 +274,24 @@ async fn instances(
 }
 async fn instance(State(s): State<AppState>, Path(id): Path<String>) -> Result<Json<Value>> {
     Ok(Json(s.store.instance_detail(&id).await?))
+}
+async fn create_series(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<NewSeries>,
+) -> Result<Json<Value>> {
+    let account = s.account(&headers).await?;
+    Ok(Json(
+        s.store
+            .create_series(Some(&account.id), &req, "manual")
+            .await?,
+    ))
+}
+async fn list_series(State(s): State<AppState>) -> Result<Json<Vec<Value>>> {
+    Ok(Json(s.store.series_list().await?))
+}
+async fn series_detail(State(s): State<AppState>, Path(id): Path<String>) -> Result<Json<Value>> {
+    Ok(Json(s.store.series_view(&id).await?))
 }
 async fn quote(
     State(s): State<AppState>,

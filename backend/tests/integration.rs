@@ -12,7 +12,10 @@ use polyntu::{
     auth,
     execution::{QuoteRequest, TradeRequest},
     fee,
-    market::{EvidenceInput, Instance, NewInstance, Observation, Resolution, Rule, demo_specs},
+    market::{
+        EvidenceInput, Instance, NewInstance, NewSeries, Observation, Resolution, Rule, Schedule,
+        demo_specs,
+    },
     store::{Account, Store, db_now, transfer},
     worker,
 };
@@ -64,6 +67,23 @@ impl TestDb {
         let session = self.store.create_account("Test participant").await.unwrap();
         let token = session["token"].as_str().unwrap().to_owned();
         (self.store.account_for_token(&token).await.unwrap(), token)
+    }
+    async fn creator(&self) -> (Account, String) {
+        let session = self
+            .store
+            .register_account("Creator", "creator@ntu.edu.sg", "correct horse battery")
+            .await
+            .unwrap();
+        let id = session["account"]["id"].as_str().unwrap().to_owned();
+        let request = self.store.create_verification_request(&id).await.unwrap();
+        self.store
+            .decide_verification_request(request["id"].as_str().unwrap(), true, None)
+            .await
+            .unwrap();
+        (
+            self.store.account_by_id(&id).await.unwrap(),
+            session["token"].as_str().unwrap().to_owned(),
+        )
     }
     async fn spec(&self) -> NewInstance {
         let now = self.store.now().await.unwrap();
@@ -449,6 +469,245 @@ async fn login_is_reachable_over_http() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(me["email"], "billy@ntu.edu.sg");
+    db.finish().await;
+}
+
+// ADR 0006: creator-owned market series and rolling spawn.
+fn rain_series(schedule: Schedule) -> NewSeries {
+    NewSeries {
+        title: "Campus rain · afternoon window".into(),
+        resolution_criterion: "Yes if total observed rainfall at the campus station reaches 0.2 mm in the published window. Missing samples do not count as zero rainfall.".into(),
+        rule: Rule::Weather {
+            station_id: "demo-campus".into(),
+            threshold_milli_mm: 200,
+        },
+        source_id: "campus-observer".into(),
+        liquidity_units: 100,
+        fee_charged: true,
+        schedule,
+    }
+}
+
+#[tokio::test]
+async fn creators_publish_one_time_series_with_their_single_instance() {
+    let db = TestDb::new().await;
+    let (creator, token) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    let spec = rain_series(Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    assert_eq!(view["schedule"]["kind"], "once");
+    assert_eq!(view["state"], "active");
+    let instances = view["instances"].as_array().unwrap();
+    assert_eq!(instances.len(), 1);
+    assert_eq!(instances[0]["creator_account_id"], creator.id);
+    assert_eq!(instances[0]["series_id"], view["id"]);
+    // Members cannot publish series; the route rejects them identically.
+    let member = db
+        .store
+        .register_account("Member", "member@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let denied = db
+        .store
+        .create_series(
+            Some(member["account"]["id"].as_str().unwrap()),
+            &spec,
+            "manual",
+        )
+        .await;
+    assert!(matches!(denied, Err(polyntu::error::Error::Forbidden)));
+    let app = db.app();
+    let body = serde_json::to_value(&spec).unwrap();
+    let (status, _) = http(
+        &app,
+        "POST",
+        "/api/v2/series",
+        body,
+        Some(member["token"].as_str().unwrap()),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = http(
+        &app,
+        "POST",
+        "/api/v2/series",
+        serde_json::to_value(&spec).unwrap(),
+        Some(&token),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn recurring_series_keep_the_rolling_horizon_filled() {
+    let db = TestDb::new().await;
+    let (creator, _) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    let spec = rain_series(Schedule::Recurring {
+        interval_ms: 120000,
+        active_start_minute: 0,
+        active_end_minute: 1439,
+        max_concurrency: 5,
+        end_ms: None,
+    });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    let series_id = view["id"].as_str().unwrap().to_owned();
+    assert_eq!(view["instances"].as_array().unwrap().len(), 0);
+    worker::tick(&db.store).await.unwrap();
+    let view = db.store.series_view(&series_id).await.unwrap();
+    let instances = view["instances"].as_array().unwrap();
+    assert_eq!(
+        instances.len(),
+        5,
+        "the rolling horizon holds max_concurrency brackets"
+    );
+    let mut closes: Vec<i64> = instances
+        .iter()
+        .map(|i| i["close_ms"].as_i64().unwrap())
+        .collect();
+    closes.sort_unstable();
+    for pair in closes.windows(2) {
+        assert_eq!(
+            pair[1] - pair[0],
+            120000,
+            "brackets sit on the interval grid"
+        );
+    }
+    assert!(closes[0] > now, "brackets close in the future");
+    // Two minutes later exactly one new bracket appears on the grid.
+    db.store.advance_demo_clock(2).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    let view = db.store.series_view(&series_id).await.unwrap();
+    assert_eq!(view["instances"].as_array().unwrap().len(), 6);
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn series_end_stops_spawning_and_settled_brackets_end_the_series() {
+    let db = TestDb::new().await;
+    let (creator, _) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    let spec = rain_series(Schedule::Recurring {
+        interval_ms: 60000,
+        active_start_minute: 0,
+        active_end_minute: 1439,
+        max_concurrency: 2,
+        end_ms: Some(now + 300000),
+    });
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    let series_id = view["id"].as_str().unwrap().to_owned();
+    worker::tick(&db.store).await.unwrap();
+    let view = db.store.series_view(&series_id).await.unwrap();
+    assert_eq!(view["instances"].as_array().unwrap().len(), 2);
+    // Past the end and past every deadline: manual brackets without evidence
+    // void, and the series ends with them.
+    db.store.advance_demo_clock(10).await.unwrap();
+    for _ in 0..2 {
+        worker::tick(&db.store).await.unwrap();
+    }
+    let view = db.store.series_view(&series_id).await.unwrap();
+    assert_eq!(view["state"], "ended");
+    for instance in view["instances"].as_array().unwrap() {
+        assert_eq!(instance["state"], "voided");
+    }
+    // No new brackets appear after the end.
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM instances WHERE series_id=$1")
+        .bind(&series_id)
+        .fetch_one(&db.store.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 2);
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn fee_free_markets_charge_no_fee_and_pay_no_creator_share() {
+    let db = TestDb::new().await;
+    let (creator, _) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    let mut spec = rain_series(Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    });
+    // A welfare market: no fee collected, no creator payout.
+    spec.fee_charged = false;
+    let view = db
+        .store
+        .create_series(Some(&creator.id), &spec, "manual")
+        .await
+        .unwrap();
+    assert_eq!(view["fee_charged"], false);
+    let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+    let (trader, _) = db.account().await;
+    let quote = db
+        .store
+        .quote(
+            &trader.id,
+            &QuoteRequest {
+                instance_id: instance_id.clone(),
+                outcome_id: "yes".into(),
+                side: Side::Buy,
+                quantity_millis: 1000,
+            },
+            SECRET,
+        )
+        .await
+        .unwrap();
+    assert_eq!(quote["fee_micros"], "0");
+    let receipt = db
+        .store
+        .execute(
+            &trader.id,
+            &Uuid::new_v4().to_string(),
+            &TradeRequest {
+                quote_token: quote["quote_token"].as_str().unwrap().into(),
+                limit_micros: quote["amount_micros"].as_str().unwrap().into(),
+            },
+            SECRET,
+        )
+        .await
+        .unwrap();
+    assert_eq!(receipt["fee_micros"], "0");
+    // Settle: the creator's balance is untouched and no fee was ever recorded.
+    db.store.advance_demo_clock(7).await.unwrap();
+    for _ in 0..2 {
+        worker::tick(&db.store).await.unwrap();
+    }
+    let charged_fees: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM trades WHERE instance_id=$1 AND fee_micros>0")
+            .bind(&instance_id)
+            .fetch_one(&db.store.pool)
+            .await
+            .unwrap();
+    assert_eq!(charged_fees, 0);
+    let creator_after = db.store.account_by_id(&creator.id).await.unwrap();
+    assert_eq!(creator_after.balance_micros, "10000000000");
     db.finish().await;
 }
 
@@ -1416,7 +1675,7 @@ async fn trading_fees_are_charged_and_split_with_the_creator() {
             .unwrap()
             .balance_micros,
         (994_862_239 + engine_sell - sell_fee + 5_000_000
-            - fee::charged(plain_engine, true).unwrap())
+            - fee::charged(plain_engine, true, true).unwrap())
         .to_string()
     );
     assert_eq!(

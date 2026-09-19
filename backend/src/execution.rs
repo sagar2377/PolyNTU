@@ -73,9 +73,17 @@ impl Store {
             request.side,
             request.quantity_millis,
         )?;
-        let fee_micros = fee::trade_fee(calculation.amount_micros);
+        let fee_micros = if instance.fee_charged {
+            fee::trade_fee(calculation.amount_micros)
+        } else {
+            0
+        };
         // The signed amount is the all-in debit/credit the trader confirms.
-        let total_micros = fee::charged(calculation.amount_micros, request.side == Side::Buy)?;
+        let total_micros = fee::charged(
+            calculation.amount_micros,
+            request.side == Side::Buy,
+            instance.fee_charged,
+        )?;
         let claims = QuoteClaims {
             account_id: account_id.into(),
             instance_id: instance.id.clone(),
@@ -233,13 +241,17 @@ impl Store {
             return Err(conflict("Quote calculation changed. Request a new quote"));
         }
         let amount = calculation.amount_micros;
-        let fee_micros = fee::trade_fee(amount);
+        let fee_micros = if instance.fee_charged {
+            fee::trade_fee(amount)
+        } else {
+            0
+        };
         if fee_micros != claims.fee_micros {
             return Err(conflict("Quote calculation changed. Request a new quote"));
         }
         // The ledger moves one all-in amount; the fee rides inside it and is
         // split out of the reserve when the instance settles.
-        let total = fee::charged(amount, claims.side == Side::Buy)?;
+        let total = fee::charged(amount, claims.side == Side::Buy, instance.fee_charged)?;
         let is_buy = claims.side == Side::Buy;
         if is_buy && total > limit || !is_buy && total < limit {
             return Err(conflict("Trade exceeds your cost/proceeds limit"));

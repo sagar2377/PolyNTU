@@ -27,7 +27,12 @@ pub fn creator_share(pot_micros: i64, has_creator: bool) -> i64 {
 }
 
 /// All-in amount a trader debits (buy) or credits (sell) for one trade.
-pub fn charged(amount_micros: i64, buy: bool) -> Result<i64> {
+/// Fee-free markets (chosen at creation, like the welfare bus series) trade
+/// at the pure engine amount.
+pub fn charged(amount_micros: i64, buy: bool, fee_charged: bool) -> Result<i64> {
+    if !fee_charged {
+        return Ok(amount_micros);
+    }
     let fee = trade_fee(amount_micros);
     if buy {
         amount_micros.checked_add(fee)
@@ -55,10 +60,13 @@ mod tests {
 
     #[test]
     fn charged_amounts_stay_nonnegative_and_creator_split_sums() {
-        assert_eq!(charged(5_124_948, true).unwrap(), 5_137_761);
-        assert_eq!(charged(5_124_948, false).unwrap(), 5_112_135);
-        assert_eq!(charged(0, false).unwrap(), 0);
-        assert_eq!(charged(1, false).unwrap(), 0);
+        assert_eq!(charged(5_124_948, true, true).unwrap(), 5_137_761);
+        assert_eq!(charged(5_124_948, false, true).unwrap(), 5_112_135);
+        assert_eq!(charged(0, false, true).unwrap(), 0);
+        assert_eq!(charged(1, false, true).unwrap(), 0);
+        // Fee-free markets trade at the pure engine amount.
+        assert_eq!(charged(5_124_948, true, false).unwrap(), 5_124_948);
+        assert_eq!(charged(5_124_948, false, false).unwrap(), 5_124_948);
         let pot = 12_813;
         assert_eq!(
             creator_share(pot, true) + (pot - creator_share(pot, true)),
