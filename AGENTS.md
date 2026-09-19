@@ -7,3 +7,8 @@ browser automation, desktop automation, or tools that move the cursor, type into
 applications, or open or control browser panels. Use source files, terminal
 commands, and HTTP/API checks for development and verification. When a browser
 preview is needed, provide the local URL for the user to open and operate.
+
+## Commits
+
+Keep commit messages short and concise. Do not add AI attribution such as
+"Co-Authored-By: Claude Code" to commits or pull requests in this repository.

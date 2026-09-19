@@ -5,7 +5,8 @@ if (-not (Test-Path $secretFile)) {
     New-Item -ItemType Directory -Force -Path (Split-Path $secretFile -Parent) | Out-Null
     function New-DevSecret {
         $bytes = New-Object byte[] 32
-        [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+        $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+        try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
         [Convert]::ToBase64String($bytes)
     }
     @{ quote = (New-DevSecret); admin = (New-DevSecret) } | ConvertTo-Json | Set-Content -LiteralPath $secretFile -Encoding utf8

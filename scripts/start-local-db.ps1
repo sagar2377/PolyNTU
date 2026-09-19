@@ -10,7 +10,8 @@ if (-not (Test-Path (Join-Path $pgData 'PG_VERSION'))) {
     & (Join-Path $pgBin 'initdb.exe') -D $pgData -U polyntu -A trust --no-locale --encoding=UTF8
     if ($LASTEXITCODE -ne 0) { throw 'initdb failed' }
 }
-& (Join-Path $pgBin 'pg_ctl.exe') -D $pgData status 2>$null
+# Leave stderr unredirected: Windows PowerShell 5.1 makes redirected native stderr a terminating error under 'Stop'.
+& (Join-Path $pgBin 'pg_ctl.exe') -D $pgData status
 if ($LASTEXITCODE -ne 0) {
     & (Join-Path $pgBin 'pg_ctl.exe') -D $pgData -l $pgLog -o "-h 127.0.0.1 -p $Port" -w start
     if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL failed to start' }

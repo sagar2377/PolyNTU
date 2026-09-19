@@ -1,3 +1,4 @@
+# Release local run: same pipeline as run-dev.ps1 with a locked, optimised backend build.
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'rust-env.ps1')
@@ -6,4 +7,4 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location (Join-Path $projectRoot 'frontend')
 try { npm.cmd run build; if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' } } finally { Pop-Location }
 Push-Location (Join-Path $projectRoot 'backend')
-try { cargo run; if ($LASTEXITCODE -ne 0) { throw 'Backend failed' } } finally { Pop-Location }
+try { cargo run --locked --release; if ($LASTEXITCODE -ne 0) { throw 'Backend failed' } } finally { Pop-Location }

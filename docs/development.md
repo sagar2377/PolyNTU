@@ -86,7 +86,8 @@ Never log bearer tokens, administrator tokens, quote bodies, or `.local/dev-secr
 | `scripts/rust-env.ps1` | Locates project-local Cargo and installed MSVC/Windows SDK libraries. Changes only the current shell environment. |
 | `scripts/configure-dev.ps1` | Generates distinct persistent development secrets once and exports local settings. |
 | `scripts/start-local-db.ps1` | Initializes/starts loopback PostgreSQL and creates the `polyntu` database if needed. |
-| `scripts/run-dev.ps1` | Runs environment setup, database startup, frontend build, and release backend. |
+| `scripts/run-dev.ps1` | Runs environment setup, database startup, frontend build, and a debug backend (`cargo run`, unlocked) for fast iteration. |
+| `scripts/run-prod.ps1` | Runs the same pipeline with the locked, optimised release backend. |
 | `scripts/stop-preview.ps1` | Stops only the verified hidden preview recorded by this workspace. |
 | `scripts/generate-math-fixtures.py` | Rebuilds high-precision LMSR reference JSON using fixed-seed Python Decimal calculations. |
 | `scripts/run-benchmark.ps1` | Builds the release backend and runs an isolated database/server workload on port 18000. |
