@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, categories, timestamp } from "../api";
 import TradePanel from "../components/TradePanel";
+import PriceHistoryChart from "../components/PriceHistoryChart";
 export default function MarketPage({ id, account, refresh, onTrade, onError, onBack, onOpenSeries }) {
   const [instance, setInstance] = useState(null);
+  const [reloads, setReloads] = useState(0);
   useEffect(() => {
     let cancelled = false; let debounce;
-    const load = () => api.instance(id).then((value) => { if (!cancelled) setInstance(value); }).catch((e) => { if (!cancelled) onError(e.message); });
+    const load = () => api.instance(id).then((value) => { if (!cancelled) { setInstance(value); setReloads((n) => n + 1); } }).catch((e) => { if (!cancelled) onError(e.message); });
     load(); const stream = new EventSource(api.eventsUrl(id));
     stream.addEventListener("market", () => { clearTimeout(debounce); debounce = setTimeout(load, 100); });
     const timer = setInterval(load, 5000);
@@ -21,6 +23,10 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
       <p className="muted small">Prices reflect trading activity. Opening prices are uniform and are not a forecast from a data provider.</p>
       <dl className="market-facts"><div><dt>Trading closes</dt><dd>{timestamp(instance.close_ms)}</dd></div><div><dt>Observation window</dt><dd>{timestamp(instance.observation_start_ms)} – {timestamp(instance.observation_end_ms)}</dd></div><div><dt>Evidence deadline</dt><dd>{timestamp(instance.evidence_deadline_ms)}</dd></div><div><dt>Liquidity parameter</dt><dd>{instance.liquidity_units} units</dd></div><div><dt>Trading fee</dt><dd>{instance.fee_charged ? "25 bps, half funds the creator" : "None, a welfare market"}</dd></div></dl>
     </section><TradePanel instance={instance} account={account} onTrade={onTrade} /></div>
+    <section className="panel" aria-label="Price and volume history"><h2>Price and volume history</h2>
+      <p className="muted small">Each line is one outcome's price; bars are traded volume per interval. The chart refreshes with every trade.</p>
+      <PriceHistoryChart instance={instance} reloadKey={reloads} />
+    </section>
     <section className="panel"><h2>How this market resolves</h2><p>{instance.resolution_criterion}</p><p className="muted">{instance.void_policy}</p><dl className="market-facts"><div><dt>Source</dt><dd>{instance.source_id}</dd></div><div><dt>Evidence</dt><dd>{instance.evidence ? `Received ${timestamp(instance.evidence.received_ms)}` : "Awaiting the observation window and final evidence"}</dd></div></dl>{instance.evidence && <details><summary>View resolution evidence</summary><pre>{JSON.stringify(instance.evidence.payload, null, 2)}</pre></details>}</section>
   </>;
 }

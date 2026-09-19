@@ -35,6 +35,7 @@ export const api = {
   verificationRequest: () => request("/verification-requests"),
   instances: (offset = 0) => request(`/instances?limit=100&offset=${offset}`),
   instance: (id) => request(`/instances/${encodeURIComponent(id)}`),
+  history: (id, bucketMs) => request(`/instances/${encodeURIComponent(id)}/history?bucket_ms=${bucketMs}`),
   seriesList: () => request("/series"),
   series: (id) => request(`/series/${encodeURIComponent(id)}`),
   createSeries: (body) => request("/series", { method: "POST", body }),

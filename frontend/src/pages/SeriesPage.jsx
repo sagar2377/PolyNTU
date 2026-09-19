@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, categories, seriesKey, signResolution, timestamp } from "../api";
+import DayProbabilityChart from "../components/DayProbabilityChart";
 
 const categoryOf = (rule) =>
   rule.kind === "election"
@@ -57,6 +58,12 @@ export default function SeriesPage({ id, account, refresh, onError, onBack, onSe
       </dl>
       <p>{series.resolution_criterion}</p>
     </section>
+    {series.instances[0]?.outcomes?.length === 2 && <section className="panel" aria-label="Day-long probability view"><h2>Implied probability across the day</h2>
+      {series.day?.weighted_probability !== null && series.day?.weighted_probability !== undefined
+        ? <p className="muted">Volume-weighted {series.day.slots[0]?.outcome_label} probability across live brackets: <strong>{(series.day.weighted_probability * 100).toFixed(1)}%</strong>, each bracket weighted by units bet.</p>
+        : <p className="muted">No live brackets have traded volume yet; the weighted probability appears with the first trade.</p>}
+      <DayProbabilityChart series={series} reloadKey={refresh} />
+    </section>}
     <section className="panel"><h2>Live brackets</h2>
       {live.length === 0 ? <p className="muted">No live brackets right now. {recurring ? "The next one appears at the start of the next operating window slot." : ""}</p> : <ul className="bracket-list">
         {live.map((bracket) => <li key={bracket.id}><span>Closes {timestamp(bracket.close_ms)} SGT</span>
