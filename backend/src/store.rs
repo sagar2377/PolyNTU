@@ -944,6 +944,7 @@ impl Store {
             }
             slots.push(json!({"bracket_start_ms": instance.bracket_start_ms, "close_ms": instance.close_ms,
                 "probability": prices[0], "volume_micros": volume, "state": instance.state,
+                "result": instance.result,
                 "outcome_id": instance.outcomes[0].id, "outcome_label": instance.outcomes[0].label}));
         }
         let weighted_probability = if weight_sum > 0 {
