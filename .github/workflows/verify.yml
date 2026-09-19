@@ -32,9 +32,9 @@ jobs:
           backend=false
           frontend=false
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            FILES=$(git diff --name-only "$BASE...$HEAD")
+            FILES=$(git diff --name-only "$BASE...$GITHUB_SHA")
           else
-            FILES=$(git diff --name-only "$BASE" "$HEAD")
+            FILES=$(git diff --name-only "$BASE" "$GITHUB_SHA")
           fi
           while IFS= read -r file; do
             case "$file" in
