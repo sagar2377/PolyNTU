@@ -6,7 +6,7 @@ This document explains every active Rust source module and the important call re
 
 ### `backend/src/lib.rs`
 
-The library crate exposes `amm`, `api`, `auth`, `error`, `execution`, `market`, `resolution`, `store`, and `worker`. Integration tests import the application through this library. `#![forbid(unsafe_code)]` prevents unsafe blocks in the application crate.
+The library crate exposes `amm`, `api`, `auth`, `cache`, `error`, `events`, `execution`, `fee`, `market`, `resolution`, `resolver`, `store`, and `worker`. Integration tests import the application through this library. `#![forbid(unsafe_code)]` prevents unsafe blocks in the application crate.
 
 ### `backend/src/main.rs`
 
@@ -52,6 +52,8 @@ The generic 500 response advises retrying with the same idempotency key because 
 - `verify_admin` derives fixed HMAC tags from configured and candidate strings and uses HMAC verification for constant-time tag comparison.
 - `valid_ntu_email` accepts only `name@ntu.edu.sg` or `name@unit.ntu.edu.sg` (further unit labels allowed, lowercase only) with bounded local/domain lengths; callers normalize to lowercase first.
 - `hash_password` returns an argon2id hash in PHC string form with a fresh random salt; `verify_password` fails closed on a malformed stored hash so every verification is treated the same way.
+- `resolution_message` builds the exact string a creator signs for a human resolution, `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}` (ADR 0007).
+- `verify_ed25519` checks that signature against a base64 32-byte public key with ed25519-dalek, failing closed on malformed keys or signatures; the platform holds only public keys, so it can verify but never forge a resolution.
 
 The quote secret and administrator token must be different. Login rotates an account's single session token; tokens still have no expiry, there is no password reset or recovery, and there is no administrator role hierarchy beyond the admin role.
 
@@ -124,13 +126,13 @@ The tagged enum contains:
 
 `Schedule` is the tagged recurrence enum: `Once` carries the five instance times, and `Recurring` carries `interval_ms` (one minute to one day), `active_start_minute`/`active_end_minute` (minutes of day, Singapore time), `max_concurrency` (capped at 50), and an optional `end_ms` whose absence means perpetual. `validate` bounds all of them. `bracket_timing` maps a slot start to instance times: the slot is both the close and the observation window `[T, T+interval)`, finalization follows one second after the observation end (`BRACKET_FINALIZE_MARGIN_MS`), and the evidence deadline sixty seconds after (`BRACKET_DEADLINE_MARGIN_MS`).
 
-`inside_active_window` interprets a slot start in Singapore time (UTC+8, no daylight saving) and tests it against the daily window. `NewSeries` is the publication request (title, criterion, rule, source, liquidity, `fee_charged` defaulting to true, an optional resolution authority ([ADR 0007](../decisions/0007-resolution-authority.md)), schedule) and `instance_spec` builds one bracket's `NewInstance`. `Series` mirrors the database row; `Series::bracket_spec` rebuilds a bracket spec from a stored row. `demo_series_spec` is the rolling fee-free demo bus: simulated data, a 2-minute interval, the 06:00 to 23:59 operating window, maximum concurrency 5, perpetual.
+`inside_active_window` interprets a slot start in Singapore time (UTC+8, no daylight saving) and tests it against the daily window. `NewSeries` is the publication request (title, criterion, rule, source, liquidity, `fee_charged` defaulting to true, an optional resolution authority, schedule) and `instance_spec` builds one bracket's `NewInstance`. The resolution authority is `ResolutionSpec` ([ADR 0007](../decisions/0007-resolution-authority.md)): `Creator` with a base64 32-byte ed25519 public key, or `Resolver` with an https endpoint (plain http on loopback only, for local adapters); absent means the platform administrator resolves. `Series` mirrors the database row; `Series::bracket_spec` rebuilds a bracket spec from a stored row. `demo_series_spec` is the rolling fee-free demo bus: simulated data, a 2-minute interval, the 06:00 to 23:59 operating window, maximum concurrency 5, perpetual.
 
 ## HTTP layer: `api.rs`
 
 `AppState` owns the cloned `Store` and shared quote/admin secrets. Its private helpers resolve bearer tokens to accounts and gate administrator access: `require_admin` accepts either the configured shared `X-Admin-Token` (constant-time HMAC comparison) or the bearer session of an admin-role account, reading the role fresh from the database on every request.
 
-`router` creates a nested `/api/v2` router, explicit retired routes, global 64 KiB limit, configured CORS, request tracing, and the shared state. The series routes (`POST /api/v2/series`, `GET /api/v2/series`, `GET /api/v2/series/{id}`) resolve the bearer account and delegate to the store; publication requires the creator role and publishes manual-data series. Handlers remain deliberately thin: authenticate/parse, call one store/service method, and serialize its result.
+`router` creates a nested `/api/v2` router, explicit retired routes, global 64 KiB limit, configured CORS, request tracing, and the shared state. The series routes (`POST /api/v2/series`, `GET /api/v2/series`, `GET /api/v2/series/{id}`) resolve the bearer account and delegate to the store; publication requires the creator role and publishes manual-data series. `GET /api/v2/instances/{id}/history` and `POST /api/v2/instances/{id}/resolution` follow the same thin pattern, delegating to `Store::instance_history` and `Store::record_creator_resolution`. Handlers remain deliberately thin: authenticate/parse, call one store/service method, and serialize its result.
 
 The SSE handler is the exception: it validates the instance, initializes a nonnegative cursor, subscribes to the instance's broadcast channel, replays up to 100 outbox rows per catch-up pass, and emits `market` events as notifications arrive, with a 30-second catch-up safety net. The stream ends only on a database query failure or client disconnect.
 
@@ -184,11 +186,13 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 `instance`, `instance_detail`, `templates`, and `instances` construct public views. Detail includes the selected evidence payload. `create_instance` validates/derives the full definition, creates/funds a reserve, inserts the immutable instance, and appends the opened event; direct (non-series) creations also write an administrator audit row, while scheduler-spawned brackets publish through the outbox only.
 
+`instance_history` (UC-19) rebuilds time-bucketed prices and volume for one instance by replaying up to 5,000 recorded trades from the opening inventory: the first point carries the opening prices, later points the price after the last fill in their bucket with the bucket's summed traded amount, and an untouched instance returns one flat point.
+
 ### Series and rolling spawn (ADR 0006)
 
 `create_series` checks the data mode (creators publish manual series; simulated series stay demo-internal), validates the spec, requires the creator role under an account lock (platform seeding passes no creator), creates the series row plus a `templates` row under the series ID, and audits `create_series`. A one-time schedule immediately publishes its single bracket through `create_instance`; if that fails, the series row is removed again so nothing half-published remains.
 
-`series_view` returns the definition plus up to 100 instances, newest close first; `series_list` orders active series first. `spawn_due_brackets` loads every active recurring series and calls `spawn_series_brackets` per series: it walks the grid slots strictly after now for up to `max_concurrency` slots, skips slots past `end_ms` or outside the active window, skips brackets that already exist, and publishes the rest through `create_instance` (a lost race with a competing scheduler is swallowed). Failures are logged per series and retried on the next tick. The same method then ends series: a recurring series whose end has passed with no non-terminal bracket left, and a one-time series once its single instance is terminal.
+`series_view` returns the definition plus up to 100 instances, newest close first, and computes the day view (UC-21) on request: per-bracket slot probabilities and volumes, plus the volume-weighted first-outcome probability across live brackets, null when no live bracket has traded. Nothing in the day view is stored. `series_list` orders active series first. `spawn_due_brackets` loads every active recurring series and calls `spawn_series_brackets` per series: it walks the grid slots strictly after now for up to `max_concurrency` slots, skips slots past `end_ms` or outside the active window, skips brackets that already exist, and publishes the rest through `create_instance` (a lost race with a competing scheduler is swallowed). Failures are logged per series and retried on the next tick. The same method then ends series: a recurring series whose end has passed with no non-terminal bracket left, and a one-time series once its single instance is terminal.
 
 ### Private reads and reconciliation
 
@@ -198,7 +202,11 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 ## Resolution service: `resolution.rs`
 
-`ingest_evidence` invokes the shared recorder in manual mode. `record_evidence` validates limits and payload size, hashes the full input, locks the instance, handles exact duplicates, rejects/audits late evidence, enforces mode/time/source/window, evaluates the observation, inserts an immutable revision, selects the highest revision, and emits audit/event records.
+`ingest_evidence` invokes the shared recorder in manual mode. `record_evidence` validates limits and payload size, hashes the full input, locks the instance, handles exact duplicates, rejects/audits late evidence, enforces mode/time/source/window, evaluates the observation, inserts an immutable revision, selects the highest revision, and emits audit/event records. On the manual (non-simulator) path it also enforces the ADR 0007 exclusion: any instance whose series authority is not `admin` is rejected, so administrator evidence cannot resolve creator-signed or resolver-settled markets.
+
+`record_creator_resolution` (ADR 0007) records a creator's signed human resolution: only the series creator may submit, the instance must be closed with the observation window ended and the deadline not passed, the ed25519 signature over `auth::resolution_message` must verify against the public key fixed at creation, and one resolution per instance is allowed. The verified outcome becomes evidence with source `creator-signature` (parser `creator-signature-v1`) and settles through the normal pipeline.
+
+`record_resolver_evidence` (ADR 0007) records an external resolver's already-validated answer as evidence with source `external-resolver`, rejecting it once the result is final or the deadline has passed and treating a duplicate answer as a no-op.
 
 `suspend` changes only an open instance, requires a meaningful reason, advances the version, and audits/emits the change.
 
@@ -208,11 +216,15 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 `advance_demo_clock` atomically increases the persisted offset, bounds one request and cumulative offset, and audits it.
 
+## Resolver contract: `resolver.rs`
+
+The external resolver contract (ADR 0007). `ResolverRequest` is the fixed request the settlement worker POSTs to a series' configured endpoint at the finalize window: instance and series identifiers, the bracket and observation window, and the typed rule. `parse_response` accepts exactly `{"outcome_id":"<published id>"}` or `{"pending":true}` and classifies anything else as invalid, including unknown outcome IDs, non-string values, and malformed JSON. `call` performs the POST with reqwest (rustls) under a 5-second timeout and rejects responses above 64 KiB; unreachable and oversized responses surface as errors the worker treats as missing evidence.
+
 ## Worker: `worker.rs`
 
 `seed_demo` seeds the rolling demo bus series once (platform-owned, simulated, fee-free) and creates missing future occurrences for the six one-shot demo specs. A template/close uniqueness constraint handles competing schedulers; elections are deliberately not recurring.
 
-`tick` closes due instances, spawns due series brackets, selects actionable rows, produces due simulator evidence, settles independent instances concurrently in chunks of eight, and then seeds future demos. Per-series spawn failures and per-instance evidence/settlement errors are logged so one failure cannot stall the others.
+`tick` closes due instances, spawns due series brackets, selects actionable rows, produces due simulator evidence, asks resolver-authority instances' external endpoints from their finalize window (ADR 0007: a valid answer becomes resolver evidence; pending, malformed, and unreachable sources retry on every tick until the published deadline voids the instance), settles independent instances concurrently in chunks of eight, and then seeds future demos. Per-series spawn failures and per-instance evidence/settlement errors are logged so one failure cannot stall the others.
 
 `run` invokes `tick` every second with missed ticks skipped. There is no shutdown channel; `main` aborts the spawned task after HTTP shutdown.
 
@@ -229,14 +241,15 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 ```text
 main -> api, events, store, worker
 api -> execution/store/resolution/worker through Store methods
-execution -> amm, auth, events channel constant, market, store helpers
-resolution -> auth, market, store helpers
-worker -> market, resolution/store methods
+execution -> amm, auth, fee, events channel constant, market, store helpers
+resolution -> auth, fee, market, store helpers
+resolver -> error, market
+worker -> market, resolver, resolution/store methods
 store -> amm, auth, cache, events channel constant, market
 events -> cache, store
 cache -> market
 market -> amm validation/funding
-amm/auth/error -> no database service dependencies
+amm/auth/error/fee -> no database service dependencies
 ```
 
 Keeping `amm` pure and category accounting-free is the main extension boundary.

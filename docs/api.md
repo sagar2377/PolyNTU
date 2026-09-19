@@ -68,10 +68,12 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `GET /api/v2/instances` | None | Paginated instances across templates. |
 | `GET /api/v2/markets/{id}/instances` | None | Paginated instances for one template ID. |
 | `GET /api/v2/series` | None | Up to 100 published series, active series first. |
-| `GET /api/v2/series/{id}` | None | One series definition plus up to 100 of its brackets. |
+| `GET /api/v2/series/{id}` | None | One series definition plus up to 100 of its brackets and the computed day view. |
 | `POST /api/v2/series` | Account holding the creator role | Publishes a one-time market or a recurring series. |
 | `GET /api/v2/instances/{id}` | None | Current instance snapshot and selected evidence. |
+| `GET /api/v2/instances/{id}/history` | None | Time-bucketed price and volume history for one instance. |
 | `GET /api/v2/instances/{id}/events` | None | Resumable public SSE events. |
+| `POST /api/v2/instances/{id}/resolution` | Account; only the series creator | Submits a signed creator resolution for one closed instance. |
 | `POST /api/v2/quotes` | Account | Read-only signed price preview. |
 | `POST /api/v2/trades` | Account plus idempotency header | Executes or retrieves one exact quoted trade. |
 | `GET /api/v2/me/portfolio` | Account | Paginated positions and settlement credits. |
@@ -273,9 +275,14 @@ Validation includes:
 
 A one-time series publishes its single instance immediately; if the bracket cannot be funded, the series row is removed again so nothing half-published remains. Recurring brackets close and observe their slot `[T, T+interval)`, finalize one second after the observation end, and carry an evidence deadline 60 seconds after it. The response is the series view below.
 
-`GET /api/v2/series` returns up to 100 rows ordered active series first, then newest. Each row contains `id`, `creator_account_id`, `title`, `category`, `state`, `recurrence`, `interval_ms`, `max_concurrency`, `end_ms`, and `created_ms`.
+`GET /api/v2/series` returns up to 100 rows ordered active series first, then newest. Each row contains `id`, `creator_account_id`, `title`, `category`, `state`, `recurrence`, `interval_ms`, `max_concurrency`, `fee_charged`, `end_ms`, and `created_ms`.
 
-`GET /api/v2/series/{id}` returns the full definition: `id`, `creator_account_id`, `title`, `resolution_criterion`, `rule`, `source_id`, `data_mode`, `liquidity_units`, `fee_charged`, `state`, `created_ms`, a `resolution` object with `authority`, `public_key`, and `endpoint` ([ADR 0007](../decisions/0007-resolution-authority.md)), a `schedule` object with `kind`, `interval_ms`, `active_start_minute`, `active_end_minute`, `max_concurrency`, and `end_ms` (null where not applicable), and up to 100 `instances` ordered by newest close time first.
+`GET /api/v2/series/{id}` returns the full definition: `id`, `creator_account_id`, `title`, `resolution_criterion`, `rule`, `source_id`, `data_mode`, `liquidity_units`, `fee_charged`, `state`, `created_ms`, a `resolution` object with `authority`, `public_key`, and `endpoint` ([ADR 0007](../decisions/0007-resolution-authority.md)), a `schedule` object with `kind`, `interval_ms`, `active_start_minute`, `active_end_minute`, `max_concurrency`, and `end_ms` (null where not applicable), up to 100 `instances` ordered by newest close time first, and a computed `day` object (see below).
+
+The `day` object is computed on request from the listed brackets; it is never stored. It contains:
+
+- `weighted_probability`: the volume-weighted first-outcome probability across live brackets, `sum(price x volume) / sum(volume)` over live brackets with traded volume; null when no live bracket has traded.
+- `slots`: one entry per listed bracket, in the same newest-close-first order, each with `bracket_start_ms`, `close_ms`, `probability` (the first outcome's current price), `volume_micros` (total traded amount in that bracket), `state`, `result`, and the first outcome's `outcome_id` and `outcome_label`.
 
 ### Instance snapshot
 
@@ -317,6 +324,38 @@ Each outcome has:
 ```
 
 The detail endpoint additionally includes `evidence` with `source_id`, `event_id`, `received_ms`, and the complete normalized `payload`. That payload is public. Administrators must not submit credentials, personal identifiers, private URLs, or other sensitive references.
+
+### Price and volume history
+
+```http
+GET /api/v2/instances/{id}/history?bucket_ms=60000
+```
+
+Returns time-bucketed prices and traded volume for one instance (UC-19). `bucket_ms` is clamped to 1 second to 1 day and defaults to 60,000.
+
+```json
+[
+  {
+    "start_ms": 1788919140000,
+    "prices": [0.5, 0.5],
+    "volume_micros": 0
+  },
+  {
+    "start_ms": 1788919200000,
+    "prices": [0.5137, 0.4862],
+    "volume_micros": 5137761
+  }
+]
+```
+
+Semantics:
+
+- Prices are reconstructed by replaying up to 5,000 recorded trades from the opening inventory, so each point is the price after the last fill in its bucket; no prices are stored.
+- The first point carries the opening prices (volume 0) at the first traded bucket's start; later points carry their bucket's closing prices and volume, timestamped `start_ms` at their bucket's end.
+- `prices` holds one entry per published outcome, in outcome order.
+- `volume_micros` is the summed traded amount in that bucket.
+- Buckets with no trades produce no point; gaps are simply absent.
+- An instance with no trades returns a single point at the opening prices with zero volume.
 
 ### Pagination
 
@@ -610,6 +649,83 @@ Observation variants:
 Weather/count values must be nonnegative. Bus arrays are limited to 10,000 timestamps; only entries in `[window_start_ms, window_end_ms)` determine Yes. Election winners must exactly match a published candidate. `complete:false` or `is_final:false` waits rather than implying No.
 
 Successful new evidence returns its ID, `duplicate:false`, and the evaluated result or `null`. Repeating identical event content returns the same ID with `duplicate:true`.
+
+Administrator evidence is rejected outright, with 400 `invalid_request`, for any instance whose series resolution authority is not `admin`: the authority is fixed at creation and administrator evidence cannot resolve creator-signed or resolver-settled markets ([ADR 0007](../decisions/0007-resolution-authority.md)).
+
+## Resolution
+
+### `POST /api/v2/instances/{id}/resolution`
+
+Submits a creator's signed human resolution for one instance of a series whose resolution authority is `creator` ([ADR 0007](../decisions/0007-resolution-authority.md)). Requires the bearer session of the series creator.
+
+```json
+{
+  "outcome_id": "yes",
+  "nonce": "one-time-random-string",
+  "signature": "base64-ed25519-signature"
+}
+```
+
+The signature is ed25519 over the exact UTF-8 string:
+
+```text
+polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}
+```
+
+verified against the public key fixed at series creation. The nonce is 1–120 characters after trimming; use a fresh random value for each resolution.
+
+Conditions and errors:
+
+- 404 `not_found`: unknown instance.
+- 403 `forbidden`: the submitter is not the series creator (administrators included; only the creator can sign).
+- 400 `invalid_request`: the series authority is not `creator`, the nonce is malformed, the outcome is unknown, or signature verification failed.
+- 409 `conflict`: the instance is not `closed`, the observation window has not ended, the published evidence deadline has passed, or the instance already has a creator resolution (replays conflict; one resolution per instance).
+
+Successful response:
+
+```json
+{
+  "evidence_id": "evidence-uuid",
+  "evaluated_result": {"kind": "winner", "outcome": 0},
+  "outcome_id": "yes"
+}
+```
+
+The verified outcome is recorded as evidence with source `creator-signature` (parser `creator-signature-v1`; the payload carries the outcome, nonce, signature, and public key) and settles through the normal finalization pipeline. A lost private key makes resolution impossible and the instance voids at its published deadline.
+
+### External resolver contract
+
+This is the interface an external service implements when a series is published with `{"kind":"resolver","endpoint":"..."}`. At the finalize window the settlement worker POSTs the fixed request to the endpoint:
+
+```json
+{
+  "instance_id": "instance-uuid",
+  "series_id": "series-uuid",
+  "bracket_start_ms": 1788919200000,
+  "window_start_ms": 1788919200000,
+  "window_end_ms": 1788919260000,
+  "rule": {"kind": "bus", "route_id": "NTU-blue", "direction": "clockwise", "stop_id": "north-spine"}
+}
+```
+
+`bracket_start_ms` is null for a one-time series; `window_start_ms`/`window_end_ms` are the instance's observation window. The response must be exactly one of:
+
+```json
+{"outcome_id": "yes"}
+```
+
+naming one published outcome ID of that instance, or
+
+```json
+{"pending": true}
+```
+
+Anything else, including unknown outcome IDs and malformed bodies, is invalid.
+
+- A valid answer is recorded as evidence with source `external-resolver` and settles through the normal pipeline.
+- `pending`, malformed, and unreachable answers retry on every worker tick (one second) until the published evidence deadline, when the instance voids per the existing policy.
+- Requests time out after 5 seconds; responses above 64 KiB are rejected.
+- Endpoints must be https; plain http is accepted only on loopback, where local adapters run during development and tests.
 
 ## Demo clock, worker, and reconciliation
 

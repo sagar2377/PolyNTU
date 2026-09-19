@@ -26,8 +26,8 @@ This index separates concise project documentation from the detailed material in
 | [`changes.md`](changes.md) | User-facing implementation changes | Everyone | Current | Project maintainer |
 | [`decisions/`](decisions/) | Accepted and proposed architectural decisions | Developers and reviewers | Current | Project maintainer |
 | [`developer/`](developer/) | Code-level reference and traceability | Human developers | Current | Relevant component maintainer |
-| [`developer/use-cases.md`](developer/use-cases.md) | Actors, use case register, and business rules for the planned platform | Reviewers and maintainers | Plan; nothing described as new is implemented | Project maintainer |
-| [`diagrams/use-case.puml`](diagrams/use-case.puml) | Use case diagram source and rendered image | Reviewers | Plan; matches the use case model | Project maintainer |
+| [`developer/use-cases.md`](developer/use-cases.md) | Actors, use case register, and business rules for the platform | Reviewers and maintainers | Current; every use case is implemented | Project maintainer |
+| [`diagrams/use-case.puml`](diagrams/use-case.puml) | Use case diagram source and rendered image | Reviewers | Current; matches the use case model | Project maintainer |
 | [`archive/ai-agent-rewrite-progress/`](archive/ai-agent-rewrite-progress/) | Earlier AI agent planning/progress documentation | Historical reviewers | Archived; non-canonical | None |
 | [`../legacy/python-backend/`](../legacy/python-backend/) | Retired Python prototype | Historical reviewers | Archived; non-canonical | None |
 

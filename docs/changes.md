@@ -2,6 +2,17 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026: Resolution authority and market experience
+
+- The resolution authority is fixed at series creation ([ADR 0007](decisions/0007-resolution-authority.md)): the platform administrator (the default), the creator signing each resolution, or an external resolver endpoint. The series body accepts an optional resolution object; all three fields joined the immutable published definition (migration 0010).
+- Administrator exclusion: the admin evidence route rejects any instance whose series authority is not administrator, with the message that the market's resolution authority is fixed at creation, so administrator evidence cannot resolve creator-signed or resolver-settled markets.
+- Creator-signed human resolution: `POST /api/v2/instances/{id}/resolution` (bearer) takes the outcome, a nonce, and an ed25519 signature over `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}`, verified against the public key fixed at creation. Only the series creator may submit, the market must be closed with the observation window ended and the deadline not passed, and one resolution is allowed per instance. The verified outcome settles through the normal evidence pipeline.
+- The browser generates the creator's ed25519 keypair with WebCrypto, publishes only the public key, and stores the private key in local storage under `polyntu.v2.series-keys`; the create form warns that losing the key voids the market at its deadline, and the series page lets the creator pick each closed bracket's outcome and submit the signed resolution.
+- External resolver contract: from the finalize window the settlement worker POSTs a fixed request (instance, series, bracket and observation window, rule) to the series endpoint; the answer must name exactly one published outcome ID or report pending. Valid answers are recorded as evidence and settle; pending, malformed, and unreachable sources retry every one-second tick until the published evidence deadline voids the instance. Calls time out after 5 seconds, responses above 64 KiB are rejected, and endpoints must be https, with plain http allowed on loopback only for local adapters.
+- Price and volume history (UC-19): `GET /api/v2/instances/{id}/history?bucket_ms=N` (clamped 1 second to 1 day, default 60,000) reconstructs prices by replaying up to 5,000 trades from the opening inventory, so each point is the price after the last fill in its bucket and carries the bucket's traded amount. The market page renders one line per outcome plus a volume histogram with lightweight-charts, refreshed on every SSE market event with a five-second fallback poll.
+- Day-long probability view (UC-21): the series view computes a day object on request, never stored: the volume-weighted first-outcome probability across live brackets (null until one has traded) plus per-slot probability, volume, state, and result. The series page shows the weighted headline and, for binary series, a per-slot probability line with settled slots pinned to their resolved value and a per-slot volume histogram.
+- The backend now has 12 unit tests, 36 integration tests, and 1 numerical test, all passing. See [ADR 0007](decisions/0007-resolution-authority.md).
+
 ## 20 September 2026: Market series, rolling spawn, and the per-market fee policy
 
 - Verified creators publish market series through `POST /api/v2/series` (creators only; anyone else gets 403): a one-time market whose single instance publishes immediately, or a recurring series with an interval (1 minute to 1 day), a daily active window in Singapore time, a maximum concurrency capped at 50, and an optional end date whose absence means perpetual. Published definitions are immutable; only the series state moves from active to ended. `GET /api/v2/series` and `GET /api/v2/series/{id}` expose the list and the definition with its brackets.
@@ -86,5 +97,5 @@ This file records significant user-visible and architectural changes. Detailed r
 
 ## Deferred work
 
-Live evidence adapters, SSO, password recovery and secret rotation, separate resolver roles, rate limiting, outbox retention, public deployment hardening, and budget-to-quantity entry remain future work.
+Live evidence adapters (including the real bus timing source), SSO, password recovery and secret rotation, recovery for lost creator resolution keys, rate limiting, outbox retention, public deployment hardening, and budget-to-quantity entry remain future work.
 

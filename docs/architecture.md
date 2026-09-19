@@ -2,7 +2,7 @@
 
 Status: **current**  
 Application version: **0.2**  
-Last reviewed against the working tree: **9 September 2026**
+Last reviewed against the working tree: **20 September 2026**
 
 ## System context
 
@@ -22,7 +22,9 @@ Axum API ---------------------------------------------------+
    |                                                        |
    v                                                        |
 PostgreSQL <-------- periodic worker -----------------------+
-   |
+   |                     |
+   |                     +--> external resolver endpoints
+   |                          (resolver-authority series, ADR 0007)
    +-- accounts and balanced ledger transfers
    +-- templates, instances, outcomes, and inventory
    +-- positions, trades, and idempotency receipts
@@ -54,15 +56,16 @@ The executable contains the backend only. The Docker build compiles React separa
 | `backend/src/lib.rs` | Exposes active modules and forbids `unsafe` code in the application crate. |
 | `backend/src/main.rs` | Process configuration, database connection, router construction, worker startup, static delivery, and graceful HTTP shutdown. |
 | `backend/src/error.rs` | Shared error categories and conversion to the API error envelope. Internal/database details are logged but hidden from clients. |
-| `backend/src/auth.rs` | Random bearer tokens, SHA-256 hashing, HMAC-SHA256 signed values, token verification, minimum secret validation, and constant-time administrator-token comparison. |
+| `backend/src/auth.rs` | Random bearer tokens, SHA-256 hashing, HMAC-SHA256 signed values, token verification, minimum secret validation, constant-time administrator-token comparison, and ed25519 resolution-signature verification (ADR 0007). |
 | `backend/src/amm.rs` | Pure LMSR arithmetic, input bounds, funding calculation, prices, and rounded trade amounts. It has no database, clock, network, account, or RNG access. |
-| `backend/src/market.rs` | Outcomes, typed rules and observations, validation, evaluation, instance and series types, schedules, and demo specifications. |
+| `backend/src/market.rs` | Outcomes, typed rules and observations, validation, evaluation, instance and series types, schedules, the resolution authority spec, and demo specifications. |
 | `backend/src/execution.rs` | Quote structures, signing claims, amount parsing, idempotency, transaction locking, execution checks, ledger movement, positions, trades, receipts, and trade outbox events. |
-| `backend/src/store.rs` | Pool setup, migrations, bootstrap, database time, account provisioning, instance and series creation/read models, rolling bracket spawn, portfolio/history queries, transfers, audit/events, and reconciliation. |
+| `backend/src/store.rs` | Pool setup, migrations, bootstrap, database time, account provisioning, instance and series creation/read models, rolling bracket spawn, portfolio and trade history queries, bucketed instance history and the series day view, transfers, audit/events, and reconciliation. |
 | `backend/src/cache.rs` | Read-through instance and token caches with a local clock estimate; every mutation invalidates or writes through before returning. |
 | `backend/src/events.rs` | PostgreSQL notification listener, per-instance SSE broadcast channels, and demo clock refresh. |
-| `backend/src/resolution.rs` | Evidence validation/deduplication, suspensions, due-market closing, finalization, bounded settlement, reserve release, and demo clock changes. |
-| `backend/src/worker.rs` | One-second scheduling loop, rolling series bracket spawn, fair actionable-instance selection, private deterministic simulator evidence, concurrent bounded settlement, and demo seeding (including the rolling bus series). |
+| `backend/src/resolution.rs` | Evidence validation/deduplication, creator-signed and resolver evidence recording, suspensions, due-market closing, finalization, bounded settlement, reserve release, and demo clock changes. |
+| `backend/src/resolver.rs` | The external resolver contract (ADR 0007): the fixed request, response parsing against the published options, and the bounded HTTPS call. |
+| `backend/src/worker.rs` | One-second scheduling loop, rolling series bracket spawn, fair actionable-instance selection, private deterministic simulator evidence, external resolver calls, concurrent bounded settlement, and demo seeding (including the rolling bus series). |
 
 See [backend code reference](developer/backend.md) for important types and functions in each file.
 
@@ -82,7 +85,7 @@ PostgreSQL is the durable authority for time-adjusted cutoffs, accounts, ledger 
 
 ### External evidence adapters
 
-No live adapter is present. A future adapter is expected to authenticate to an appropriate provider, retain its source record, normalize it to `EvidenceInput`, and submit it outside quote/trade requests. Provider access and reliability are acknowledged challenges, but the current design assumes a suitable data source can be obtained.
+No live adapter is present. A future adapter either normalizes provider data into `EvidenceInput` and submits it through the administrator route, or, for a resolver-authority series, implements the external resolver contract and answers the worker's fixed request with a published outcome ID ([ADR 0007](decisions/0007-resolution-authority.md)). Provider access and reliability are acknowledged challenges, but the current design assumes a suitable data source can be obtained; the real bus timing adapter remains the deferred example.
 
 ## Authoritative time
 
@@ -128,7 +131,7 @@ Series publication validates the schedule, requires the creator role under an ac
 
 ### Evidence
 
-Evidence ingestion locks the instance, validates the source/window/state/deadline, checks duplicate event content and source revisions, evaluates the typed observation, appends the record, points the instance to the highest revision, advances its version, audits the receipt, and appends an event in one transaction.
+Evidence ingestion locks the instance, validates the source/window/state/deadline, checks duplicate event content and source revisions, evaluates the typed observation, appends the record, points the instance to the highest revision, advances its version, audits the receipt, and appends an event in one transaction. Manual evidence is rejected outright for series whose resolution authority is not `admin` (ADR 0007). Creator-signed resolutions and validated resolver answers enter through their own recorders under the same instance lock; neither runs rule evaluation, because the authority itself names the outcome.
 
 ### Settlement
 
@@ -143,7 +146,7 @@ open -> closed -> resolving -> resolved
                            \-> voided
 ```
 
-Migration `0002_immutable_rules.sql` rejects changes to published template/category/title/rule/outcomes/source/data mode/times/liquidity/reserve fields. It requires each instance update to advance its version exactly once, forbids inventory changes after closing, and prevents updates to terminal instances or fixed results. Migration `0009_market_series.sql` extends the protected set with the fee flag, creator attribution, series membership, and bracket slot, and applies the same immutability to series definitions, whose only mutable field is the lifecycle state.
+Migration `0002_immutable_rules.sql` rejects changes to published template/category/title/rule/outcomes/source/data mode/times/liquidity/reserve fields. It requires each instance update to advance its version exactly once, forbids inventory changes after closing, and prevents updates to terminal instances or fixed results. Migration `0009_market_series.sql` extends the protected set with the fee flag, creator attribution, series membership, and bracket slot, and applies the same immutability to series definitions, whose only mutable field is the lifecycle state. Migration `0010_resolution_authority.sql` adds the resolution authority, public key, and resolver endpoint to the protected series definition (ADR 0007).
 
 Ledger transfers, trades, evidence, settlement claims, and administrator audit records are append-only through database triggers. Idempotency rows are intentionally updated once with the durable response.
 
@@ -155,10 +158,11 @@ The worker ticks every second and skips accumulated timer ticks. Each cycle:
 2. spawns due brackets for every active recurring series, keeping each rolling horizon filled inside its active window and ending finished series;
 3. selects up to 100 actionable instances rather than simply the oldest closed rows;
 4. generates evidence for due simulated instances using a hash of a private database secret and instance ID;
-5. settles independent instances concurrently in bounded chunks of eight, logging an error without ending the worker; and
-6. seeds the rolling demo bus series once and ensures one future demo occurrence exists for each recurring demo template and one election occurrence overall.
+5. asks resolver-authority instances' configured endpoints from their finalize window (ADR 0007): a valid answer is recorded as resolver evidence, while pending, malformed, and unreachable sources retry on later ticks until the published deadline voids the instance;
+6. settles independent instances concurrently in bounded chunks of eight, logging an error without ending the worker; and
+7. seeds the rolling demo bus series once and ensures one future demo occurrence exists for each recurring demo template and one election occurrence overall.
 
-The actionable query prevents many markets waiting for evidence from starving a later market that is ready to resolve. Each instance still settles serially under its row lock; concurrency is across instances only.
+The actionable query prevents many markets waiting for evidence from starving a later market that is ready to resolve; it also admits resolver-authority instances from their finalize window so the worker can ask their external source. Each instance still settles serially under its row lock; concurrency is across instances only.
 
 ## Events and consistency
 

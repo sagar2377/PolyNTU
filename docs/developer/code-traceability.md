@@ -37,6 +37,12 @@ This matrix helps human reviewers verify that documented promises correspond to 
 | Creators cannot trade in their own markets | creator check in `Store::quote` and `execute_once` | none required beyond the immutable creator reference | creator trading ban test |
 | Per-market fee policy: fee-free markets charge nothing and pay no creator share | `fee::charged` with `fee_charged`, `Instance.fee_charged` | `instances.fee_charged`/`market_series.fee_charged` immutable (migration 0009) | fee-free market test with no creator payout |
 | The demo bus is a rolling fee-free series | `worker::seed_demo`, `market::demo_series_spec` | platform-owned series row with null creator | rolling demo bus test |
+| Resolution authority is fixed at series creation: administrator (default), creator key, or resolver endpoint | `market::ResolutionSpec` with `NewSeries::validate`, `Store::create_series` | `market_series` authority columns and checks; immutable under `protect_series` (migration 0010) | resolution authority integration test with malformed key and insecure endpoint rejections |
+| Administrator evidence cannot resolve a market whose authority is not administrator | exclusion in `Store::record_evidence` | application-path check only; no schema enforcement | admin-evidence rejection assertion inside the authority test |
+| Creators resolve their markets with an ed25519 signature over a fixed message | `auth::resolution_message`, `auth::verify_ed25519`, `Store::record_creator_resolution` | one `creator-signature` evidence row per instance under the unique event/revision constraints | creator resolution test with wrong-nonce, non-creator, administrator, and replay rejections plus settlement |
+| Resolver endpoints settle or void per the fixed request/response contract | `resolver::ResolverRequest`, `resolver::parse_response`, `resolver::call`, worker call loop, `Store::record_resolver_evidence` | `resolver_endpoint` required for resolver authority (migration 0010) | resolver settle test against a live local server and void test for invalid/unreachable answers |
+| Bucketed price and volume history is reconstructed from executed trades | `Store::instance_history` | read-only replay over `trades`; no stored history | history bucketing test including the untouched-market case |
+| The series day view weights live brackets by traded volume | day computation in `Store::series_view` | computed on request; no stored day state | day view weighting test across traded and untraded brackets |
 
 ## Operational and security requirements
 
@@ -62,15 +68,20 @@ This matrix helps human reviewers verify that documented promises correspond to 
 | `backend/src/amm.rs` | [Trading](trading-and-accounting.md), ADR 0002 | Unit/property and 384-fixture test |
 | `backend/src/market.rs` | [Backend](backend.md), [Evidence](evidence-and-settlement.md) | Category and schedule unit tests; all-category HTTP test |
 | `backend/src/execution.rs` | [Trading](trading-and-accounting.md) | Concurrency, expiry, ownership, rollback, cutoff tests |
+| `backend/src/fee.rs` | [Trading](trading-and-accounting.md), ADR 0004 | Fee unit tests; fee-split and fee-free integration tests |
 | `backend/src/store.rs` | [Backend](backend.md), [Database](database.md) | Integration harness and reconciliation after every DB test |
-| `backend/src/resolution.rs` | [Evidence](evidence-and-settlement.md) | Revision, void, rollback, resume tests |
-| `backend/src/worker.rs` | [Architecture](../architecture.md), [Evidence](evidence-and-settlement.md) | Fairness/all-category tests, rolling spawn tests, and workloads |
+| `backend/src/resolution.rs` | [Evidence](evidence-and-settlement.md), [Backend](backend.md) | Revision, void, rollback, resume, creator-resolution, and resolver-evidence tests |
+| `backend/src/resolver.rs` | [Backend](backend.md), [Evidence](evidence-and-settlement.md) | Resolver response unit test; resolver settle/void integration tests |
+| `backend/src/worker.rs` | [Architecture](../architecture.md), [Evidence](evidence-and-settlement.md) | Fairness/all-category tests, rolling spawn tests, resolver tests, and workloads |
+| `backend/src/cache.rs` | [Backend](backend.md), [Architecture](../architecture.md) | Token eviction exercised by the login rotation tests; invalidation by every mutating integration test |
+| `backend/src/events.rs` | [Architecture](../architecture.md) | SSE delivery under load in the HTTP workloads |
 | `backend/migrations/*.sql` | [Database](database.md) | Fresh migrations in each integration database |
 | `backend/queries/reconcile_reserves.sql` | [Database](database.md), [Trading](trading-and-accounting.md) | Reconciliation after tests/workloads |
 | `frontend/src/api.js` | [Frontend](frontend.md), [API](../api.md) | Lint/build; behavioural tests absent |
 | `frontend/src/App.jsx` | [Frontend](frontend.md) | Lint/build; manual behaviour required |
 | `frontend/src/pages/*.jsx` | [Frontend](frontend.md) | Lint/build; manual behaviour required |
 | `frontend/src/components/TradePanel.jsx` | [Frontend](frontend.md), [Trading](trading-and-accounting.md) | Lint/build; receipt recovery not browser-automated |
+| `frontend/src/components/PriceHistoryChart.jsx`, `frontend/src/components/DayProbabilityChart.jsx` | [Frontend](frontend.md), [API](../api.md) | Lint/build; chart behaviour not browser-automated |
 | `scripts/*.ps1` | [Development](../development.md), [Operations](operations.md) | Used in recorded local runs; no script unit tests |
 | `scripts/*.mjs` | [Testing](testing-and-verification.md) | Retained benchmark JSON |
 | `.github/workflows/verify.yml` | [Development](../development.md) | Workflow defined; successful hosted run not retained here |
@@ -89,12 +100,7 @@ When reviewing a claim:
 
 ## Planned requirements
 
-These product requirements are documented and not yet implemented. No row above claims any of them. The [use case model](use-cases.md) holds the full register, the flows, and the gap analysis, and the remaining decision is [ADR 0007](../decisions/0007-resolution-authority.md); [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) and [ADR 0006](../decisions/0006-market-series-and-recurrence.md) are implemented and their requirements moved into the core table above.
-
-| Planned requirement | Decision | Current build |
-|---|---|---|
-| Creator-signed human resolution and external resolver endpoints | ADR 0007 | Creator-signed human resolution has landed; external resolver endpoints are still in progress |
-| Price and volume history chart, and the day-long probability view | Use case model (UC-19, UC-21) | Live probabilities and SSE updates only; the series page lists brackets without aggregating them |
+Everything planned is implemented; the resolution authority and market experience requirements have moved into the core table above. The [use case model](use-cases.md) holds the full register, the flows, and the gap analysis, and every decision record is accepted and implemented. The one deferred item is the real bus timing adapter, a live data source rather than platform work.
 
 ## Known unverified areas
 

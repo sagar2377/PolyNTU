@@ -45,15 +45,16 @@ Because the hash covers the full JSON representation accepted by Serde, changing
 3. authoritative time read;
 4. exact event-ID duplicate lookup;
 5. terminal-state late rejection with committed audit record;
-6. manual/simulator mode authorization;
-7. observation-end and manual-deadline checks;
-8. exact source/window match;
-9. typed rule evaluation;
-10. source-revision uniqueness check;
-11. immutable evidence insertion;
-12. instance pointer update to highest revision and one version increment;
-13. audit and outbox insertion; and
-14. commit.
+6. resolution-authority exclusion (ADR 0007): manual evidence is rejected unless the series authority is `admin`;
+7. manual/simulator mode authorization;
+8. observation-end and manual-deadline checks;
+9. exact source/window match;
+10. typed rule evaluation;
+11. source-revision uniqueness check;
+12. immutable evidence insertion;
+13. instance pointer update to highest revision and one version increment;
+14. audit and outbox insertion; and
+15. commit.
 
 An identical event duplicate commits no new evidence, instance version, audit, or outbox row and returns the existing ID.
 
@@ -62,6 +63,15 @@ An identical event duplicate commits no new evidence, instance version, audit, o
 Revision numbers need not arrive in increasing network order. Revision 2 may be stored before revision 1; when revision 1 later arrives, the instance still points to revision 2. Reusing revision 2 for another event conflicts.
 
 The highest revision controls finalization even when it retracts completeness. For example, a newer `complete:false` correction causes the market to wait or eventually void rather than falling back to an older complete result.
+
+## Resolution authority evidence (ADR 0007)
+
+Two further evidence sources feed the same settlement pipeline. Both are fixed by the series' resolution authority at creation, and neither runs through rule evaluation: the authority itself names the outcome.
+
+- `creator-signature`: the series creator submits `POST /api/v2/instances/{id}/resolution` with an ed25519 signature over `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}`, verified against the public key fixed at series creation. Only the creator may submit, the instance must be closed with the observation window ended and the deadline not passed, and one resolution per instance is allowed (replays conflict). The verified outcome is stored as evidence (source `creator-signature`, parser `creator-signature-v1`, revision 0) whose payload carries the outcome, nonce, signature, and public key; the instance points at it and settles like any other evidence.
+- `external-resolver`: from the finalize window the settlement worker POSTs the fixed request to the series endpoint and parses the answer against the published options. A valid outcome ID is stored as evidence (source `external-resolver`, parser `external-resolver-v1`, revision 0) with the request and response in the payload, and settles the same way. `pending`, malformed, and unreachable answers record nothing and retry on every tick until the published evidence deadline voids the instance.
+
+The administrator exclusion in step 6 above means administrator evidence cannot resolve a creator-signed or resolver-settled market, even with full API access: no valid signature or resolver answer can be produced through that route. Only the private key's holder or the endpoint can resolve.
 
 ## Public-data rule
 
@@ -87,8 +97,9 @@ After closing and series bracket spawning, `worker::tick` selects rows that can 
 
 - every `resolving` instance with unfinished claims;
 - due simulated instances missing evidence;
-- closed instances past finalization with an evaluated result; or
-- closed instances past the evidence deadline.
+- closed instances past finalization with an evaluated result;
+- closed instances past the evidence deadline; or
+- closed resolver-authority instances past finalization without evidence, so the worker can ask their external source (ADR 0007).
 
 Closed rows merely waiting for evidence are excluded. This prevents a large older set from occupying the 100-row worker batch and starving ready results.
 
@@ -160,7 +171,7 @@ Suspension is not cancellation. Unless an administrator supplies valid evidence 
 
 ## External-provider assumption
 
-The implementation currently assumes a future trusted adapter can obtain the required observations. Provider-specific contracts—including candidate sources such as NEA and OmniBus—are outside the current build. The main integration challenges are authorization, stable source identifiers, complete window coverage, later corrections, and distinguishing estimated from actual events. These do not change the internal evidence contract; adapters must normalize into it and preserve the published missing-data behaviour.
+The implementation currently assumes a future trusted adapter can obtain the required observations. Provider-specific contracts, including candidate sources such as NEA and OmniBus, are outside the current build. The main integration challenges are authorization, stable source identifiers, complete window coverage, later corrections, and distinguishing estimated from actual events. These do not change the internal evidence contract; adapters must normalize into it and preserve the published missing-data behaviour. A series published with resolver authority (ADR 0007) can instead delegate resolution to an external endpoint that answers with a published outcome ID directly; the remaining deferred work there is the real bus timing adapter, which is a live data source rather than platform work.
 
 ## Failure modes
 
@@ -171,6 +182,8 @@ The implementation currently assumes a future trusted adapter can obtain the req
 | Out-of-order revision | Stored but cannot replace higher selected revision. |
 | Incomplete evidence | Waits until correction or deadline void. |
 | Evidence after finalization | Audit attempt, reject conflict, never change result. |
+| Resolver pending, malformed, or unreachable | Retried every tick; the instance voids at the published deadline if nothing valid arrives. |
+| Creator loses the signing key | Resolution impossible; the instance voids at the published deadline. |
 | Failure inside claim batch | Full transaction rollback; safe retry. |
 | Failure after a committed batch | Existing claims exclude credited accounts on restart. |
 | Reserve invariant failure | Internal error and rollback; reconcile/incident investigation required. |

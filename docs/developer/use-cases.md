@@ -1,12 +1,12 @@
 # PolyNTU use case model
 
-This is the use case model of the planned PolyNTU platform: the actors, the complete register of use cases, the business rules behind them, and detailed flows for the most significant cases. The register marks each case as existing, partial, or new:
+This is the use case model of the PolyNTU platform: the actors, the complete register of use cases, the business rules behind them, and detailed flows for the most significant cases. The register marks each case as existing, partial, or new:
 
 - **exists**: implemented and working in the current build;
 - **partial**: a smaller or earlier version works in the current build;
 - **new**: planned, not built.
 
-Statements about existing behavior are verified against the current build. Everything marked new or partial describes the plan, recorded in [ADR 0007](../decisions/0007-resolution-authority.md) (resolution authority) and the market-experience phase. [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) (NTU accounts and creator roles) and [ADR 0006](../decisions/0006-market-series-and-recurrence.md) (market series and recurrence) are implemented; their use cases are marked exists.
+Statements about existing behavior are verified against the current build. Every use case is now marked exists: [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md) (NTU accounts and creator roles), [ADR 0006](../decisions/0006-market-series-and-recurrence.md) (market series and recurrence), [ADR 0007](../decisions/0007-resolution-authority.md) (resolution authority), and the market-experience phase are all implemented. The one deferred item is the real bus timing adapter, a live data source rather than platform work.
 
 ## Actors
 
@@ -15,7 +15,7 @@ Statements about existing behavior are verified against the current build. Every
 | Visitor | Primary | An unauthenticated person who registers. UC-1 turns a Visitor into a Trader. |
 | Trader | Primary | An account holder who browses markets, views quotes and probabilities, trades outcome shares, and tracks a portfolio. |
 | Market Creator | Primary | A verified trader who also defines markets: one-time markets and recurring series. The role generalizes Trader, with one restriction: a creator cannot trade in their own markets, and the fee share is their compensation. |
-| Platform Admin | Primary | The operator, reached through the shared token or an admin-role account session (the seeded demo administrator in demo mode). Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. Today it still creates instances directly and records evidence for platform-authority markets; by design it cannot resolve creator-owned markets. |
+| Platform Admin | Primary | The operator, reached through the shared token or an admin-role account session (the seeded demo administrator in demo mode). Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. Today it still creates instances directly and records evidence for platform-authority markets; by design it cannot resolve markets whose authority is fixed to their creator or an external resolver. |
 | External Resolver | Secondary system | An automated external API the settlement worker calls at finalize time, for example a bus timing service or a queue counter. Secondary actor in UC-13. |
 | Scheduler | Internal system | The background process that spawns bracket instances for recurring series on a rolling schedule (UC-12). |
 | Settlement Worker | Internal system | The background process that closes instances, resolves them, settles and pays out claims, and voids on missing or invalid evidence (UC-13, UC-15 to UC-17). |
@@ -24,7 +24,7 @@ Statements about existing behavior are verified against the current build. Every
 
 ![Use case diagram](../diagrams/use-case.png)
 
-The source is `docs/diagrams/use-case.puml`; re-render it with `scripts/render-diagrams.ps1` (PlantUML, Smetana layout). Color legend: green elements exist today, yellow are partial, orange are new or planned. Scheduler and Settlement Worker are internal system actors, so they are drawn inside the PolyNTU boundary; the External Resolver sits in its own box that names the request and response contract it must honour.
+The source is `docs/diagrams/use-case.puml`; re-render it with `scripts/render-diagrams.ps1` (PlantUML, Smetana layout). Color legend: green elements exist today, yellow are partial, orange are new or planned; every use case is currently green. Scheduler and Settlement Worker are internal system actors, so they are drawn inside the PolyNTU boundary; the External Resolver sits in its own box that names the request and response contract it must honour.
 
 ## Use case register
 
@@ -39,18 +39,18 @@ The source is `docs/diagrams/use-case.puml`; re-render it with `scripts/render-d
 | Creator lifecycle | UC-7 | Approve or reject a creator request | Platform Admin | exists |
 | Market definition | UC-8 | Create a one-time market | Market Creator | exists |
 | Market definition | UC-9 | Create a recurring or perpetual market | Market Creator | exists |
-| Market definition | UC-10 | Configure automatic resolution | Market Creator | new |
-| Market definition | UC-11 | Declare human, creator-only resolution | Market Creator | new |
+| Market definition | UC-10 | Configure automatic resolution | Market Creator | exists |
+| Market definition | UC-11 | Declare human, creator-only resolution | Market Creator | exists |
 | Instance lifecycle | UC-12 | Spawn the next bracket on a rolling schedule | Scheduler | exists |
-| Instance lifecycle | UC-13 | Resolve automatically via the external resolver API | Settlement Worker | new |
-| Instance lifecycle | UC-14 | Submit a signed human resolution | Market Creator | new |
+| Instance lifecycle | UC-13 | Resolve automatically via the external resolver API | Settlement Worker | exists |
+| Instance lifecycle | UC-14 | Submit a signed human resolution | Market Creator | exists |
 | Instance lifecycle | UC-15 | Settle and pay out | Settlement Worker | exists |
 | Instance lifecycle | UC-16 | Split the fee pot with the creator | Settlement Worker | exists |
 | Instance lifecycle | UC-17 | Void on missing or invalid evidence | Settlement Worker | exists |
 | Trading | UC-18 | View live quotes and probabilities | Trader | exists |
-| Trading | UC-19 | View the price and volume history chart | Trader | new |
+| Trading | UC-19 | View the price and volume history chart | Trader | exists |
 | Trading | UC-20 | Place a trade | Trader | exists |
-| Trading | UC-21 | View the day-long probability visualization | Trader | new |
+| Trading | UC-21 | View the day-long probability visualization | Trader | exists |
 | Admin and ops | UC-22 | Suspend an instance | Platform Admin | exists |
 | Admin and ops | UC-23 | Grant units from the treasury | Platform Admin | exists |
 | Admin and ops | UC-24 | Run reconciliation | Platform Admin | exists |
@@ -72,10 +72,10 @@ Notes:
 6. Rolling spawn: a new bracket instance is created every interval while the live count is below the maximum concurrency; the covered horizon is maximum concurrency × interval.
 7. Recurrence only spawns brackets inside the creator-set active period, a daily window interpreted in Singapore time. A bus series, for example, runs 06:00 to 23:59 because buses do not run at midnight (existing).
 8. Market reserves remain treasury-funded; creators contribute definitions and earn through the fee share, not through deposits (existing).
-9. The resolution authority is fixed at market creation: the market creator (human) or a configured external resolver endpoint (automatic).
-10. Human resolution requires a valid ed25519 signature from the key fixed at creation. The private key is held only by the creator's browser; a lost key means the market voids by the published policy.
-11. The administrator cannot resolve creator-owned markets, by design.
-12. Automatic resolution that is unreachable, malformed, or names an unpublished option at the finalize deadline voids the market.
+9. The resolution authority is fixed at market creation: the platform administrator (the default), the market creator (human), or a configured external resolver endpoint (automatic) (existing; [ADR 0007](../decisions/0007-resolution-authority.md)).
+10. Human resolution requires a valid ed25519 signature from the key fixed at creation. The private key is held only by the creator's browser; a lost key means the market voids by the published policy (existing; ADR 0007).
+11. The administrator cannot resolve markets whose authority is fixed to their creator or an external resolver, by design (existing; ADR 0007).
+12. Automatic resolution that stays unreachable, malformed, pending, or names an unpublished option through the published evidence deadline voids the market (existing; ADR 0007).
 13. A market offers 2 to 8 direct outcomes (existing).
 
 ## Domain entities
@@ -84,13 +84,13 @@ Notes:
 |---|---|---|
 | Account | existing | Identity and balance. Registered accounts carry a unique NTU email, an argon2 password hash, and a role (member, creator, or admin). |
 | VerificationRequest | existing | A member's creator request with status and the administrator's decision and reason. |
-| MarketSeries | existing | A published definition with the rule, recurrence rule (interval, active period, maximum concurrency, optional end date), liquidity, and fee policy; one-time or recurring. The resolution authority field arrives with ADR 0007. |
+| MarketSeries | existing | A published definition with the rule, recurrence rule (interval, active period, maximum concurrency, optional end date), liquidity, and fee policy; one-time or recurring. The resolution authority (administrator, creator key, or resolver endpoint) is fixed at creation. |
 | Instance | existing | One concrete occurrence with its own inventory, reserve, evidence, and result; carries a series reference, bracket slot, and fee flag when it belongs to a series. |
-| ResolverConfig | new | The endpoint URL and fixed request contract for automatic authority. |
-| ResolutionKey | new | The ed25519 public key fixed at creation for human authority. |
+| ResolverConfig | existing | The endpoint URL and fixed request contract for automatic authority. |
+| ResolutionKey | existing | The ed25519 public key fixed at creation for human authority. |
 | Trade | existing | The source of price and volume history. |
 | LedgerEntry | existing | Every unit movement; includes the fee kind. |
-| DayProbability | derived | Computed on request from live brackets, not stored. |
+| DayProbability | existing | Computed on request from live brackets, never stored. |
 
 ## Detailed descriptions
 
@@ -232,9 +232,9 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 **Alternative flows:**
 
-- Endpoint unreachable: retry with backoff until the finalize deadline.
-- Response malformed or naming no published option: treated as missing evidence.
-- Endpoint reports pending: retry.
+- Endpoint unreachable: retried on every worker tick (one second) until the published evidence deadline.
+- Response malformed or naming no published option: treated as missing evidence and retried.
+- Endpoint reports pending: retried.
 - Nothing valid by the deadline: the instance voids per the published policy.
 
 ### UC-14: Submit a signed human resolution
@@ -253,7 +253,7 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 - Signature invalid: rejected.
 - The submitter is not the creator: rejected.
 - The market is not closed: rejected.
-- An administrator attempts it: rejected by design; the admin evidence route refuses creator-owned markets and no valid signature exists.
+- An administrator attempts it: rejected by design; the admin evidence route refuses markets with creator or resolver authority, and no valid signature exists.
 - The private key is lost: resolution is impossible and the instance voids at the deadline.
 
 ### UC-19: View the price and volume history chart
@@ -262,9 +262,9 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 **Flow of events:**
 
-1. The backend returns the historical series: time-bucketed outcome prices and traded volume over the instance lifetime.
-2. The chart renders alongside the live probability.
-3. Each live trade event appends to the chart through the existing SSE stream, like a stock chart.
+1. The backend returns the historical series: time-bucketed outcome prices and traded volume, reconstructed by replaying recorded trades from the opening inventory.
+2. The chart renders alongside the live probability, one line per outcome plus a volume histogram.
+3. Each market event on the existing SSE stream triggers a full history refresh (with a five-second fallback poll), like a stock chart.
 
 **Alternative flows:**
 
@@ -298,24 +298,26 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 **Flow of events:**
 
 1. The trader opens the series page.
-2. The backend aggregates per slot: weighted probability = units bet in that bracket × its LMSR yes price, divided by the sum of the same product over all live brackets.
-3. The chart shows the whole active period at interval granularity.
-4. Settled slots show the resolved outcome.
-5. Live slots refresh through SSE.
+2. The backend aggregates per slot: weighted probability = the sum over live brackets of (units bet in that bracket × its first-outcome price), divided by the total units bet across those brackets; null until a live bracket has traded.
+3. The chart shows each slot's first-outcome probability across the listed brackets, with per-slot volume bars.
+4. Settled slots are pinned to their resolved value; voided slots are omitted from the line.
+5. Live slots refresh through the series page's five-second reload.
 
 **Alternative flows:**
 
-- No live brackets, outside the active period: a settled-only view.
+- No live bracket has traded volume yet: the headline says the weighted probability appears with the first trade.
 - A single live bracket: its weighted probability is its own price.
 
 ## Gap analysis: plan versus current build
 
+Every planned capability is implemented; nothing in the table below remains to build. The one deferred item sits outside the platform: the real bus timing adapter, a live data source that would implement the resolver contract (or feed an adapter), not platform work.
+
 | Planned capability | Current build | Size |
 |---|---|---|
-| Human resolution by creator signature | Creator-signed resolution has landed as part of the in-progress ADR 0007 phase | none |
-| Automatic resolution via an external API contract | None; live adapters are deferred | medium |
-| Price and volume history chart with live refresh | Live probabilities and SSE exist; no volume display or history | medium |
-| Day-long probability visualization | The series page lists live and settled brackets but does not yet aggregate probabilities across the day | medium |
+| Human resolution by creator signature | Shipped ([ADR 0007](../decisions/0007-resolution-authority.md)): browser-held ed25519 keys, one signed resolution per instance, administrator excluded | none |
+| Automatic resolution via an external API contract | Shipped ([ADR 0007](../decisions/0007-resolution-authority.md)): the fixed request/response contract, per-tick retries, deadline voiding; only the live bus timing adapter is deferred | none |
+| Price and volume history chart with live refresh | Shipped: the bucketed history endpoint plus the market page chart, refreshed on every SSE event with a five-second fallback | none |
+| Day-long probability visualization | Shipped: the series day view with the volume-weighted headline and the per-slot chart | none |
 | Creator-owned market series (one-time, recurring, perpetual) | Shipped ([ADR 0006](../decisions/0006-market-series-and-recurrence.md)) | none |
 | Recurrence: interval, active period, maximum concurrency, rolling spawn | Shipped ([ADR 0006](../decisions/0006-market-series-and-recurrence.md)); the demo bus is a rolling fee-free series | none |
 | Creator trading ban | Shipped ([ADR 0006](../decisions/0006-market-series-and-recurrence.md)) | none |
@@ -333,10 +335,10 @@ Method: each planned capability was compared against the current build as verifi
 
 1. Accounts and access (ADR 0005): registration, login, welcome gift, roles, verification workflow. Implemented.
 2. Market series (ADR 0006): series entity, recurrence, scheduler, the bus demo as a rolling 2-minute fee-free series with maximum concurrency 5, creator trading ban, per-market fee policy. Implemented.
-3. Resolution authority (ADR 0007): signed human resolution with admin exclusion, the external resolver contract.
-4. Market experience: volume statistics, the price and volume history chart, the day-long visualization.
+3. Resolution authority (ADR 0007): resolution authority fixed at creation, signed human resolution with admin exclusion, the external resolver contract. Implemented.
+4. Market experience: bucketed price and volume history, the price and volume history chart, the day-long visualization. Implemented.
 
-The real bus timing adapter stays deferred until these phases land.
+The real bus timing adapter stays deferred; it is a live data source, not platform work.
 
 ## Related records
 

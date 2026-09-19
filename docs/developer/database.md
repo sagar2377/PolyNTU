@@ -248,7 +248,7 @@ Append-only record with generated ID, action, optional instance ID, JSON detail,
 |---|---|
 | Settings | `FOR UPDATE` during initialization; atomic update during clock advance |
 | Idempotency row | `FOR UPDATE` first in trade transaction |
-| Instance row | `FOR UPDATE` for trade/evidence/suspension/settlement; `SKIP LOCKED` batch closing |
+| Instance row | `FOR UPDATE` for trade/evidence/resolution/suspension/settlement; `SKIP LOCKED` batch closing |
 | Account rows | Sorted `FOR NO KEY UPDATE` before balance-sensitive actions |
 | Position row | No explicit lock in execution; protected by the instance lock |
 
