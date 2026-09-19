@@ -15,6 +15,8 @@ pub enum Error {
     Conflict(String),
     #[error("Authentication required")]
     Unauthorized,
+    #[error("Invalid email or password")]
+    InvalidCredentials,
     #[error("This action requires administrator access")]
     Forbidden,
     #[error("Resource not found")]
@@ -31,6 +33,11 @@ impl IntoResponse for Error {
             Self::Invalid(s) => (StatusCode::BAD_REQUEST, "invalid_request", s.clone()),
             Self::Conflict(s) => (StatusCode::CONFLICT, "conflict", s.clone()),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", self.to_string()),
+            Self::InvalidCredentials => (
+                StatusCode::UNAUTHORIZED,
+                "invalid_credentials",
+                self.to_string(),
+            ),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
             Self::NotFound => (StatusCode::NOT_FOUND, "not_found", self.to_string()),
             _ => {

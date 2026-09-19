@@ -102,6 +102,12 @@ impl Cache {
         shared
     }
 
+    /// Drop a rotated token so it stops resolving immediately in this
+    /// process; the database row already rejects it everywhere else.
+    pub fn evict_account(&self, token_hash: &str) {
+        self.inner.tokens.write().unwrap().remove(token_hash);
+    }
+
     pub fn set_clock_offset(&self, offset_ms: i64) {
         self.inner
             .clock_offset_ms

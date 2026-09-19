@@ -300,6 +300,158 @@ async fn registration_is_reachable_over_http_and_the_demo_grant_is_unchanged() {
     db.finish().await;
 }
 
+// ADR 0005: password login issues a rotated bearer session token, and an
+// account holds at most one live session: every login invalidates all
+// previous tokens.
+#[tokio::test]
+async fn login_rotates_the_session_token() {
+    let db = TestDb::new().await;
+    let registered = db
+        .store
+        .register_account("Billy", "billy@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let registration_token = registered["token"].as_str().unwrap().to_owned();
+    // Warm the token cache, then prove login evicts the rotated entry.
+    db.store
+        .auth_account_for_token(&registration_token)
+        .await
+        .unwrap();
+    let first = db
+        .store
+        .login("BILLY@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let first_token = first["token"].as_str().unwrap().to_owned();
+    assert_ne!(first_token, registration_token);
+    assert_eq!(first["account"]["email"], "billy@ntu.edu.sg");
+    assert_eq!(
+        first["account"]["balance_micros"],
+        registered["account"]["balance_micros"]
+    );
+    db.store.account_for_token(&first_token).await.unwrap();
+    assert!(
+        db.store
+            .account_for_token(&registration_token)
+            .await
+            .is_err()
+    );
+    assert!(
+        db.store
+            .auth_account_for_token(&registration_token)
+            .await
+            .is_err()
+    );
+    // A second login invalidates the first session just the same.
+    let second = db
+        .store
+        .login("billy@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let second_token = second["token"].as_str().unwrap().to_owned();
+    db.store.account_for_token(&second_token).await.unwrap();
+    assert!(db.store.account_for_token(&first_token).await.is_err());
+    assert!(db.store.auth_account_for_token(&first_token).await.is_err());
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn login_failures_are_indistinguishable_and_demo_accounts_cannot_log_in() {
+    let db = TestDb::new().await;
+    db.store
+        .register_account("Billy", "billy@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let wrong_password = db
+        .store
+        .login("billy@ntu.edu.sg", "wrong password")
+        .await
+        .unwrap_err();
+    let unknown_email = db
+        .store
+        .login("nobody@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap_err();
+    assert_eq!(wrong_password.to_string(), "Invalid email or password");
+    assert_eq!(unknown_email.to_string(), "Invalid email or password");
+    // Demo accounts have no email or password and cannot use the login route.
+    db.store.create_account("Demo user").await.unwrap();
+    let demo_login = db
+        .store
+        .login("demo@ntu.edu.sg", "correct horse battery")
+        .await;
+    assert_eq!(
+        demo_login.unwrap_err().to_string(),
+        "Invalid email or password"
+    );
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn login_is_reachable_over_http() {
+    let db = TestDb::new().await;
+    let app = db.app();
+    http(
+        &app,
+        "POST",
+        "/api/v2/auth/register",
+        json!({"display_name": "Billy", "email": "billy@ntu.edu.sg", "password": "correct horse battery"}),
+        None,
+        false,
+        None,
+    )
+    .await;
+    let wrong = http(
+        &app,
+        "POST",
+        "/api/v2/auth/login",
+        json!({"email": "billy@ntu.edu.sg", "password": "wrong password"}),
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(wrong.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(wrong.1["error"]["code"], "invalid_credentials");
+    let missing = http(
+        &app,
+        "POST",
+        "/api/v2/auth/login",
+        json!({"email": "nobody@ntu.edu.sg", "password": "correct horse battery"}),
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(missing.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(missing.1, wrong.1);
+    let (status, session) = http(
+        &app,
+        "POST",
+        "/api/v2/auth/login",
+        json!({"email": "BILLY@NTU.EDU.SG", "password": "correct horse battery"}),
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let token = session["token"].as_str().unwrap();
+    let (status, me) = http(
+        &app,
+        "GET",
+        "/api/v2/me",
+        json!(null),
+        Some(token),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["email"], "billy@ntu.edu.sg");
+    db.finish().await;
+}
+
 #[tokio::test]
 async fn foreign_key_read_locks_do_not_block_account_balance_updates() {
     let db = TestDb::new().await;

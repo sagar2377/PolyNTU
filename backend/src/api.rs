@@ -75,6 +75,7 @@ pub fn router(state: AppState, origins: Vec<HeaderValue>) -> Router {
         .route("/config", get(config))
         .route("/auth/demo", post(demo_account))
         .route("/auth/register", post(register))
+        .route("/auth/login", post(login))
         .route("/me", get(me))
         .route("/me/portfolio", get(portfolio))
         .route("/me/trades", get(trades))
@@ -165,6 +166,15 @@ async fn register(
             .register_account(&req.display_name, &req.email, &req.password)
             .await?,
     ))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LoginInput {
+    email: String,
+    password: String,
+}
+async fn login(State(s): State<AppState>, Json(req): Json<LoginInput>) -> Result<Json<Value>> {
+    Ok(Json(s.store.login(&req.email, &req.password).await?))
 }
 async fn admin_account(
     State(s): State<AppState>,

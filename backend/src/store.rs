@@ -8,7 +8,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{FromRow, PgConnection, PgPool, Row, postgres::PgPoolOptions, types::Json};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -42,6 +42,13 @@ const DEMO_GRANT_UNITS: i64 = 1_000;
 fn valid_display_name(name: &str) -> bool {
     name.len() >= 2 && name.len() <= 60 && !name.chars().any(char::is_control)
 }
+
+/// Unknown-email logins verify against this fixed hash so they cost the
+/// same argon2 work as wrong-password logins; accounts cannot be
+/// enumerated through response time.
+static LOGIN_TIMING_HASH: LazyLock<String> = LazyLock::new(|| {
+    auth::hash_password("polyntu-login-timing-equalizer").expect("fixed password")
+});
 
 pub async fn db_now(connection: &mut PgConnection) -> Result<i64> {
     Ok(sqlx::query_scalar("SELECT (extract(epoch FROM clock_timestamp()) * 1000)::BIGINT + clock_offset_ms FROM settings WHERE singleton")
@@ -374,6 +381,40 @@ impl Store {
         Ok(
             json!({"token": token, "account": {"id": id, "display_name": name, "email": email, "role": "member", "balance_micros": grant.to_string()}}),
         )
+    }
+
+    /// Password login (ADR 0005). A successful login rotates the account's
+    /// bearer token: the new plaintext is returned once and the previous
+    /// token stops working immediately in this process.
+    pub async fn login(&self, email: &str, password: &str) -> Result<Value> {
+        let email = email.trim().to_lowercase();
+        let row = sqlx::query(
+            "SELECT id,display_name,password_hash,token_hash FROM accounts WHERE email=$1 AND kind='user'",
+        )
+        .bind(&email)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else {
+            let _ = auth::verify_password(&LOGIN_TIMING_HASH, password);
+            return Err(Error::InvalidCredentials);
+        };
+        let stored: String = row.get("password_hash");
+        if !auth::verify_password(&stored, password) {
+            return Err(Error::InvalidCredentials);
+        }
+        let id: String = row.get("id");
+        let previous_hash: String = row.get("token_hash");
+        let token = auth::random_token()?;
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("UPDATE accounts SET token_hash=$1 WHERE id=$2")
+            .bind(auth::hash(token.as_bytes()))
+            .bind(&id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        self.cache.evict_account(&previous_hash);
+        let account = self.account_by_id(&id).await?;
+        Ok(json!({"token": token, "account": account}))
     }
 
     pub async fn instance(&self, id: &str) -> Result<Instance> {
