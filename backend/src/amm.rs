@@ -49,14 +49,19 @@ pub fn validate(inventory: &[i64], liquidity: i64) -> Result<()> {
     Ok(())
 }
 
-fn probabilities(inventory: &[i64], liquidity: i64) -> Result<Vec<Decimal>> {
-    validate(inventory, liquidity)?;
+// Caller must have validated the inventory; calculate() avoids the duplicate check.
+fn weights(inventory: &[i64], liquidity: i64) -> Result<Vec<Decimal>> {
     let maximum = *inventory.iter().max().unwrap();
     let denominator = Decimal::from(liquidity * SHARE_SCALE);
-    let weights: Vec<Decimal> = inventory
+    inventory
         .iter()
         .map(|q| exp(Decimal::from(q - maximum) / denominator))
-        .collect::<Result<_>>()?;
+        .collect()
+}
+
+fn probabilities(inventory: &[i64], liquidity: i64) -> Result<Vec<Decimal>> {
+    validate(inventory, liquidity)?;
+    let weights = weights(inventory, liquidity)?;
     let total: Decimal = weights.iter().sum();
     Ok(weights.into_iter().map(|w| w / total).collect())
 }
@@ -102,7 +107,9 @@ pub fn calculate(
         .checked_add(delta)
         .ok_or_else(|| invalid("Quantity overflow"))?;
     validate(&next, liquidity)?;
-    let probabilities = probabilities(inventory, liquidity)?;
+    let weights = weights(inventory, liquidity)?;
+    let total: Decimal = weights.iter().sum();
+    let probabilities: Vec<Decimal> = weights.iter().map(|w| *w / total).collect();
     // This avoids subtracting two large cost-function values.
     let growth = exp(Decimal::from(delta) / Decimal::from(liquidity * SHARE_SCALE))?;
     let argument = Decimal::ONE + probabilities[outcome] * (growth - Decimal::ONE);
@@ -119,11 +126,22 @@ pub fn calculate(
         .to_i64()
         .filter(|x| *x >= 0)
         .ok_or_else(|| invalid("Cost overflow"))?;
+    // After-state prices follow from the same identity the cost uses:
+    // p'_i = p_i / argument and p'_outcome = p_outcome * growth / argument.
+    // This avoids a second exponential pass over the inventory.
+    let prices_after: Vec<f64> = probabilities
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let scaled = if i == outcome { *p * growth } else { *p };
+            (scaled / argument).to_f64().expect("bounded probability")
+        })
+        .collect();
     Ok(Calculation {
         amount_micros,
-        inventory: next.clone(),
+        inventory: next,
         prices_before: probabilities.iter().map(|p| p.to_f64().unwrap()).collect(),
-        prices_after: prices(&next, liquidity)?,
+        prices_after,
     })
 }
 

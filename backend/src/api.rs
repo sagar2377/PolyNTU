@@ -1,6 +1,8 @@
 use crate::{
     auth,
+    cache::AuthAccount,
     error::{Error, Result},
+    events::EventBus,
     execution::{QuoteRequest, TradeRequest},
     market::{EvidenceInput, NewInstance},
     store::{Account, Store, instance_view},
@@ -25,6 +27,9 @@ pub struct AppState {
     pub store: Store,
     pub quote_secret: Arc<str>,
     pub admin_token: Arc<str>,
+    /// Push fan-out for SSE streams. Defaults to an idle bus with no
+    /// listener; the server entry point installs a connected one.
+    pub events: EventBus,
 }
 
 impl AppState {
@@ -41,6 +46,7 @@ impl AppState {
             store,
             quote_secret: quote_secret.into(),
             admin_token: admin_token.into(),
+            events: EventBus::default(),
         })
     }
     fn require_admin(&self, headers: &HeaderMap) -> Result<()> {
@@ -54,13 +60,13 @@ impl AppState {
             Err(Error::Forbidden)
         }
     }
-    async fn account(&self, headers: &HeaderMap) -> Result<Account> {
+    async fn account(&self, headers: &HeaderMap) -> Result<Arc<AuthAccount>> {
         let token = headers
             .get("authorization")
             .and_then(|h| h.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "))
             .ok_or(Error::Unauthorized)?;
-        self.store.account_for_token(token).await
+        self.store.auth_account_for_token(token).await
     }
 }
 
@@ -124,7 +130,7 @@ async fn health(State(s): State<AppState>) -> Result<Json<Value>> {
 }
 async fn config(State(s): State<AppState>) -> Result<Json<Value>> {
     Ok(Json(
-        json!({"demo_mode":s.store.demo_mode,"server_time_ms":s.store.now().await?,"credit_scale":1000000,"share_scale":1000,"quote_ttl_ms":15000}),
+        json!({"demo_mode":s.store.demo_mode,"server_time_ms":s.store.now_cached(),"credit_scale":1000000,"share_scale":1000,"quote_ttl_ms":15000}),
     ))
 }
 
@@ -151,7 +157,9 @@ async fn admin_account(
     Ok(Json(s.store.create_account(&req.display_name).await?))
 }
 async fn me(State(s): State<AppState>, headers: HeaderMap) -> Result<Json<Account>> {
-    Ok(Json(s.account(&headers).await?))
+    let authed = s.account(&headers).await?;
+    // Balance is read fresh from the resolved account, never from the cache.
+    Ok(Json(s.store.account_by_id(&authed.id).await?))
 }
 
 #[derive(Deserialize, Default)]
@@ -228,7 +236,9 @@ async fn quote(
     Json(req): Json<QuoteRequest>,
 ) -> Result<Json<Value>> {
     let account = s.account(&headers).await?;
-    Ok(Json(s.store.quote(&account, &req, &s.quote_secret).await?))
+    Ok(Json(
+        s.store.quote(&account.id, &req, &s.quote_secret).await?,
+    ))
 }
 async fn trade(
     State(s): State<AppState>,
@@ -314,13 +324,17 @@ async fn tick(State(s): State<AppState>, headers: HeaderMap) -> Result<Json<Valu
 struct EventCursor {
     after: Option<i64>,
 }
+/// SSE delivery: the durable outbox is authoritative and a broadcast channel
+/// fed by PostgreSQL notifications delivers committed events immediately. A
+/// slow catch-up pass re-reads the outbox every 30 seconds so a lost or lagged
+/// notification can delay an event but never drop it.
 async fn events(
     State(s): State<AppState>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Query(query): Query<EventCursor>,
 ) -> Result<Sse<impl Stream<Item = std::result::Result<Event, Infallible>>>> {
-    s.store.instance(&id).await?;
+    s.store.instance_cached(&id).await?;
     let mut cursor = headers
         .get("last-event-id")
         .and_then(|v| v.to_str().ok())
@@ -328,21 +342,49 @@ async fn events(
         .or(query.after)
         .unwrap_or(0)
         .max(0);
+    let pool = s.store.pool.clone();
+    let bus = s.events.clone();
     let stream = async_stream::stream! {
-        loop {
-            let rows = sqlx::query("SELECT id,instance_version,event_type,created_ms FROM outbox WHERE instance_id=$1 AND id>$2 ORDER BY id LIMIT 100")
-                .bind(&id).bind(cursor).fetch_all(&s.store.pool).await;
-            match rows {
-                Ok(rows) => {
-                    for row in rows {
-                        cursor = row.get("id");
-                        let payload = json!({"instance_id":id,"version":row.get::<i64,_>("instance_version"),"type":row.get::<String,_>("event_type"),"created_ms":row.get::<i64,_>("created_ms")});
-                        yield Ok(Event::default().id(cursor.to_string()).event("market").data(payload.to_string()));
+        let mut receiver = bus.subscribe(&id);
+        let mut safety = tokio::time::interval(Duration::from_secs(30));
+        safety.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        'stream: loop {
+            // Catch up from the durable outbox first; duplicates from the
+            // broadcast channel are filtered by the cursor.
+            loop {
+                let rows = sqlx::query("SELECT id,instance_version,event_type,created_ms FROM outbox WHERE instance_id=$1 AND id>$2 ORDER BY id LIMIT 100")
+                    .bind(&id).bind(cursor).fetch_all(&pool).await;
+                match rows {
+                    Ok(rows) if rows.is_empty() => break,
+                    Ok(rows) => {
+                        let full = rows.len() == 100;
+                        for row in rows {
+                            let row_id: i64 = row.get("id");
+                            if row_id > cursor {
+                                cursor = row_id;
+                                let payload = json!({"instance_id":id,"version":row.get::<i64,_>("instance_version"),"type":row.get::<String,_>("event_type"),"created_ms":row.get::<i64,_>("created_ms")});
+                                yield Ok(Event::default().id(cursor.to_string()).event("market").data(payload.to_string()));
+                            }
+                        }
+                        if !full { break; }
+                    }
+                    Err(e) => { tracing::error!(error=%e,"event stream database failure"); break 'stream; }
+                }
+            }
+            tokio::select! {
+                _ = safety.tick() => { continue; }
+                received = receiver.recv() => {
+                    match received {
+                        Ok(event) if event.instance_id == id && event.id > cursor => {
+                            cursor = event.id;
+                            yield Ok(Event::default().id(cursor.to_string()).event("market").data(event.sse_data()));
+                        }
+                        Ok(_) => {}
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => { continue; }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => { break 'stream; }
                     }
                 }
-                Err(e) => { tracing::error!(error=%e,"event stream database failure"); break; }
             }
-            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     };
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))

@@ -34,37 +34,60 @@ pub async fn tick(store: &Store) -> Result<usize> {
     let due: Vec<Instance> = sqlx::query_as("SELECT i.* FROM instances i LEFT JOIN evidence e ON e.id=i.evidence_id WHERE i.state='resolving' OR (i.state='closed' AND ((i.data_mode='simulated' AND $2 AND i.evidence_id IS NULL AND i.observation_end_ms<=$1) OR (i.finalize_after_ms<=$1 AND (i.evidence_deadline_ms<=$1 OR e.evaluated_result IS NOT NULL)))) ORDER BY i.finalize_after_ms,i.id LIMIT 100")
         .bind(now).bind(store.demo_mode).fetch_all(&store.pool).await?;
     let mut count = 0;
-    for instance in due {
-        if store.demo_mode
-            && instance.data_mode == "simulated"
-            && instance.state == "closed"
-            && instance.evidence_id.is_none()
-        {
-            let secret: String =
-                sqlx::query_scalar("SELECT simulation_secret FROM settings WHERE singleton")
-                    .fetch_one(&store.pool)
-                    .await?;
-            let private_seed = crate::auth::hash(format!("{secret}:{}", instance.id).as_bytes());
-            let input = EvidenceInput { source_id: instance.source_id.clone(), event_id: format!("simulated:{}", instance.id), source_revision: 0,
-                window_start_ms: instance.observation_start_ms, window_end_ms: instance.observation_end_ms,
-                observation: instance.rule.simulated(&private_seed, instance.observation_start_ms, instance.observation_end_ms),
-                reference: "Deterministic demo observation, generated after the observation window; no live source".into() };
-            match store.record_evidence(&instance.id, &input, true).await {
-                Ok(_) | Err(Error::Conflict(_)) => {}
-                Err(e) => {
-                    tracing::error!(instance_id=%instance.id, error=%e, "simulated observation failed");
-                }
-            }
+    // Independent instances settle concurrently in bounded chunks; the
+    // instance row lock keeps each instance internally serial.
+    for chunk in due.chunks(SETTLE_CONCURRENCY) {
+        let mut tasks = tokio::task::JoinSet::new();
+        for instance in chunk {
+            let store = store.clone();
+            let instance = instance.clone();
+            tasks.spawn(async move { process_instance(&store, &instance).await });
         }
-        match store.settle_batch(&instance.id).await {
-            Ok(n) => count += n,
-            Err(e) => {
-                tracing::error!(instance_id=%instance.id, error=%e, "settlement batch failed; will retry")
+        while let Some(joined) = tasks.join_next().await {
+            match joined {
+                Ok(Ok(n)) => count += n,
+                Ok(Err(e)) => tracing::error!(error = %e, "settlement task failed"),
+                Err(e) => tracing::error!(error = %e, "settlement task panicked"),
             }
         }
     }
     seed_demo(store).await?;
     Ok(count)
+}
+
+const SETTLE_CONCURRENCY: usize = 8;
+
+/// Simulated evidence for one closed demo instance, then one settlement batch.
+/// Logs and continues on failure; the next tick retries.
+async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
+    if store.demo_mode
+        && instance.data_mode == "simulated"
+        && instance.state == "closed"
+        && instance.evidence_id.is_none()
+    {
+        let secret: String =
+            sqlx::query_scalar("SELECT simulation_secret FROM settings WHERE singleton")
+                .fetch_one(&store.pool)
+                .await?;
+        let private_seed = crate::auth::hash(format!("{secret}:{}", instance.id).as_bytes());
+        let input = EvidenceInput { source_id: instance.source_id.clone(), event_id: format!("simulated:{}", instance.id), source_revision: 0,
+            window_start_ms: instance.observation_start_ms, window_end_ms: instance.observation_end_ms,
+            observation: instance.rule.simulated(&private_seed, instance.observation_start_ms, instance.observation_end_ms),
+            reference: "Deterministic demo observation, generated after the observation window; no live source".into() };
+        match store.record_evidence(&instance.id, &input, true).await {
+            Ok(_) | Err(Error::Conflict(_)) => {}
+            Err(e) => {
+                tracing::error!(instance_id=%instance.id, error=%e, "simulated observation failed");
+            }
+        }
+    }
+    match store.settle_batch(&instance.id).await {
+        Ok(n) => Ok(n),
+        Err(e) => {
+            tracing::error!(instance_id=%instance.id, error=%e, "settlement batch failed; will retry");
+            Ok(0)
+        }
+    }
 }
 
 pub async fn run(store: Store) {

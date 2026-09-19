@@ -111,7 +111,45 @@ The settlement interval was short and polled completion every 500 ms. These samp
 - Client-skipped work and unexpected errors are retained so rejected load cannot inflate throughput claims.
 - Local loopback measurements do not include campus network cost.
 
-## Not established
+## Throughput KPI benchmark
+
+`scripts/benchmark-kpi.mjs` is the short key-performance-indicator workload. Unlike the ten-minute arrival-scheduled run above, it drives closed-loop load: a fixed number of workers iterate as fast as their requests complete, so the result is maximum sustainable capacity, not compliance with a target rate. Each run prepares its own accounts and markets, keeps 20 SSE streams connected, exercises a quote phase and then a trade-workflow phase, finishes with a reconciliation check, and writes a JSON report.
+
+Run it locally through the same isolated-database launcher:
+
+```powershell
+./scripts/run-benchmark.ps1 -Workload benchmark-kpi.mjs -Seconds 15
+```
+
+The report is written to `.local/kpi.json` (override with `BENCH_REPORT`). The run fails when a gate regresses:
+
+| Gate | Default | Override |
+|---|---:|---|
+| Quote throughput | at least 100/s | `KPI_MIN_QUOTE_RPS` |
+| Quote p99 | at most 250 ms | `KPI_MAX_QUOTE_P99_MS` |
+| Trade throughput | at least 15/s | `KPI_MIN_TRADE_RPS` |
+| Trade p99 | at most 500 ms | `KPI_MAX_TRADE_P99_MS` |
+
+Quote and trade errors, and a failed reconciliation, also fail the run. Expected 409 conflicts during the trade phase are counted separately and do not fail it.
+
+### Recorded KPI result (20 September 2026, development host)
+
+One 15-second phase each, 16 quote workers, 8 trade workers (one per market), 20 markets, 20 accounts, 16 connected SSE streams, Node 26 client, isolated databases, release builds:
+
+| Metric | Pre-optimization build (87d8fd5) | Optimized build | Change |
+|---|---:|---:|---|
+| Quote throughput | 2,737/s | 5,916/s | +116% |
+| Quote p50 / p95 / p99 | 5.42 / 10.44 / 13.46 ms | 1.92 / 6.60 / 14.24 ms | p50 −65% |
+| Trade throughput | 1,017/s | 1,110/s | +9% |
+| Trade p50 / p95 / p99 | 4.84 / 7.87 / 10.30 ms | 4.76 / 7.58 / 10.91 ms | within noise |
+| Trade conflicts / errors | 0 / 0 | 0 / 0 | — |
+| Reconciliation | ok | ok | — |
+
+Two measurement limits: the quote phase is bounded by the single-process Node client, not the server — after caching, a quote costs no database round trip, so the server's real quote ceiling is higher than the recorded number; and trade percentiles move a few milliseconds between runs on this shared development machine. A separate single-trade check measured SSE delivery at 14 milliseconds from outbox timestamp to connected client, with the event arriving before the trade's HTTP response completed; before the change the handler polled once per second.
+
+Continuous integration runs the same script as a separate `performance` job in `.github/workflows/verify.yml`: it builds the release backend, starts it against the job's PostgreSQL 17 service container, runs the benchmark for 15 seconds per phase, and fails the build on a gate regression, retaining the report and server log as artifacts. The gates are deliberately loose tripwires for order-of-magnitude regressions — shared CI runners are slower and noisier than the recorded development machine, so a passing CI number must not be quoted as product capacity. Tune the gates through the environment variables above rather than re-baselining the artifacts.
+
+
 
 - capacity or percentiles on a fixed 4-vCPU/8-GB host;
 - campus-network visible-confirmation latency;

@@ -30,3 +30,55 @@ jobs:
       - run: cargo clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings
       - run: npm ci && npm run lint && npm run build
         working-directory: frontend
+
+  performance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: polyntu
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U polyntu -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://polyntu:test-only-password@localhost:5432/postgres
+      POLYNTU_QUOTE_SECRET: ci-only-quote-secret-0123456789abcdef
+      POLYNTU_ADMIN_TOKEN: ci-only-admin-token-0123456789abcdef
+      POLYNTU_DEMO_MODE: "false"
+      POLYNTU_BIND: 127.0.0.1:18000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend/Cargo.toml
+      - run: rustup toolchain install 1.88.0 --profile minimal
+      - run: rustup override set 1.88.0
+      - run: cargo build --manifest-path backend/Cargo.toml --release --locked
+      - name: Run throughput KPI benchmark
+        run: |
+          ./backend/target/release/polyntu > server.log 2>&1 &
+          SERVER=$!
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:18000/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:18000/health >/dev/null || { cat server.log >&2; exit 1; }
+          BENCH_URL=http://127.0.0.1:18000 BENCH_SECONDS=15 BENCH_REPORT=kpi-report.json node scripts/benchmark-kpi.mjs
+          STATUS=$?
+          kill $SERVER 2>/dev/null || true
+          exit $STATUS
+      - name: Retain KPI report and server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kpi-regression-report
+          path: |
+            kpi-report.json
+            server.log

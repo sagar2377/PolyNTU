@@ -2,12 +2,13 @@ use crate::{
     amm::{self, Side},
     auth,
     error::{Error, Result, conflict, invalid},
+    events,
     market::Instance,
-    store::{Account, Store, balance, db_now, event, lock_accounts, transfer},
+    store::{Store, transfer},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sqlx::{Row, types::Json};
+use sqlx::{FromRow, Row, types::Json};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,12 +52,15 @@ pub fn parse_micros(value: &str) -> Result<i64> {
 impl Store {
     pub async fn quote(
         &self,
-        account: &Account,
+        account_id: &str,
         request: &QuoteRequest,
         secret: &str,
     ) -> Result<Value> {
-        let instance = self.instance(&request.instance_id).await?;
-        let now = self.now().await?;
+        // Preview path: served from the read-through cache and the local
+        // clock estimate, so it costs no database round trips on a hit.
+        // Execution re-validates every claim transactionally.
+        let instance = self.instance_cached(&request.instance_id).await?;
+        let now = self.now_cached();
         if !instance.tradable(now) {
             return Err(conflict("This market is closed or suspended"));
         }
@@ -69,8 +73,8 @@ impl Store {
             request.quantity_millis,
         )?;
         let claims = QuoteClaims {
-            account_id: account.id.clone(),
-            instance_id: instance.id,
+            account_id: account_id.into(),
+            instance_id: instance.id.clone(),
             outcome_id: request.outcome_id.clone(),
             side: request.side,
             quantity_millis: request.quantity_millis,
@@ -130,6 +134,38 @@ impl Store {
         ))
     }
 
+    /// One statement applies every remaining trade write and publishes the
+    /// commit-time notification. Semantics are identical to issuing the
+    /// statements separately inside the same transaction; the single round
+    /// trip halves the statement count of the execution path. The
+    /// `pg_notify` call must stay in the primary SELECT: PostgreSQL does not
+    /// evaluate a common table expression arm that nothing references.
+    const FINALIZE_TRADE: &str = r#"
+        WITH updated AS (
+            UPDATE instances SET inventory=$4,version=$5
+            WHERE id=$1 AND version=$5-1 RETURNING id
+        ), position AS (
+            INSERT INTO positions(account_id,instance_id,outcome_index,quantity_millis)
+            VALUES($2,$1,$6,$7)
+            ON CONFLICT(account_id,instance_id,outcome_index)
+            DO UPDATE SET quantity_millis=EXCLUDED.quantity_millis
+            RETURNING account_id
+        ), trade AS (
+            INSERT INTO trades(id,account_id,instance_id,outcome_index,side,quantity_millis,amount_micros,instance_version,engine_version,created_ms)
+            VALUES($8,$2,$1,$6,$9,$10,$11,$5,$12,$13) RETURNING id
+        ), reply AS (
+            UPDATE idempotency SET response=$14
+            WHERE account_id=$2 AND key=$3 RETURNING key
+        ), outbox AS (
+            INSERT INTO outbox(instance_id,instance_version,event_type,created_ms)
+            VALUES($1,$5,'trade',$13) RETURNING id
+        )
+        SELECT (SELECT count(*) FROM updated) AS updated_count,
+               (SELECT count(*) FROM reply) AS reply_count,
+               (SELECT id FROM outbox) AS outbox_id,
+               (SELECT pg_notify($15, json_build_object('id',o.id,'instance_id',$1,'version',$5,'type','trade','created_ms',$13,'inventory',$4)::text) FROM outbox o) AS notified
+    "#;
+
     async fn execute_once(
         &self,
         account: &str,
@@ -139,30 +175,38 @@ impl Store {
         limit: i64,
     ) -> Result<Value> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("INSERT INTO idempotency(account_id,key,request_hash) VALUES($1,$2,$3) ON CONFLICT DO NOTHING")
-            .bind(account).bind(key).bind(request_hash).execute(&mut *tx).await?;
-        let record = sqlx::query("SELECT request_hash,response FROM idempotency WHERE account_id=$1 AND key=$2 FOR UPDATE")
-            .bind(account).bind(key).fetch_one(&mut *tx).await?;
-        if record.get::<String, _>("request_hash") != request_hash {
-            return Err(conflict(
-                "Idempotency key was already used for a different request",
-            ));
+        // Reserve the idempotency key and replay any committed response.
+        let inserted =
+            sqlx::query("INSERT INTO idempotency(account_id,key,request_hash) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING request_hash")
+                .bind(account)
+                .bind(key)
+                .bind(request_hash)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if inserted.is_none() {
+            let record = sqlx::query("SELECT request_hash,response FROM idempotency WHERE account_id=$1 AND key=$2 FOR UPDATE")
+                .bind(account)
+                .bind(key)
+                .fetch_one(&mut *tx)
+                .await?;
+            if record.get::<String, _>("request_hash") != request_hash {
+                return Err(conflict(
+                    "Idempotency key was already used for a different request",
+                ));
+            }
+            if let Some(response) = record.get::<Option<Json<Value>>, _>("response") {
+                tx.commit().await?;
+                return Ok(response.0);
+            }
         }
-        if let Some(response) = record.get::<Option<Json<Value>>, _>("response") {
-            tx.commit().await?;
-            return Ok(response.0);
-        }
-        let instance: Instance = sqlx::query_as("SELECT * FROM instances WHERE id=$1 FOR UPDATE")
+        // Lock the instance and read the database clock in one round trip.
+        let row = sqlx::query("SELECT i.*,(SELECT (extract(epoch FROM clock_timestamp())*1000)::BIGINT + s.clock_offset_ms FROM settings s WHERE s.singleton) AS db_now_ms FROM instances i WHERE i.id=$1 FOR UPDATE")
             .bind(&claims.instance_id)
             .fetch_optional(&mut *tx)
             .await?
             .ok_or(Error::NotFound)?;
-        lock_accounts(
-            &mut tx,
-            &[account.into(), instance.reserve_account_id.clone()],
-        )
-        .await?;
-        let now = db_now(&mut tx).await?;
+        let instance = Instance::from_row(&row)?;
+        let now: i64 = row.get("db_now_ms");
         if !instance.tradable(now) {
             return Err(conflict("This market is closed or suspended"));
         }
@@ -183,14 +227,35 @@ impl Store {
         if calculation.amount_micros != claims.amount_micros {
             return Err(conflict("Quote calculation changed. Request a new quote"));
         }
-        let current: i64 = sqlx::query_scalar("SELECT quantity_millis FROM positions WHERE account_id=$1 AND instance_id=$2 AND outcome_index=$3")
-            .bind(account).bind(&instance.id).bind(outcome as i32).fetch_optional(&mut *tx).await?.unwrap_or(0);
         let amount = calculation.amount_micros;
         let is_buy = claims.side == Side::Buy;
         if is_buy && amount > limit || !is_buy && amount < limit {
             return Err(conflict("Trade exceeds your cost/proceeds limit"));
         }
-        if is_buy && balance(&mut tx, account).await? < amount {
+        // Lock both accounts and read balances and the current position in
+        // one round trip.
+        let locked = sqlx::query("SELECT a.id, a.balance_micros, (SELECT p.quantity_millis FROM positions p WHERE p.account_id=$1 AND p.instance_id=$2 AND p.outcome_index=$3) AS position_millis FROM accounts a WHERE a.id = ANY($4) ORDER BY a.id FOR NO KEY UPDATE")
+            .bind(account)
+            .bind(&instance.id)
+            .bind(outcome as i32)
+            .bind(vec![account.to_string(), instance.reserve_account_id.clone()])
+            .fetch_all(&mut *tx)
+            .await?;
+        let balance_of = |id: &str| {
+            locked
+                .iter()
+                .find(|row| row.get::<String, _>("id") == id)
+                .map(|row| row.get::<i64, _>("balance_micros"))
+        };
+        let current: i64 = locked
+            .first()
+            .and_then(|row| row.get::<Option<i64>, _>("position_millis"))
+            .unwrap_or(0);
+        let user_balance = balance_of(account)
+            .ok_or_else(|| Error::Internal("User account row missing under lock".into()))?;
+        let reserve_balance = balance_of(&instance.reserve_account_id)
+            .ok_or_else(|| Error::Internal("Reserve account row missing under lock".into()))?;
+        if is_buy && user_balance < amount {
             return Err(conflict("Insufficient simulated units"));
         }
         if !is_buy && current < claims.quantity_millis {
@@ -202,8 +267,7 @@ impl Store {
             } else {
                 -claims.quantity_millis
             };
-        let remaining_reserve = balance(&mut tx, &instance.reserve_account_id).await?
-            + if is_buy { amount } else { -amount };
+        let remaining_reserve = reserve_balance + if is_buy { amount } else { -amount };
         let liability = calculation.inventory.iter().max().copied().unwrap_or(0) * 1000;
         if remaining_reserve < liability {
             return Err(conflict(
@@ -227,28 +291,41 @@ impl Store {
             now,
         )
         .await?;
-        sqlx::query("INSERT INTO positions(account_id,instance_id,outcome_index,quantity_millis) VALUES($1,$2,$3,$4) ON CONFLICT(account_id,instance_id,outcome_index) DO UPDATE SET quantity_millis=EXCLUDED.quantity_millis")
-            .bind(account).bind(&instance.id).bind(outcome as i32).bind(owned).execute(&mut *tx).await?;
-        sqlx::query("UPDATE instances SET inventory=$2,version=version+1 WHERE id=$1")
-            .bind(&instance.id)
-            .bind(&calculation.inventory)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("INSERT INTO trades(id,account_id,instance_id,outcome_index,side,quantity_millis,amount_micros,instance_version,engine_version,created_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
-            .bind(&trade_id).bind(account).bind(&instance.id).bind(outcome as i32).bind(side).bind(claims.quantity_millis)
-            .bind(amount).bind(instance.version + 1).bind(amm::ENGINE_VERSION).bind(now).execute(&mut *tx).await?;
+        let balance_after = user_balance + if is_buy { -amount } else { amount };
+        let version = instance.version + 1;
         let response = json!({"trade_id":trade_id,"instance_id":instance.id,"outcome_id":claims.outcome_id,
             "side":claims.side,"quantity_millis":claims.quantity_millis,"amount_micros":amount.to_string(),
-            "balance_micros":balance(&mut tx, account).await?.to_string(),"owned_millis":owned,
-            "version":instance.version+1,"created_ms":now});
-        sqlx::query("UPDATE idempotency SET response=$3 WHERE account_id=$1 AND key=$2")
+            "balance_micros":balance_after.to_string(),"owned_millis":owned,
+            "version":version,"created_ms":now});
+        let finalized = sqlx::query(Self::FINALIZE_TRADE)
+            .bind(&instance.id)
             .bind(account)
             .bind(key)
+            .bind(&calculation.inventory)
+            .bind(version)
+            .bind(outcome as i32)
+            .bind(owned)
+            .bind(&trade_id)
+            .bind(side)
+            .bind(claims.quantity_millis)
+            .bind(amount)
+            .bind(amm::ENGINE_VERSION)
+            .bind(now)
             .bind(Json(&response))
-            .execute(&mut *tx)
+            .bind(events::CHANNEL)
+            .fetch_one(&mut *tx)
             .await?;
-        event(&mut tx, &instance.id, instance.version + 1, "trade", now).await?;
+        if finalized.get::<i64, _>("updated_count") != 1
+            || finalized.get::<i64, _>("reply_count") != 1
+            || finalized.get::<Option<i64>, _>("outbox_id").is_none()
+        {
+            return Err(Error::Internal(
+                "Trade finalization did not complete every write".into(),
+            ));
+        }
         tx.commit().await?;
+        self.cache
+            .apply_trade(&instance.id, version, &calculation.inventory);
         Ok(response)
     }
 }

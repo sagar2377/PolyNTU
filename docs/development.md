@@ -92,7 +92,7 @@ Never log bearer tokens, administrator tokens, quote bodies, or `.local/dev-secr
 | `scripts/run-prod.ps1` | Runs the same pipeline with the locked, optimised release backend. |
 | `scripts/stop-preview.ps1` | Stops only the verified hidden preview recorded by this workspace. |
 | `scripts/generate-math-fixtures.py` | Rebuilds high-precision LMSR reference JSON using fixed-seed Python Decimal calculations. |
-| `scripts/run-benchmark.ps1` | Builds the release backend and runs an isolated database/server workload on port 18000. |
+| `scripts/run-benchmark.ps1` | Builds the release backend and runs an isolated database/server workload on port 18000. `-Workload benchmark-kpi.mjs` runs the short throughput KPI instead of the ten-minute soak. |
 
 ## Database modes and migrations
 
@@ -152,7 +152,7 @@ The Compose file is a portability aid, not a documented production deployment. T
 
 ## Continuous integration
 
-`.github/workflows/verify.yml` runs on pushes and pull requests using Ubuntu, PostgreSQL 17, Node 22, and Rust 1.88. It checks formatting, all Rust tests, clippy with warnings denied, npm install, frontend lint, and frontend build.
+`.github/workflows/verify.yml` runs on pushes and pull requests using Ubuntu, PostgreSQL 17, Node 22, and Rust 1.88. It checks formatting, all Rust tests, clippy with warnings denied, npm install, frontend lint, and frontend build. A separate `performance` job builds the release backend, starts it against the job's PostgreSQL service, and runs the throughput KPI benchmark as a regression gate; see [verification](verification.md#throughput-kpi-benchmark).
 
 The retained verification session did not execute the workflow on this host. A future documentation check should add Markdown link validation and linting without treating generated/archive content as current contracts.
 

@@ -128,6 +128,7 @@ impl Store {
         .await?;
         event(&mut tx, id, instance.version + 1, "evidence", now).await?;
         tx.commit().await?;
+        self.cache.invalidate(id);
         Ok(json!({"evidence_id":evidence_id,"duplicate":false,"evaluated_result":result}))
     }
 
@@ -162,6 +163,7 @@ impl Store {
         .await?;
         event(&mut tx, id, instance.version + 1, "suspension", now).await?;
         tx.commit().await?;
+        self.cache.invalidate(id);
         Ok(())
     }
 
@@ -178,6 +180,9 @@ impl Store {
             event(&mut tx, &instance.id, instance.version + 1, "closed", now).await?;
         }
         tx.commit().await?;
+        for instance in &due {
+            self.cache.invalidate(&instance.id);
+        }
         Ok(due.len())
     }
 
@@ -306,6 +311,7 @@ impl Store {
             event(&mut tx, id, instance.version + 1, terminal, now).await?;
         }
         tx.commit().await?;
+        self.cache.invalidate(id);
         Ok(accounts.len())
     }
 
@@ -322,6 +328,10 @@ impl Store {
         if updated.rows_affected() == 0 {
             return Err(invalid("Demo clock is limited to a ten-year offset"));
         }
+        let offset: i64 =
+            sqlx::query_scalar("SELECT clock_offset_ms FROM settings WHERE singleton")
+                .fetch_one(&mut *tx)
+                .await?;
         let now = db_now(&mut tx).await?;
         audit(
             &mut tx,
@@ -332,6 +342,7 @@ impl Store {
         )
         .await?;
         tx.commit().await?;
+        self.cache.set_clock_offset(offset);
         Ok(now)
     }
 }

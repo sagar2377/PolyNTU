@@ -148,7 +148,7 @@ async fn quote(
     let value = db
         .store
         .quote(
-            account,
+            &account.id,
             &QuoteRequest {
                 instance_id: instance.id.clone(),
                 outcome_id: instance.outcomes[0].id.clone(),

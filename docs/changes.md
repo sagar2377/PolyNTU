@@ -2,6 +2,14 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026 — Hot-path optimization and throughput KPI gate
+
+- Served quotes from a read-through instance/token cache with a local clock estimate; a cache hit performs no database round trips, and every mutation invalidates or writes through before returning.
+- Cut the trade transaction from fourteen statements to five by fusing reads (idempotency claim, instance plus clock, account locks plus balances plus position) and applying all remaining writes plus the commit-time notification in one data-modifying CTE.
+- Replaced per-client SSE outbox polling with PostgreSQL `LISTEN/NOTIFY` fan-out over per-instance broadcast channels; the durable outbox remains authoritative with a 30-second catch-up safety net, so a lost notification delays but never drops an event.
+- Settlement now processes independent instances concurrently in bounded chunks, and the server runs an explicitly multi-threaded runtime with a 32-connection pool.
+- Added `scripts/benchmark-kpi.mjs`, a short closed-loop throughput KPI with regression gates, wired into CI as a `performance` job in `verify.yml`.
+
 ## 19–20 September 2026 — Windows helper script updates
 
 - Made the helper scripts run under both Windows PowerShell 5.1 and PowerShell 7: replaced a .NET-Core-only random-number API and removed a native stderr redirect that 5.1 turns into a terminating error.

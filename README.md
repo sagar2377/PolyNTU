@@ -64,7 +64,7 @@ Start with the [documentation index](docs/README.md).
 
 The retained verification artifacts report 20 Rust tests, including 384 independent high-precision numerical fixtures. The final ten-minute HTTP workload submitted 59,999 dedicated quotes and 11,999 trade workflows with zero unexpected errors, skipped work, or reconciliation discrepancies. A separate workload settled 10,000 account claims in 7.64 seconds while quote/trade traffic and 200 event streams remained active.
 
-These are local development-machine measurements, not production capacity guarantees. See [verification](docs/verification.md) for raw reports, test commands, hardware, and limitations.
+These are local development-machine measurements, not production capacity guarantees. See [verification](docs/verification.md) for raw reports, test commands, hardware, and limitations. A short closed-loop throughput KPI (`scripts/benchmark-kpi.mjs`) runs in CI as a performance-regression gate with deliberately loose thresholds.
 
 ## Current scope limits
 

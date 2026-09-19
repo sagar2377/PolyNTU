@@ -124,7 +124,7 @@ The tagged enum contains:
 
 `router` creates a nested `/api/v2` router, explicit retired routes, global 64 KiB limit, configured CORS, request tracing, and the shared state. Handlers remain deliberately thin: authenticate/parse, call one store/service method, and serialize its result.
 
-The SSE handler is the exception: it validates the instance, initializes a nonnegative cursor, polls up to 100 outbox rows each second, and emits `market` events until the database query fails or the client disconnects.
+The SSE handler is the exception: it validates the instance, initializes a nonnegative cursor, subscribes to the instance's broadcast channel, replays up to 100 outbox rows per catch-up pass, and emits `market` events as notifications arrive, with a 30-second catch-up safety net. The stream ends only on a database query failure or client disconnect.
 
 See [API implementation map](api-reference.md) for each route/handler/service combination.
 
@@ -134,7 +134,7 @@ See [API implementation map](api-reference.md) for each route/handler/service co
 
 ### `Store::quote`
 
-This read-only method loads an instance/time, checks tradability, resolves the outcome index, calls `amm::calculate`, builds a claim expiring at `min(now+15s, close)`, signs it, and returns exact/string and display values.
+This read-only method loads the instance from the read-through cache (database on a miss), checks tradability against the cached clock estimate, resolves the outcome index, calls `amm::calculate`, builds a claim expiring at `min(now+15s, close)`, signs it, and returns exact/string and display values.
 
 ### `Store::execute`
 
@@ -142,7 +142,7 @@ The outer method validates the idempotency-key syntax, verifies quote signature/
 
 ### `Store::execute_once`
 
-This owns the trade transaction. It claims/locks idempotency, locks the instance, locks accounts, reads database time, recomputes the quote, enforces limits/balance/holdings/reserve coverage, transfers units, upserts the position, advances inventory/version, inserts the trade, stores the receipt, appends an event, and commits.
+This owns the trade transaction in five statements: claim idempotency (replaying a committed response on conflict), lock the instance while reading database time, lock both accounts while reading balances and the position, insert the transfer, then apply the remaining writes — position upsert, inventory/version update, trade insert, idempotency response, outbox event, and `pg_notify` — in one data-modifying CTE before committing.
 
 The position read is not explicitly `FOR UPDATE`; serialization is provided by the instance lock. Do not remove or reorder that lock without redesigning position and inventory concurrency together.
 
@@ -154,13 +154,13 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 - `lock_accounts`: sorted `FOR NO KEY UPDATE` account locks.
 - `balance`: reads one account balance inside an existing connection/transaction.
 - `transfer`: inserts one ledger transfer; the database trigger updates balances.
-- `event`: appends a durable outbox row.
+- `event`: appends a durable outbox row and issues the commit-time `pg_notify` in the same statement.
 - `audit`: appends an administrator audit row.
 - `instance_view`: computes display prices and the effective public state/read model.
 
 ### Initialization
 
-`Store::connect` creates a 24-connection pool with 5-second acquisition timeout, sets 2-second PostgreSQL lock timeout and 15-second statement timeout on each connection, applies migrations, and calls `initialize`.
+`Store::connect` creates a 32-connection pool with 5-second acquisition timeout, sets 2-second PostgreSQL lock timeout and 15-second statement timeout on each connection, applies migrations, and calls `initialize`.
 
 `initialize` serializes on the singleton settings row, enforces mode consistency, creates a private simulation secret once, creates issuance/treasury accounts, and inserts an initial transfer of 1,000,000 units from issuance to treasury.
 
@@ -192,19 +192,29 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 `seed_demo` creates missing future occurrences. A template/close uniqueness constraint handles competing schedulers; elections are deliberately not recurring.
 
-`tick` closes due instances, selects actionable rows, produces due simulator evidence, attempts settlement, and then seeds future demos. Per-instance evidence/settlement errors are logged so another instance can continue.
+`tick` closes due instances, selects actionable rows, produces due simulator evidence, settles independent instances concurrently in chunks of eight, and then seeds future demos. Per-instance evidence/settlement errors are logged so another instance can continue.
 
 `run` invokes `tick` every second with missed ticks skipped. There is no shutdown channel; `main` aborts the spawned task after HTTP shutdown.
+
+## Caches: `cache.rs`
+
+`Cache` holds the read-through instance map (2-second TTL, 10,000-entry capacity), the immutable token-to-account map (50,000-entry capacity), and the demo clock offset behind an atomic. `apply_trade` updates a cached instance's inventory/version under a version guard so the in-process write-through and the notification listener can both apply the same committed trade idempotently; `invalidate` drops an entry whose state changed in ways the cache cannot reconstruct. `now_ms` combines the system clock with the cached offset.
+
+## Event fan-out: `events.rs`
+
+`OutboxEvent` mirrors one notification payload; `sse_data` reproduces the historical SSE data shape. `EventBus` lazily creates one bounded broadcast channel per instance and removes a channel once it has no receivers. `run_listener` owns a dedicated `LISTEN` connection, applies cache updates on every notification, publishes to the bus, and reconnects with a one-second delay after a failure. `run_clock_refresher` re-reads the demo clock offset every 30 seconds so a clock advanced by another process converges.
 
 ## Dependency direction
 
 ```text
-main -> api, store, worker
+main -> api, events, store, worker
 api -> execution/store/resolution/worker through Store methods
-execution -> amm, auth, market, store helpers
+execution -> amm, auth, events channel constant, market, store helpers
 resolution -> auth, market, store helpers
 worker -> market, resolution/store methods
-store -> amm, auth, market
+store -> amm, auth, cache, events channel constant, market
+events -> cache, store
+cache -> market
 market -> amm validation/funding
 amm/auth/error -> no database service dependencies
 ```

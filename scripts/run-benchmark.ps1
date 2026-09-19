@@ -1,4 +1,4 @@
-param([ValidateSet('benchmark.mjs', 'benchmark-settlement.mjs')][string]$Workload = 'benchmark.mjs', [int]$Seconds = 600)
+param([ValidateSet('benchmark.mjs', 'benchmark-settlement.mjs', 'benchmark-kpi.mjs')][string]$Workload = 'benchmark.mjs', [int]$Seconds = 600)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'rust-env.ps1')

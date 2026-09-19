@@ -1,17 +1,21 @@
 use crate::{
     amm, auth,
+    cache::{AuthAccount, Cache},
     error::{Error, Result, conflict, invalid},
+    events,
     market::{Instance, NewInstance},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{FromRow, PgConnection, PgPool, Row, postgres::PgPoolOptions, types::Json};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct Store {
     pub pool: PgPool,
     pub demo_mode: bool,
+    pub cache: Cache,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -67,8 +71,11 @@ pub async fn event(
     kind: &str,
     now: i64,
 ) -> Result<()> {
-    sqlx::query("INSERT INTO outbox(instance_id,instance_version,event_type,created_ms) VALUES($1,$2,$3,$4)")
-        .bind(instance).bind(version).bind(kind).bind(now).execute(connection).await?;
+    // One statement: the durable outbox row plus the commit-time notification
+    // that fans the event out to listening processes.
+    sqlx::query("WITH o AS (INSERT INTO outbox(instance_id,instance_version,event_type,created_ms) VALUES($1,$2,$3,$4) RETURNING id) SELECT pg_notify($5, json_build_object('id',o.id,'instance_id',$1,'version',$2,'type',$3,'created_ms',$4)::text) FROM o")
+        .bind(instance).bind(version).bind(kind).bind(now).bind(events::CHANNEL)
+        .execute(connection).await?;
     Ok(())
 }
 
@@ -121,7 +128,7 @@ pub fn instance_view(instance: &Instance, now: i64) -> Result<Value> {
 
 impl Store {
     pub async fn connect(url: &str, demo_mode: bool) -> Result<Self> {
-        let pool = PgPoolOptions::new().max_connections(24)
+        let pool = PgPoolOptions::new().max_connections(32)
             .acquire_timeout(std::time::Duration::from_secs(5))
             .after_connect(|conn, _| Box::pin(async move {
                 sqlx::query("SELECT set_config('lock_timeout','2s',false), set_config('statement_timeout','15s',false)")
@@ -132,12 +139,17 @@ impl Store {
             .run(&pool)
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;
-        let store = Self { pool, demo_mode };
-        store.initialize().await?;
+        let store = Self {
+            pool,
+            demo_mode,
+            cache: Cache::new(0),
+        };
+        let clock_offset = store.initialize().await?;
+        store.cache.set_clock_offset(clock_offset);
         Ok(store)
     }
 
-    async fn initialize(&self) -> Result<()> {
+    async fn initialize(&self) -> Result<i64> {
         let mut tx = self.pool.begin().await?;
         // Serialize bootstrap across API/worker processes.
         sqlx::query("SELECT singleton FROM settings WHERE singleton FOR UPDATE")
@@ -176,11 +188,16 @@ impl Store {
         sqlx::query("INSERT INTO ledger_transfers(id,from_account,to_account,amount_micros,kind,reference,created_ms) VALUES('initial-issuance','issuance','treasury',1000000000000,'issuance','initial-issuance',$1) ON CONFLICT DO NOTHING")
             .bind(now).execute(&mut *tx).await?;
         tx.commit().await?;
-        Ok(())
+        Ok(offset)
     }
 
     pub async fn now(&self) -> Result<i64> {
         db_now(&mut *self.pool.acquire().await?).await
+    }
+
+    /// Local estimate of the database clock for preview-only responses.
+    pub fn now_cached(&self) -> i64 {
+        self.cache.now_ms()
     }
 
     pub async fn account_for_token(&self, token: &str) -> Result<Account> {
@@ -189,6 +206,49 @@ impl Store {
         }
         sqlx::query_as("SELECT id,display_name,balance_micros::TEXT FROM accounts WHERE token_hash=$1 AND kind='user'")
             .bind(auth::hash(token.as_bytes())).fetch_optional(&self.pool).await?.ok_or(Error::Unauthorized)
+    }
+
+    /// Cached token resolution for the authenticated hot paths. Token-to-
+    /// account mapping is immutable, so entries never go stale; balances are
+    /// always read separately when they matter.
+    pub async fn auth_account_for_token(&self, token: &str) -> Result<Arc<AuthAccount>> {
+        if token.len() > 200 {
+            return Err(Error::Unauthorized);
+        }
+        let token_hash = auth::hash(token.as_bytes());
+        if let Some(cached) = self.cache.account(&token_hash) {
+            return Ok(cached);
+        }
+        let record =
+            sqlx::query("SELECT id,display_name FROM accounts WHERE token_hash=$1 AND kind='user'")
+                .bind(&token_hash)
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or(Error::Unauthorized)?;
+        let account = AuthAccount {
+            id: record.get("id"),
+            display_name: record.get("display_name"),
+        };
+        Ok(self.cache.put_account(token_hash, account))
+    }
+
+    pub async fn account_by_id(&self, id: &str) -> Result<Account> {
+        sqlx::query_as("SELECT id,display_name,balance_micros::TEXT FROM accounts WHERE id=$1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or(Error::NotFound)
+    }
+
+    /// Read-through instance lookup for the quote path. A miss fetches the
+    /// row and caches it; mutations invalidate or write through before
+    /// returning, so a hit is at most one trade behind.
+    pub async fn instance_cached(&self, id: &str) -> Result<Arc<Instance>> {
+        if let Some(hit) = self.cache.instance(id) {
+            return Ok(hit);
+        }
+        let instance = self.instance(id).await?;
+        Ok(self.cache.put_instance(instance))
     }
 
     pub async fn create_account(&self, display_name: &str) -> Result<Value> {
@@ -339,7 +399,9 @@ impl Store {
         event(&mut tx, &id, 0, "opened", now).await?;
         audit(&mut tx, "create_instance", Some(&id), json!(spec), now).await?;
         tx.commit().await?;
-        self.instance(&id).await
+        let instance = self.instance(&id).await?;
+        self.cache.put_instance(instance.clone());
+        Ok(instance)
     }
 
     pub async fn portfolio(&self, account: &str, limit: i64, offset: i64) -> Result<Value> {

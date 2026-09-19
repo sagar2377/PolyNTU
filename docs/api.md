@@ -449,7 +449,7 @@ event: market
 data: {"instance_id":"...","version":3,"type":"trade","created_ms":1788912001000}
 ```
 
-Resume with `Last-Event-ID: 1234` or `?after=1234`. Types currently include `opened`, `trade`, `evidence`, `suspension`, `closed`, `resolving`, `resolved`, and `voided`. Keep-alive frames occur every 15 seconds. Events signal that state changed; fetch a fresh snapshot after reconnecting or receiving an event.
+Resume with `Last-Event-ID: 1234` or `?after=1234`. Types currently include `opened`, `trade`, `evidence`, `suspension`, `closed`, `resolving`, `resolved`, and `voided`. Keep-alive frames occur every 15 seconds. Committed events are pushed through PostgreSQL notifications, typically arriving within milliseconds; a slow catch-up pass over the durable event log runs every 30 seconds as a safety net. Events signal that state changed; fetch a fresh snapshot after reconnecting or receiving an event.
 
 ## Retired routes
 

@@ -59,8 +59,10 @@ The executable contains the backend only. The Docker build compiles React separa
 | `backend/src/market.rs` | Outcomes, typed rules and observations, validation, evaluation, instance types, and demo specifications. |
 | `backend/src/execution.rs` | Quote structures, signing claims, amount parsing, idempotency, transaction locking, execution checks, ledger movement, positions, trades, receipts, and trade outbox events. |
 | `backend/src/store.rs` | Pool setup, migrations, bootstrap, database time, account provisioning, instance creation/read models, portfolio/history queries, transfers, audit/events, and reconciliation. |
+| `backend/src/cache.rs` | Read-through instance and token caches with a local clock estimate; every mutation invalidates or writes through before returning. |
+| `backend/src/events.rs` | PostgreSQL notification listener, per-instance SSE broadcast channels, and demo clock refresh. |
 | `backend/src/resolution.rs` | Evidence validation/deduplication, suspensions, due-market closing, finalization, bounded settlement, reserve release, and demo clock changes. |
-| `backend/src/worker.rs` | One-second scheduling loop, fair actionable-instance selection, private deterministic simulator evidence, settlement retries, and recurring demo seeding. |
+| `backend/src/worker.rs` | One-second scheduling loop, fair actionable-instance selection, private deterministic simulator evidence, concurrent bounded settlement, and recurring demo seeding. |
 
 See [backend code reference](developer/backend.md) for important types and functions in each file.
 
@@ -92,29 +94,27 @@ Demo mode persists its offset and limits the cumulative offset to ten years. A s
 
 ### Quote
 
-A quote performs reads only:
+A quote performs reads only, served from a read-through instance cache and a local estimate of the database clock, so a cache hit costs no database round trips:
 
-1. load the instance;
-2. read authoritative time;
+1. load the instance from the cache, fetching it from PostgreSQL on a miss;
+2. read the cached clock estimate;
 3. confirm it is open, before its close, and not suspended;
 4. map the outcome ID to its fixed index;
 5. calculate the bounded LMSR amount and before/after prices; and
 6. sign account, instance, outcome, side, quantity, amount, version, expiry, and engine version.
 
-It does not reserve inventory or write an idempotency row.
+It does not reserve inventory or write an idempotency row. The cache is safe because quotes are previews: execution re-validates every claim inside its transaction, so a stale entry can only produce a quote that execution rejects. Mutations invalidate or write through the cache before returning, committed trades update inventory and version in place, and each process's notification listener applies the same updates for writes made by other processes. Entries expire after two seconds regardless. Token-to-account resolution is cached the same way; that mapping is immutable, and balances are always read fresh when they matter.
 
 ### Trade
 
 One PostgreSQL transaction owns the entire trade. The actual ordering is:
 
-1. insert the account-scoped idempotency claim if absent;
-2. lock that idempotency row with `FOR UPDATE` and return its response if already complete;
-3. lock the instance row with `FOR UPDATE`;
-4. lock the participant and reserve account rows in sorted ID order using `FOR NO KEY UPDATE`;
-5. read authoritative time and recheck state, cutoff, quote expiry, version, signed amount, user limit, balance, holdings, and reserve coverage;
-6. insert a balanced transfer, whose trigger updates both account balances;
-7. upsert the position, update inventory/version, insert the immutable trade, persist the idempotency response, and append the outbox event; and
-8. commit before returning the receipt.
+1. insert the account-scoped idempotency claim if absent, replaying any committed response on conflict;
+2. lock the instance row with `FOR UPDATE`, reading authoritative time in the same statement;
+3. lock the participant and reserve account rows in sorted ID order using `FOR NO KEY UPDATE`, reading both balances and the current position in the same statement;
+4. recheck state, cutoff, quote expiry, version, signed amount, user limit, balance, holdings, and reserve coverage;
+5. insert a balanced transfer, whose trigger updates both account balances; and
+6. apply the remaining writes — position upsert, inventory/version update, immutable trade, idempotency response, outbox event, and the commit-time notification — in one data-modifying common table expression, then commit before returning the receipt.
 
 There is no separate explicit position-row lock. The instance lock serializes all trades that could modify positions or inventory for that instance. The participant account lock separately serializes spending across different markets. This distinction is important when changing the locking design.
 
@@ -152,16 +152,20 @@ The worker ticks every second and skips accumulated timer ticks. Each cycle:
 1. persists closure for up to 100 due open instances using `FOR UPDATE SKIP LOCKED`;
 2. selects up to 100 actionable instances rather than simply the oldest closed rows;
 3. generates evidence for due simulated instances using a hash of a private database secret and instance ID;
-4. retries settlement batches independently, logging an error without ending the worker; and
+4. settles independent instances concurrently in bounded chunks of eight, logging an error without ending the worker; and
 5. ensures one future demo occurrence exists for each recurring template and one election occurrence overall.
 
-The actionable query prevents many markets waiting for evidence from starving a later market that is ready to resolve.
+The actionable query prevents many markets waiting for evidence from starving a later market that is ready to resolve. Each instance still settles serially under its row lock; concurrency is across instances only.
 
 ## Events and consistency
 
-State-changing instance transactions append an `outbox` row before commit. The public SSE handler polls rows by global sequence ID, emits up to 100 per pass, and accepts `Last-Event-ID` or `?after=` for resumption. The UI treats an event as a signal to refetch the current snapshot; it also polls periodically.
+State-changing instance transactions append an `outbox` row and issue a `pg_notify` on the same channel in the same statement, so the notification is delivered exactly when the transaction commits. A dedicated listener connection in each process receives these notifications and fans them out to connected SSE subscribers through per-instance broadcast channels. Each stream first replays the durable outbox by global sequence ID — accepting `Last-Event-ID` or `?after=` for resumption — and re-checks it on a slow interval, so a lost or lagged notification delays an event but never drops it. The UI treats an event as a signal to refetch the current snapshot; it also polls periodically.
 
 Events may be delivered more than once and are not a replacement for snapshots. Retention and compaction are not implemented, so operators must monitor outbox growth before public deployment.
+
+## Concurrency and multicore use
+
+The server runs Tokio's multi-thread runtime, one worker thread per core, so independent requests — including cache-served quotes, trades on different markets, evidence, and settlement batches — execute in parallel. Two serialisation points remain by design: the instance row lock orders trades within one market, and the PostgreSQL commit provides the durability guarantee for acknowledged trades. Quotes are CPU-bound after caching and scale with cores; trade throughput across markets is bounded by the connection pool (32) and commit latency.
 
 ## Multi-process behaviour
 
