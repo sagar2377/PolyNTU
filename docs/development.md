@@ -152,7 +152,7 @@ The Compose file is a portability aid, not a documented production deployment. T
 
 ## Continuous integration
 
-`.github/workflows/verify.yml` runs on pushes and pull requests using Ubuntu, PostgreSQL 17, Node 22, and Rust 1.88. It checks formatting, all Rust tests, clippy with warnings denied, npm install, frontend lint, and frontend build. A separate `performance` job builds the release backend, starts it against the job's PostgreSQL service, and runs the throughput KPI benchmark as a regression gate; see [verification](verification.md#throughput-kpi-benchmark).
+`.github/workflows/verify.yml` runs on pushes and pull requests using Ubuntu, PostgreSQL 17, Node 24, and Rust 1.88. It checks formatting, all Rust tests, clippy with warnings denied, npm install, frontend lint, and frontend build. A separate `performance` job builds the release backend, starts it against the job's PostgreSQL service, and runs the throughput KPI benchmark as a regression gate; see [verification](verification.md#throughput-kpi-benchmark).
 
 The retained verification session did not execute the workflow on this host. A future documentation check should add Markdown link validation and linting without treating generated/archive content as current contracts.
 

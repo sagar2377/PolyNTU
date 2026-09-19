@@ -2,6 +2,13 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026 — CI workflow fixes and action updates
+
+- Fixed the `performance` job's `rust-cache` step, which failed with `spawn ENOTDIR` before any cache work: the `workspaces` input takes the workspace root directory, not a `Cargo.toml` path, because the action runs `cargo metadata` with that value as its working directory. The action logged the error but exited successfully, so the job stayed green while silently skipping both cache restore and save.
+- Moved `rust-cache` after the `rustup` toolchain selection in both jobs so the cache key reflects the Rust version that actually builds, and added it to the `verify` job so test runs reuse compiled dependencies.
+- Updated `actions/checkout` and `actions/setup-node` to v7, `actions/upload-artifact` to v7, and the CI Node version to 24; this also clears the Node 20 deprecation warnings on the runner.
+- Made the benchmark step's server shutdown and exit-status propagation execute on benchmark failure despite the runner shell's `-e` mode.
+
 ## 20 September 2026 — Hot-path optimization and throughput KPI gate
 
 - Served quotes from a read-through instance/token cache with a local clock estimate; a cache hit performs no database round trips, and every mutation invalidates or writes through before returning.

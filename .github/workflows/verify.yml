@@ -17,14 +17,21 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://polyntu:test-only-password@localhost:5432/postgres
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: rustup toolchain install 1.88.0 --profile minimal --component rustfmt --component clippy
       - run: rustup override set 1.88.0
+      # Must run after the toolchain is selected so the cache key reflects the
+      # Rust version that actually builds. `workspaces` takes the workspace
+      # root directory, not a Cargo.toml path: the action passes the value as
+      # the cwd of `cargo metadata`, and a file path fails with spawn ENOTDIR.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
       - run: cargo fmt --manifest-path backend/Cargo.toml -- --check
       - run: cargo test --manifest-path backend/Cargo.toml --locked -- --test-threads=4
       - run: cargo clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings
@@ -51,15 +58,15 @@ jobs:
       POLYNTU_DEMO_MODE: "false"
       POLYNTU_BIND: 127.0.0.1:18000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: backend/Cargo.toml
+          node-version: '24'
       - run: rustup toolchain install 1.88.0 --profile minimal
       - run: rustup override set 1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
       - run: cargo build --manifest-path backend/Cargo.toml --release --locked
       - name: Run throughput KPI benchmark
         run: |
@@ -70,13 +77,17 @@ jobs:
             sleep 1
           done
           curl -sf http://127.0.0.1:18000/health >/dev/null || { cat server.log >&2; exit 1; }
+          # The runner shell uses -e; disable it around the benchmark so the
+          # server is killed and the exit status is propagated, not skipped.
+          set +e
           BENCH_URL=http://127.0.0.1:18000 BENCH_SECONDS=15 BENCH_REPORT=kpi-report.json node scripts/benchmark-kpi.mjs
           STATUS=$?
+          set -e
           kill $SERVER 2>/dev/null || true
           exit $STATUS
       - name: Retain KPI report and server log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kpi-regression-report
           path: |
