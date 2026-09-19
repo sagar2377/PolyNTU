@@ -22,7 +22,25 @@ pub struct Store {
 pub struct Account {
     pub id: String,
     pub display_name: String,
+    pub email: Option<String>,
+    pub role: Option<String>,
     pub balance_micros: String,
+}
+
+/// Issuance policy in whole units (ADR 0005). The original 1M-unit budget
+/// funded one hundred welcome gifts; total issuance rises to 1B so it does
+/// not run out. The raise is appended by `initialize`, not a migration,
+/// because migrations run before the issuance account exists on a fresh
+/// database.
+pub const INITIAL_ISSUANCE_UNITS: i64 = 1_000_000;
+pub const TOTAL_ISSUANCE_UNITS: i64 = 1_000_000_000;
+/// The treasury-funded welcome gift for a registered account.
+pub const WELCOME_GIFT_UNITS: i64 = 10_000;
+/// The one-click demo account keeps its smaller development grant.
+const DEMO_GRANT_UNITS: i64 = 1_000;
+
+fn valid_display_name(name: &str) -> bool {
+    name.len() >= 2 && name.len() <= 60 && !name.chars().any(char::is_control)
 }
 
 pub async fn db_now(connection: &mut PgConnection) -> Result<i64> {
@@ -186,8 +204,10 @@ impl Store {
         sqlx::query("INSERT INTO accounts(id,display_name,kind) VALUES('issuance','Unit issuance','issuance'),('treasury','Platform subsidy budget','treasury') ON CONFLICT DO NOTHING")
             .execute(&mut *tx).await?;
         let now = db_now(&mut tx).await?;
-        sqlx::query("INSERT INTO ledger_transfers(id,from_account,to_account,amount_micros,kind,reference,created_ms) VALUES('initial-issuance','issuance','treasury',1000000000000,'issuance','initial-issuance',$1) ON CONFLICT DO NOTHING")
-            .bind(now).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO ledger_transfers(id,from_account,to_account,amount_micros,kind,reference,created_ms) VALUES('initial-issuance','issuance','treasury',$1,'issuance','initial-issuance',$2) ON CONFLICT DO NOTHING")
+            .bind(INITIAL_ISSUANCE_UNITS * amm::CREDIT_SCALE).bind(now).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO ledger_transfers(id,from_account,to_account,amount_micros,kind,reference,created_ms) VALUES('issuance-expansion','issuance','treasury',$1,'issuance','issuance-expansion',$2) ON CONFLICT DO NOTHING")
+            .bind((TOTAL_ISSUANCE_UNITS - INITIAL_ISSUANCE_UNITS) * amm::CREDIT_SCALE).bind(now).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(offset)
     }
@@ -205,7 +225,7 @@ impl Store {
         if token.len() > 200 {
             return Err(Error::Unauthorized);
         }
-        sqlx::query_as("SELECT id,display_name,balance_micros::TEXT FROM accounts WHERE token_hash=$1 AND kind='user'")
+        sqlx::query_as("SELECT id,display_name,email,role,balance_micros::TEXT FROM accounts WHERE token_hash=$1 AND kind='user'")
             .bind(auth::hash(token.as_bytes())).fetch_optional(&self.pool).await?.ok_or(Error::Unauthorized)
     }
 
@@ -234,11 +254,13 @@ impl Store {
     }
 
     pub async fn account_by_id(&self, id: &str) -> Result<Account> {
-        sqlx::query_as("SELECT id,display_name,balance_micros::TEXT FROM accounts WHERE id=$1")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?
-            .ok_or(Error::NotFound)
+        sqlx::query_as(
+            "SELECT id,display_name,email,role,balance_micros::TEXT FROM accounts WHERE id=$1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(Error::NotFound)
     }
 
     /// Read-through instance lookup for the quote path. A miss fetches the
@@ -254,14 +276,14 @@ impl Store {
 
     pub async fn create_account(&self, display_name: &str) -> Result<Value> {
         let name = display_name.trim();
-        if name.len() < 2 || name.len() > 60 || name.chars().any(char::is_control) {
+        if !valid_display_name(name) {
             return Err(invalid(
                 "Display name must be 2–60 characters without control characters",
             ));
         }
         let id = Uuid::new_v4().to_string();
         let token = auth::random_token();
-        let grant = 1000 * amm::CREDIT_SCALE;
+        let grant = DEMO_GRANT_UNITS * amm::CREDIT_SCALE;
         let mut tx = self.pool.begin().await?;
         let now = db_now(&mut tx).await?;
         sqlx::query(
@@ -288,7 +310,69 @@ impl Store {
         .await?;
         tx.commit().await?;
         Ok(
-            json!({"token": token, "account": {"id": id, "display_name": name, "balance_micros": grant.to_string()}}),
+            json!({"token": token, "account": {"id": id, "display_name": name, "email": null, "role": null, "balance_micros": grant.to_string()}}),
+        )
+    }
+
+    /// Register an account with a unique NTU email and a password (ADR 0005).
+    /// The plaintext session token is returned once; only its SHA-256 hash is
+    /// stored, exactly like the demo account token.
+    pub async fn register_account(
+        &self,
+        display_name: &str,
+        email: &str,
+        password: &str,
+    ) -> Result<Value> {
+        let name = display_name.trim();
+        if !valid_display_name(name) {
+            return Err(invalid(
+                "Display name must be 2–60 characters without control characters",
+            ));
+        }
+        let email = email.trim().to_lowercase();
+        if !auth::valid_ntu_email(&email) {
+            return Err(invalid(
+                "Register with an NTU email (name@ntu.edu.sg or name@unit.ntu.edu.sg)",
+            ));
+        }
+        if password.chars().count() < 12 {
+            return Err(invalid("Password must be at least 12 characters"));
+        }
+        let id = Uuid::new_v4().to_string();
+        let token = auth::random_token();
+        let grant = WELCOME_GIFT_UNITS * amm::CREDIT_SCALE;
+        let mut tx = self.pool.begin().await?;
+        let now = db_now(&mut tx).await?;
+        let inserted = sqlx::query(
+            "INSERT INTO accounts(id,display_name,kind,token_hash,email,password_hash,role) VALUES($1,$2,'user',$3,$4,$5,'member') ON CONFLICT (email) DO NOTHING RETURNING id",
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(auth::hash(token.as_bytes()))
+        .bind(&email)
+        .bind(auth::hash_password(password)?)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if inserted.is_none() {
+            return Err(conflict("This NTU email is already registered"));
+        }
+        lock_accounts(&mut tx, &[id.clone(), "treasury".into()]).await?;
+        if balance(&mut tx, "treasury").await? < grant {
+            return Err(conflict("The platform's grant budget is exhausted"));
+        }
+        transfer(
+            &mut tx,
+            "treasury",
+            &id,
+            grant,
+            "grant",
+            &format!("grant:{id}"),
+            now,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(
+            json!({"token": token, "account": {"id": id, "display_name": name, "email": email, "role": "member", "balance_micros": grant.to_string()}}),
         )
     }
 
@@ -420,11 +504,12 @@ impl Store {
         sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             .execute(&mut *tx)
             .await?;
-        let owner: Account =
-            sqlx::query_as("SELECT id,display_name,balance_micros::TEXT FROM accounts WHERE id=$1")
-                .bind(account)
-                .fetch_one(&mut *tx)
-                .await?;
+        let owner: Account = sqlx::query_as(
+            "SELECT id,display_name,email,role,balance_micros::TEXT FROM accounts WHERE id=$1",
+        )
+        .bind(account)
+        .fetch_one(&mut *tx)
+        .await?;
         let positions = sqlx::query("SELECT p.instance_id,p.outcome_index,p.quantity_millis,i.title,i.state,i.outcomes,i.result,c.credit_micros FROM positions p JOIN instances i ON i.id=p.instance_id LEFT JOIN settlement_claims c ON c.instance_id=p.instance_id AND c.account_id=p.account_id WHERE p.account_id=$1 AND p.quantity_millis>0 ORDER BY i.close_ms DESC,p.instance_id,p.outcome_index LIMIT $2 OFFSET $3")
             .bind(account).bind(limit.clamp(1,100)).bind(offset.clamp(0,100000)).fetch_all(&mut *tx).await?;
         let positions: Vec<Value> = positions.iter().map(|r| {

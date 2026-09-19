@@ -1,4 +1,8 @@
 use crate::error::{Error, Result};
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
+};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, Mac};
 use rand::{RngCore, rngs::OsRng};
@@ -55,4 +59,90 @@ pub fn verify_admin(value: &str, configured: &str) -> bool {
         Hmac::<Sha256>::new_from_slice(value.as_bytes()).expect("any HMAC key length");
     candidate.update(b"polyntu-admin");
     mac.verify_slice(&candidate.finalize().into_bytes()).is_ok()
+}
+
+/// NTU-affiliated addresses only: `name@ntu.edu.sg` or
+/// `name@unit.ntu.edu.sg` (ADR 0005). Callers normalize to lowercase first;
+/// uppercase domains are rejected so nothing bypasses the unique constraint.
+pub fn valid_ntu_email(email: &str) -> bool {
+    let Some((local, domain)) = email.split_once('@') else {
+        return false;
+    };
+    if local.is_empty()
+        || local.len() > 64
+        || email.len() > 254
+        || email.contains(char::is_whitespace)
+        || domain.contains('@')
+    {
+        return false;
+    }
+    let labels: Vec<&str> = domain.split('.').collect();
+    labels.len() >= 3
+        && labels[labels.len() - 3..] == ["ntu", "edu", "sg"]
+        && labels.iter().all(|label| {
+            !label.is_empty()
+                && label
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        })
+}
+
+/// argon2id hash in PHC string form with a fresh random salt. Registration
+/// is not a hot path, so the default cost parameters apply.
+pub fn hash_password(password: &str) -> Result<String> {
+    Argon2::default()
+        .hash_password(password.as_bytes())
+        .map(|hash| hash.to_string())
+        .map_err(|e| Error::Internal(e.to_string()))
+}
+
+/// A malformed stored hash fails closed instead of erroring, so callers can
+/// treat every verification the same way.
+pub fn verify_password(stored: &str, password: &str) -> bool {
+    PasswordHash::new(stored)
+        .map(|parsed| {
+            Argon2::default()
+                .verify_password(password.as_bytes(), &parsed)
+                .is_ok()
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_ntu_addresses_only() {
+        for valid in [
+            "billy@ntu.edu.sg",
+            "billy@scse.ntu.edu.sg",
+            "b-2.x@cce.ntu.edu.sg",
+        ] {
+            assert!(valid_ntu_email(valid), "should accept {valid}");
+        }
+        for invalid in [
+            "",
+            "billy@gmail.com",
+            "billy@ntu.edu",
+            "@ntu.edu.sg",
+            "billy@",
+            "billy@@ntu.edu.sg",
+            "bil ly@ntu.edu.sg",
+            "billy@xntu.edu.sg",
+            "billy@ntu.edu.sg.evil.com",
+            "billy@.ntu.edu.sg",
+            "billy@NTU.edu.sg",
+        ] {
+            assert!(!valid_ntu_email(invalid), "should reject {invalid}");
+        }
+    }
+
+    #[test]
+    fn password_hashes_round_trip() {
+        let hash = hash_password("correct horse battery").unwrap();
+        assert!(verify_password(&hash, "correct horse battery"));
+        assert!(!verify_password(&hash, "a different password"));
+        assert!(!verify_password("not-a-phc-hash", "correct horse battery"));
+    }
 }

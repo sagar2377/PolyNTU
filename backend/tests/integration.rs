@@ -182,6 +182,119 @@ async fn buy(db: &TestDb, account: &Account, instance: &Instance, quantity: i64)
         .unwrap()
 }
 
+// ADR 0005: NTU email registration, the welcome gift, and the issuance raise.
+#[tokio::test]
+async fn registration_creates_a_member_account_with_the_welcome_gift() {
+    let db = TestDb::new().await;
+    let session = db
+        .store
+        .register_account(
+            "Billy Cao",
+            "Billy.Cao@SCSE.ntu.edu.sg",
+            "correct horse battery",
+        )
+        .await
+        .unwrap();
+    assert_eq!(session["account"]["email"], "billy.cao@scse.ntu.edu.sg");
+    assert_eq!(session["account"]["role"], "member");
+    assert_eq!(session["account"]["balance_micros"], "10000000000");
+    let account = db
+        .store
+        .account_for_token(session["token"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(account.email.as_deref(), Some("billy.cao@scse.ntu.edu.sg"));
+    assert_eq!(account.role.as_deref(), Some("member"));
+    // Total issuance rose from 1M to 1B units (ADR 0005).
+    let issuance: i64 =
+        sqlx::query_scalar("SELECT balance_micros FROM accounts WHERE id='issuance'")
+            .fetch_one(&db.store.pool)
+            .await
+            .unwrap();
+    assert_eq!(issuance, -(1_000_000_000 * amm::CREDIT_SCALE));
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn registration_rejects_invalid_submissions_and_duplicate_emails() {
+    let db = TestDb::new().await;
+    for (email, password) in [
+        ("billy@gmail.com", "correct horse battery"),
+        ("billy@ntu.edu", "correct horse battery"),
+        ("@ntu.edu.sg", "correct horse battery"),
+        ("billy@ntu.edu.sg", "short"),
+    ] {
+        assert!(
+            db.store
+                .register_account("Billy", email, password)
+                .await
+                .is_err(),
+            "should reject {email}"
+        );
+    }
+    db.store
+        .register_account("Billy", "billy@ntu.edu.sg", "correct horse battery")
+        .await
+        .unwrap();
+    let duplicate = db
+        .store
+        .register_account("Billy Two", "BILLY@ntu.edu.sg", "another correct horse")
+        .await;
+    assert_eq!(
+        duplicate.unwrap_err().to_string(),
+        "This NTU email is already registered"
+    );
+    db.finish().await;
+}
+
+#[tokio::test]
+async fn registration_is_reachable_over_http_and_the_demo_grant_is_unchanged() {
+    let db = TestDb::new().await;
+    let app = db.app();
+    let (status, body) = http(
+        &app,
+        "POST",
+        "/api/v2/auth/register",
+        json!({"display_name": "Billy", "email": "billy@ntu.edu.sg", "password": "correct horse battery"}),
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let token = body["token"].as_str().unwrap().to_owned();
+    let (status, me) = http(
+        &app,
+        "GET",
+        "/api/v2/me",
+        json!(null),
+        Some(&token),
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["email"], "billy@ntu.edu.sg");
+    assert_eq!(me["role"], "member");
+    assert_eq!(me["balance_micros"], "10000000000");
+    let (status, _) = http(
+        &app,
+        "POST",
+        "/api/v2/auth/register",
+        json!({"display_name": "Billy", "email": "billy@ntu.edu.sg", "password": "correct horse battery"}),
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    // The one-click demo account keeps its 1,000-unit development grant.
+    let demo = db.store.create_account("Demo user").await.unwrap();
+    assert_eq!(demo["account"]["balance_micros"], "1000000000");
+    assert!(demo["account"]["email"].is_null());
+    db.finish().await;
+}
+
 #[tokio::test]
 async fn foreign_key_read_locks_do_not_block_account_balance_updates() {
     let db = TestDb::new().await;

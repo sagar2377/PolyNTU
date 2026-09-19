@@ -74,6 +74,7 @@ pub fn router(state: AppState, origins: Vec<HeaderValue>) -> Router {
     let api = Router::new()
         .route("/config", get(config))
         .route("/auth/demo", post(demo_account))
+        .route("/auth/register", post(register))
         .route("/me", get(me))
         .route("/me/portfolio", get(portfolio))
         .route("/me/trades", get(trades))
@@ -147,6 +148,23 @@ async fn demo_account(
         return Err(Error::Forbidden);
     }
     Ok(Json(s.store.create_account(&req.display_name).await?))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RegisterInput {
+    display_name: String,
+    email: String,
+    password: String,
+}
+async fn register(
+    State(s): State<AppState>,
+    Json(req): Json<RegisterInput>,
+) -> Result<Json<Value>> {
+    Ok(Json(
+        s.store
+            .register_account(&req.display_name, &req.email, &req.password)
+            .await?,
+    ))
 }
 async fn admin_account(
     State(s): State<AppState>,
