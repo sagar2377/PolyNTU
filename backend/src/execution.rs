@@ -4,7 +4,7 @@ use crate::{
     error::{Error, Result, conflict, invalid},
     events, fee,
     market::Instance,
-    store::{Store, transfer},
+    store::{Store, db_now, transfer},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -217,14 +217,19 @@ impl Store {
                 return Ok(response.0);
             }
         }
-        // Lock the instance and read the database clock in one round trip.
-        let row = sqlx::query("SELECT i.*,(SELECT (extract(epoch FROM clock_timestamp())*1000)::BIGINT + s.clock_offset_ms FROM settings s WHERE s.singleton) AS db_now_ms FROM instances i WHERE i.id=$1 FOR UPDATE")
+        // Lock the instance, then read the database clock in a separate
+        // statement. A single combined statement takes its snapshot when it
+        // starts, so a trade that began before the market closed and then
+        // waited on the row lock would wake with a stale clock (the
+        // row-lock recheck refreshes only the locked row) and execute on a
+        // closed market.
+        let row = sqlx::query("SELECT * FROM instances WHERE id=$1 FOR UPDATE")
             .bind(&claims.instance_id)
             .fetch_optional(&mut *tx)
             .await?
             .ok_or(Error::NotFound)?;
         let instance = Instance::from_row(&row)?;
-        let now: i64 = row.get("db_now_ms");
+        let now: i64 = db_now(&mut tx).await?;
         if !instance.tradable(now) {
             return Err(conflict("This market is closed or suspended"));
         }

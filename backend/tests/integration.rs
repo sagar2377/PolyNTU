@@ -2055,6 +2055,28 @@ async fn close_is_checked_after_waiting_for_market_lock() {
     let store = db.store.clone();
     let id = account.id.clone();
     let job = tokio::spawn(async move { store.execute(&id, "waiting", &request, SECRET).await });
+    // Wait until the spawned request is actually blocked on the instance row
+    // lock. Without this, a slow pool checkout under load can let the trade
+    // run to completion after the blocker commits but before the clock
+    // advance starts, so it sees the old clock and legitimately succeeds.
+    let mut blocked = false;
+    for _ in 0..250 {
+        let waiting: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity \
+             WHERE datname=$1 AND wait_event_type='Lock' \
+             AND query LIKE '%FOR UPDATE%' AND query LIKE '%FROM instances%'",
+        )
+        .bind(&db.name)
+        .fetch_one(&db.admin)
+        .await
+        .unwrap();
+        if waiting > 0 {
+            blocked = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(blocked, "the trade request never reached the instance lock");
     db.store.advance_demo_clock(2).await.unwrap();
     blocker.commit().await.unwrap();
     assert!(job.await.unwrap().is_err());
