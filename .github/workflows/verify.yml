@@ -1,4 +1,4 @@
-name: Verify Rust outcome markets
+name: Verify frontend and backend
 on: [push, pull_request]
 jobs:
   # Path-scoped verification: each job below runs only when the commit could
