@@ -100,7 +100,7 @@ Live evidence adapters are not part of the current build. Candidate sources name
 
 ## Platform direction
 
-PolyNTU has grown from an administrator-published demonstration into a campus platform where verified NTU members publish markets and earn a share of the trading fees. The planned direction is now fully implemented. The full model, with actors, flows, and the gap analysis, is the [use case model](developer/use-cases.md).
+PolyNTU has grown from an administrator-published demonstration into a campus platform where verified NTU members publish markets and earn a share of the trading fees. The planned direction is now fully implemented. The full model, with actors, flows, and business rules, is the [use case model](developer/use-cases.md).
 
 - **Accounts**: implemented. Registration and login with an NTU email address and a password, a 10,000-unit welcome gift, and a member-to-creator verification workflow ([ADR 0005](decisions/0005-ntu-accounts-and-creator-roles.md), accepted).
 - **Creator-owned series**: implemented. Markets are published as series that occur once or recur in rolling brackets, with a creator-set interval, active period, maximum concurrency, and optional end date; a series without an end date is perpetual. Creators cannot trade in their own markets, and their compensation is the fee share, except on the fee-free welfare markets they choose to publish ([ADR 0006](decisions/0006-market-series-and-recurrence.md), accepted).

@@ -100,7 +100,7 @@ When reviewing a claim:
 
 ## Planned requirements
 
-Everything planned is implemented; the resolution authority and market experience requirements have moved into the core table above. The [use case model](use-cases.md) holds the full register, the flows, and the gap analysis, and every decision record is accepted and implemented. The one deferred item is the real bus timing adapter, a live data source rather than platform work.
+Everything planned is implemented; the resolution authority and market experience requirements have moved into the core table above. The [use case model](use-cases.md) holds the full register, the flows, and the business rules, and every decision record is accepted and implemented. The one deferred item is the real bus timing adapter, a live data source rather than platform work.
 
 ## Known unverified areas
 
