@@ -48,3 +48,17 @@ Honest notes extending this record's original wording:
 - Retries run on every worker tick (one second) through the published evidence deadline, not with backoff through the finalize deadline as originally worded.
 - The browser holds the private key in local storage with no recovery except the void policy: clearing browser storage or losing the profile loses the key, and the instance voids at its deadline.
 - The administrator exclusion is an application-path control. It holds against compromised application credentials, but a database superuser can always drop constraints and insert evidence directly.
+
+## Amendment (20 September 2026)
+
+The creator's signing key is no longer a random browser-generated keypair. It is now derived from the creator's account password, so holding the password is holding the key and any browser where the creator signs in can resolve.
+
+- Derivation contract: PBKDF2-HMAC-SHA256 with the account password as the password input, the UTF-8 salt `polyntu.resolution.v1:{email}` (the email lowercase as registered), 600,000 iterations, and a 32-byte output used as the ed25519 seed. `backend/src/auth.rs` (`resolution_key_seed`, `RESOLUTION_KEY_ITERATIONS`) and `frontend/src/api.js` (`deriveResolutionKeyPair`) implement the same contract, and the unit test `resolution_key_seed_matches_the_browser_derivation` pins the Rust and browser derivations to one known-answer vector (seed and public key), rejecting wrong passwords and wrong emails.
+- The resulting public key is published with the series exactly as before. The server verification path is completely unchanged: ed25519 over `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}` against the public key fixed at creation, with the administrator exclusion untouched. The server never sees the password and performs no derivation.
+- The per-series `polyntu.v2.series-keys` local storage key is replaced by a single per-account cache `polyntu.v2.signing-key`, filled after login and registration, so it is only a cache. The create form prompts for the password when the cache is missing; the series page prompts when the cache is missing or its public key does not match the series' published key, and verifies the derived public key before storing it. The password is used only in the browser.
+
+Honest notes:
+
+- The published public key now permits offline password guessing: each guess costs one PBKDF2 run. The 600,000 iterations and the 12-character minimum make guessing expensive, but the scheme is strictly weaker than a random key no password determines.
+- Losing the password now loses the key, and no password recovery exists; affected markets void at their published deadlines.
+- Series published before this amendment keep the public keys they were published with; those keys were browser-generated and no password derives them, so their custody remains as originally documented.

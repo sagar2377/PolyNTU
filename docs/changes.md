@@ -2,6 +2,14 @@
 
 This file records significant user-visible and architectural changes. Detailed rationale belongs in [architectural decisions](decisions/) and verification evidence belongs in [verification](verification.md).
 
+## 20 September 2026: Password-derived resolution keys and the day view chart fix
+
+- The creator's resolution signing key is now derived from the account password instead of being generated randomly in the browser ([ADR 0007 amendment](decisions/0007-resolution-authority.md)): PBKDF2-HMAC-SHA256 over the password with the salt `polyntu.resolution.v1:{email}`, 600,000 iterations, the 32-byte output as the ed25519 seed. Holding the password is holding the key, so any browser where the creator signs in can resolve; only the public key is published and the server verification path is unchanged (signature over `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}` against the key fixed at creation, administrator exclusion untouched). The published public key now permits offline password guessing, mitigated by the 600,000 iterations and the 12-character minimum but strictly weaker than a random key.
+- The browser caches the derived keypair per account under `polyntu.v2.signing-key`, replacing the per-series `polyntu.v2.series-keys`, and fills it after login and registration, so it is only a cache. Two password prompts cover a missing cache, each using the password only in-browser and never sending it anywhere: the create form asks for the password when publishing a creator-resolved series without a cached key, and the series page shows a password field with a Derive signing key button when the cached key is missing or does not match the series' published key, verifying the derived public key before storing it.
+- Fixed the day view chart crash: `DayProbabilityChart` called a series accessor that does not exist on the runtime chart object in the installed lightweight-charts 5.2.1, throwing during render and unmounting the whole React tree so every binary series page rendered blank. It now holds direct references to the created series, the pattern `PriceHistoryChart` already used. Found by a scripted Chrome DevTools Protocol browser test.
+- A scripted browser test verified the full flow end to end: register, verify, publish, trade, charts, resolve, and password re-derivation. The script is a one-off and is not committed to the repository.
+- The backend now has 13 unit tests, 36 integration tests, and 1 numerical test, all passing. See the [ADR 0007 amendment](decisions/0007-resolution-authority.md).
+
 ## 20 September 2026: Resolution authority and market experience
 
 - The resolution authority is fixed at series creation ([ADR 0007](decisions/0007-resolution-authority.md)): the platform administrator (the default), the creator signing each resolution, or an external resolver endpoint. The series body accepts an optional resolution object; all three fields joined the immutable published definition (migration 0010).
@@ -97,5 +105,5 @@ This file records significant user-visible and architectural changes. Detailed r
 
 ## Deferred work
 
-Live evidence adapters (including the real bus timing source), SSO, password recovery and secret rotation, recovery for lost creator resolution keys, rate limiting, outbox retention, public deployment hardening, and budget-to-quantity entry remain future work.
+Live evidence adapters (including the real bus timing source), SSO, password recovery and secret rotation (the creator resolution key now derives from the password, so lost-key recovery is password recovery), rate limiting, outbox retention, public deployment hardening, and budget-to-quantity entry remain future work.
 

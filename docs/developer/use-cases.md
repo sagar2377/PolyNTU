@@ -73,7 +73,7 @@ Notes:
 7. Recurrence only spawns brackets inside the creator-set active period, a daily window interpreted in Singapore time. A bus series, for example, runs 06:00 to 23:59 because buses do not run at midnight (existing).
 8. Market reserves remain treasury-funded; creators contribute definitions and earn through the fee share, not through deposits (existing).
 9. The resolution authority is fixed at market creation: the platform administrator (the default), the market creator (human), or a configured external resolver endpoint (automatic) (existing; [ADR 0007](../decisions/0007-resolution-authority.md)).
-10. Human resolution requires a valid ed25519 signature from the key fixed at creation. The private key is held only by the creator's browser; a lost key means the market voids by the published policy (existing; ADR 0007).
+10. Human resolution requires a valid ed25519 signature from the key fixed at creation. The signing key is derived from the creator's account password (ADR 0007 amendment), so holding the password is holding the key and any browser where the creator signs in can resolve; a lost password means the market voids by the published policy, since no password recovery exists (existing; ADR 0007).
 11. The administrator cannot resolve markets whose authority is fixed to their creator or an external resolver, by design (existing; ADR 0007).
 12. Automatic resolution that stays unreachable, malformed, pending, or names an unpublished option through the published evidence deadline voids the market (existing; ADR 0007).
 13. A market offers 2 to 8 direct outcomes (existing).
@@ -239,7 +239,7 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 ### UC-14: Submit a signed human resolution
 
-**Precondition:** a creator-owned market with human authority. The instance is closed, the creator's browser holds the market's ed25519 private key, and the matching public key was fixed at creation.
+**Precondition:** a creator-owned market with human authority. The instance is closed, the creator can derive the market's ed25519 signing key from the account password (the browser caches it after login), and the matching public key was fixed at creation.
 
 **Flow of events:**
 
@@ -254,7 +254,7 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 - The submitter is not the creator: rejected.
 - The market is not closed: rejected.
 - An administrator attempts it: rejected by design; the admin evidence route refuses markets with creator or resolver authority, and no valid signature exists.
-- The private key is lost: resolution is impossible and the instance voids at the deadline.
+- The password is lost: the signing key cannot be re-derived, resolution is impossible, and the instance voids at the deadline (no password recovery exists).
 
 ### UC-19: View the price and volume history chart
 

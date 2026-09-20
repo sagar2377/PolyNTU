@@ -30,7 +30,7 @@ The browser, account holder, administrator input, and future evidence provider c
 | Quote secret | Authenticate quote claims | Environment; generated in `.local/dev-secrets.json` for workspace demo |
 | Administrator token | Protect administrator endpoints | Environment; generated separately in `.local/dev-secrets.json` |
 | Simulation secret | Prevent public prediction of demo outcomes | Plaintext private PostgreSQL settings row |
-| Creator resolution key | Sign human resolutions for creator-authority series (ADR 0007) | ed25519 private key in browser local storage under `polyntu.v2.series-keys`; only the public key is published |
+| Creator resolution key | Sign human resolutions for creator-authority series (ADR 0007) | ed25519 private key derived in the browser from the account password (PBKDF2-HMAC-SHA256, 600,000 iterations) and cached per account in local storage under `polyntu.v2.signing-key`; only the public key is published |
 | Database password | Protect non-local PostgreSQL | Environment/secret manager; local portable cluster uses loopback trust |
 
 The application checks only that quote/admin strings contain at least 32 characters and differ. Operators must generate high-entropy values, restrict file/environment access, and never commit them.
@@ -68,7 +68,7 @@ Audit coverage includes instance creation, evidence events/rejections, suspensio
 
 A series fixes its resolution authority at creation ([ADR 0007](../decisions/0007-resolution-authority.md)): platform administrator, the creator's signature, or an external resolver endpoint.
 
-- Key custody: for creator authority the browser generates the ed25519 keypair with WebCrypto and publishes only the public key. The private key never leaves the browser and is stored in local storage under `polyntu.v2.series-keys`, keyed by series ID. There is no export, backup, or recovery path: clearing browser storage or losing the profile loses the key, and the affected markets void at their published deadlines.
+- Key custody: for creator authority the browser derives the ed25519 keypair from the account password (ADR 0007 amendment: PBKDF2-HMAC-SHA256 with the salt `polyntu.resolution.v1:{email}`, 600,000 iterations, the 32-byte output as the seed) and publishes only the public key, so holding the password is holding the key and any browser where the creator signs in can resolve. The private key never leaves the browser, and the local-storage entry under `polyntu.v2.signing-key` is only a per-account cache, filled after login and registration or through a password prompt. Losing the password loses the key, and no password recovery exists: the affected markets void at their published deadlines.
 - Signature verification: a human resolution must carry an ed25519 signature over the exact string `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}`, checked against the public key fixed at creation with ed25519-dalek; malformed keys and signatures fail closed. The platform holds no private key, so it can verify but never forge a resolution.
 - Administrator exclusion: the manual evidence route rejects any instance whose series authority is not `admin`, so a compromised administrator credential cannot resolve a creator-signed or resolver-settled market. The exclusion is an application-path control; a database superuser can still drop constraints and insert evidence directly.
 - Resolver call hygiene: endpoints must be https, with plain http accepted only on loopback where local adapters run during development and tests. Calls run under a 5-second timeout and responses above 64 KiB are rejected. Unreachable, malformed, and pending answers count as missing evidence and retry until the published deadline voids the instance. The endpoint receives only the fixed request and cannot reach any internal state; it decides the outcome for its own series and nothing else.
@@ -110,7 +110,7 @@ Future adapters should retain raw provider data in a separately controlled store
 
 ## Browser storage
 
-The React demo stores the bearer token, one pending trade, and any creator resolution private keys in local storage. Any script executing in the same origin can read them. A cross-site scripting vulnerability would therefore expose account access, possibly an uncertain request, and the ability to resolve the creator's markets.
+The React demo stores the bearer token, one pending trade, and the current account's cached creator resolution private key (`polyntu.v2.signing-key`) in local storage. Any script executing in the same origin can read them. A cross-site scripting vulnerability would therefore expose account access, possibly an uncertain request, and the ability to resolve the creator's markets. The signing-key entry is only a cache of the password-derived key: deleting it changes nothing while the creator knows the password.
 
 Before public deployment:
 
@@ -137,7 +137,7 @@ React escapes normal text interpolation, including titles, evidence JSON, and er
 | Guess a login password | argon2id hashing and the 12-character minimum | No rate limiting or lockout |
 | Enumerate accounts through login | Generic failure plus equal argon2 work for unknown emails | Timing equalization is not a rate limit |
 | Reuse a stolen old session token | Login rotates the single token hash and evicts caches | Unused tokens never expire |
-| Forge a creator resolution | ed25519 signature over a fixed message, public key fixed at creation | The private key sits in browser local storage, readable by same-origin scripts |
+| Forge a creator resolution | ed25519 signature over a fixed message, public key fixed at creation | The key derives from the account password, so the published public key permits offline password guessing at one 600,000-iteration PBKDF2 run per guess; the cached private key is also readable by same-origin scripts |
 | Resolve a creator-signed or resolver-settled market as administrator | Authority exclusion on the evidence route | A database superuser can drop constraints |
 | Malicious or broken resolver endpoint | Contract validation against the published options; missing evidence voids at the deadline | The endpoint decides the outcome for its own series |
 | Public abuse | Loopback demo bind | No rate limiting/public hardening |

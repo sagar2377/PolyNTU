@@ -17,6 +17,8 @@ PolyNTU separates arithmetic tests, database/HTTP integration tests, frontend st
 
 ## Rust library tests
 
+Thirteen tests, grouped by area.
+
 ### LMSR tests
 
 `known_binary_quote_and_round_trip` fixes the known 10-share binary quote amount and proves immediate sale cannot gain from rounding.
@@ -40,6 +42,8 @@ PolyNTU separates arithmetic tests, database/HTTP integration tests, frontend st
 `accepts_ntu_addresses_only` walks valid and invalid NTU email forms through the manual parser, including lookalike domains, uppercase, and overlong local parts.
 
 `password_hashes_round_trip` proves argon2 hashes verify their source password and reject a different one.
+
+`resolution_key_seed_matches_the_browser_derivation` pins the password-derived creator resolution seed (PBKDF2-HMAC-SHA256, 600,000 iterations, salt `polyntu.resolution.v1:{email}`) to a WebCrypto known-answer vector, including the resulting public key, and rejects wrong passwords and wrong emails.
 
 `fee_rounds_up_and_never_exceeds_the_amount` checks 25 bps rounding on the charge amount.
 
@@ -118,7 +122,7 @@ Thirty-six tests, grouped by area.
 | Test | Behaviour demonstrated |
 |---|---|
 | `resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence` | Administrator evidence cannot resolve creator/resolver-authority instances; the authority is immutable after publication. |
-| `creators_resolve_their_markets_with_signed_statements` | A valid ed25519 signature over the resolution message settles the bracket; wrong nonce, signature, outcome, or account is rejected. |
+| `creators_resolve_their_markets_with_signed_statements` | A keypair derived from the creator's account password, exactly as the browser derives it, signs a valid ed25519 resolution over the resolution message that settles the bracket; wrong nonce, signature, outcome, or account is rejected. |
 | `resolver_authority_settles_from_the_external_endpoint` | The worker calls the configured endpoint and settles on the returned published outcome id. |
 | `resolver_authority_voids_when_answers_stay_invalid_or_unreachable` | Unpublished answers and unreachable endpoints record nothing and the deadline voids the instance. |
 

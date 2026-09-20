@@ -112,7 +112,7 @@ Every use case in the model is marked existing. The one deferred item is the rea
 ## Current limitations
 
 - No campus SSO or password recovery; login rotates the single session token.
-- Creator resolution keys live only in the browser's local storage: no export, backup, or recovery exists, and a lost key voids the market at its published deadline.
+- The creator resolution signing key is derived from the account password, so any browser where the creator signs in can resolve, but a lost password voids the market at its published deadline because no password recovery exists; the copy in the browser's local storage is only a cache.
 - The shared administrator token carries no per-action identity; administrators resolve only platform-authority markets, and the seeded demo administrator (`admin@ntu.edu.sg`, password `admin`) exists only in demo-mode databases.
 - No request-rate limiting or public deployment hardening.
 - No live provider adapters or independent verification of manual observations; the real bus timing adapter remains deferred, and resolver-based resolution trusts the configured endpoint.

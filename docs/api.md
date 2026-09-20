@@ -674,6 +674,17 @@ polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}
 
 verified against the public key fixed at series creation. The nonce is 1–120 characters after trimming; use a fresh random value for each resolution.
 
+The keypair the creator signs with is derived from the account password, so a programmatic creator can reproduce it:
+
+- password input: the account password, exactly as registered;
+- PRF: PBKDF2-HMAC-SHA256;
+- salt: the UTF-8 string `polyntu.resolution.v1:{email}`, with the email lowercased as registered;
+- iterations: 600,000;
+- output: 32 bytes, used as the ed25519 seed; and
+- public key: the 32-byte ed25519 verifying key, encoded as standard base64 (RFC 4648, padded), exactly the `public_key` published in the series' `resolution` object at creation.
+
+The server never sees the password and performs no derivation: it only verifies each signature against the public key fixed at creation, so any correct implementation of this derivation produces a keypair the server accepts.
+
 Conditions and errors:
 
 - 404 `not_found`: unknown instance.
@@ -691,7 +702,7 @@ Successful response:
 }
 ```
 
-The verified outcome is recorded as evidence with source `creator-signature` (parser `creator-signature-v1`; the payload carries the outcome, nonce, signature, and public key) and settles through the normal finalization pipeline. A lost private key makes resolution impossible and the instance voids at its published deadline.
+The verified outcome is recorded as evidence with source `creator-signature` (parser `creator-signature-v1`; the payload carries the outcome, nonce, signature, and public key) and settles through the normal finalization pipeline. The key is re-derivable from the account password in any browser, so the failure mode is a lost password: with no password recovery, resolution becomes impossible and the instance voids at its published deadline.
 
 ### External resolver contract
 

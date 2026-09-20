@@ -43,13 +43,13 @@ Probabilities and average prices are display `Number` values supplied by the bac
 |---|---|
 | `polyntu.v2.token` | Current plaintext account bearer token |
 | `polyntu.v2.pending-trade` | Account/instance IDs, exact trade body, and idempotency key |
-| `polyntu.v2.series-keys` | Per-series creator resolution keypairs, keyed by series ID |
+| `polyntu.v2.signing-key` | The current account's cached creator resolution keypair: email, base64 public key, and PKCS8 private key |
 
 `pendingTrade` parses the second key defensively and returns null on malformed JSON.
 
 ### Resolution keys (ADR 0007)
 
-`generateResolutionKeyPair` creates an ed25519 keypair with WebCrypto and returns both halves as base64; only the public key is ever sent to the backend. `signResolution` rebuilds the exact message `polyntu.resolution.v1:{instanceId}:{outcomeId}:{nonce}` and signs it with the stored private key. `storeSeriesKey`/`seriesKey`/`loadSeriesKeys` keep the keypairs in local storage under `polyntu.v2.series-keys`, keyed by series ID. There is no export or recovery flow: a lost key means the market voids at its deadline.
+`deriveResolutionKeyPair` derives the creator's resolution keypair from the account password with WebCrypto: PBKDF2-HMAC-SHA256 over the password (600,000 iterations) with the salt `polyntu.resolution.v1:{email}` yields the 32-byte ed25519 seed, so holding the password is holding the key and any browser where the creator signs in can resolve. It returns both halves as base64; only the public key is ever sent to the backend, and the password never leaves the browser. `signResolution` rebuilds the exact message `polyntu.resolution.v1:{instanceId}:{outcomeId}:{nonce}` and signs it with the private key. `storeSigningKey`/`signingKey`/`loadSigningKey` keep the current account's keypair in local storage under `polyntu.v2.signing-key`; the entry is only a cache, filled after login and registration or through a password prompt, so losing it costs nothing while the password is known. Losing the password is what loses the key, and no recovery exists: affected markets void at their deadlines.
 
 ## Application shell: `src/App.jsx`
 
@@ -79,7 +79,7 @@ Members (`account.role === "member"`) see a verification panel with three states
 
 An effect requests configuration and, when a token exists, `/me`. It repeats every five seconds and reruns after the refresh counter changes. Cleanup marks the effect cancelled and clears its timer so stale promises cannot update state.
 
-Registration, login, demo account creation, and token sign-in all store the returned token and account; token sign-in verifies `/me` first. A 401 from the polled `/me`, meaning the token was rotated out by a login elsewhere, clears the stored session and account instead of erroring on every poll. Sign-out deletes the account token and clears the verification state; a pending trade is intentionally preserved so it cannot be silently lost.
+Registration, login, demo account creation, and token sign-in all store the returned token and account; token sign-in verifies `/me` first. After a successful registration or login, `App` also derives the account's resolution keypair from the submitted password and caches it under `polyntu.v2.signing-key` (best effort: a failure just means the password is asked for where the key is needed). A 401 from the polled `/me`, meaning the token was rotated out by a login elsewhere, clears the stored session and account instead of erroring on every poll. Sign-out deletes the account token and clears the verification state; a pending trade is intentionally preserved so it cannot be silently lost.
 
 ### Pending trade notice
 
@@ -137,13 +137,13 @@ The page loads the series detail immediately and every five seconds. It renders 
 
 For binary series it shows the day view (UC-21): a headline with the volume-weighted first-outcome probability across live brackets (or a notice that it appears with the first trade) and the `DayProbabilityChart` below. Live brackets list their close time and current outcome probabilities with a Trade button; brackets that are closed or resolving wait in an Awaiting resolution list; settled brackets list their result with a View button. Times render in Singapore time.
 
-When the signed-in account is the series creator and the authority is `creator`, each awaiting bracket gains an outcome picker and a Resolve button: the page generates a `crypto.randomUUID()` nonce, signs the resolution with the locally stored series key, and submits it through `api.resolveMarket`. When this browser does not hold the key, the page says so; resolver-authority brackets show that the external resolver is being asked.
+When the signed-in account is the series creator and the authority is `creator`, each awaiting bracket gains an outcome picker and a Resolve button: the page generates a `crypto.randomUUID()` nonce, signs the resolution with the account's key, and submits it through `api.resolveMarket`. The page uses the cached key when its public key matches the series' published key; when the cache is missing or does not match, it shows a password field plus a Derive signing key button, derives the keypair in-browser, and verifies the derived public key against the series' published key before storing anything, reporting a mismatch as a wrong password. Resolver-authority brackets show that the external resolver is being asked.
 
 ## Publish a market: `pages/CreateMarket.jsx`
 
 A creator-only form posting one `api.createSeries` request. It collects the title, resolution criterion, category-specific rule fields (weather station and threshold, bus route/direction/stop, fictional election candidates, or count metric/location/threshold), the evidence source, liquidity, the fee choice (the 25 bps fee with the creator split, or fee-free welfare), the schedule: one-time (close time plus observation minutes) or recurring (interval, live brackets, operating window, optional end date), and the resolution authority (ADR 0007): platform administrator, creator signing, or an external resolver endpoint. The rule shapes mirror the backend's typed rules, and the server rejects unknown fields.
 
-Choosing creator signing generates an ed25519 keypair in the browser (`generateResolutionKeyPair`), publishes only the public key, and warns that losing the key voids the market at its deadline; after publication the private key is stored under `polyntu.v2.series-keys`. Choosing an external resolver asks for the https endpoint and explains the request/response contract. On success the app opens the new series page.
+Choosing creator signing uses the account's password-derived resolution key: the cached keypair when present, otherwise a password field (never sent anywhere; used only in-browser to derive the key) shown while the cache is missing. Only the public key is published, and after publication the derived keypair is cached under `polyntu.v2.signing-key`. Choosing an external resolver asks for the https endpoint and explains the request/response contract. On success the app opens the new series page.
 
 ## Charts: `components/PriceHistoryChart.jsx` and `components/DayProbabilityChart.jsx`
 
@@ -214,7 +214,7 @@ Implemented semantic aids include navigation labels, form labels, fieldsets/lege
 ## Security limitations
 
 - The bearer token is plaintext in local storage and readable by same-origin JavaScript.
-- Creator resolution private keys are plaintext in local storage with no recovery: a same-origin script could resolve the creator's markets, and a lost key voids them at the deadline.
+- The cached creator resolution private key is plaintext in local storage, so a same-origin script could resolve the creator's markets. The key derives from the account password, so a lost cache costs nothing while the password is known; a lost password voids the affected markets at their deadlines, since no recovery exists.
 - No Content Security Policy is defined in this repository.
 - The demo UI accepts a powerful administrator token in memory.
 - Sign-out does not revoke a token at the backend; logging in again does rotate it, which signs out every other browser on the next poll.
