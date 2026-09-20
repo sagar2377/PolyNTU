@@ -121,3 +121,8 @@ export function signingKey(account) {
   const entry = loadSigningKey();
   return account?.email && entry?.email === account.email ? entry : null;
 }
+/// Sign-out drops the cached key along with the session token; signing in
+/// again re-derives it from the password, so the cache costs nothing.
+export function clearSigningKey() {
+  localStorage.removeItem(SIGNING_KEY_KEY);
+}

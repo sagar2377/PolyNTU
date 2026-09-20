@@ -88,7 +88,9 @@ async function waitFor(cdp, description, expression, timeout = 20000) {
     if (await evaluate(cdp, expression)) return;
     await sleep(300);
   }
-  throw new Error(`timeout waiting for ${description}`);
+  // Diagnose timeouts: what the page actually shows when the wait fails.
+  const text = await evaluate(cdp, `document.body.textContent.replace(/\\s+/g, " ").slice(0, 240)`).catch(() => "unavailable");
+  throw new Error(`timeout waiting for ${description}; page text: ${text}`);
 }
 
 async function apiGet(path, token) {
@@ -114,16 +116,32 @@ const localInputValue = (epochMs) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-// Advance the demo clock to just past a market's observation end while
-// staying inside its evidence deadline (observation end + 60s). Whole-minute
-// granularity, computed from a fresh server time so elapsed wall clock does
-// not push the landing point past the deadline.
-async function advanceIntoResolveWindow(admin, closeEpochMs) {
-  const now = (await apiGet("/config")).server_time_ms;
-  const observationEnd = closeEpochMs + 5 * 60000;
-  const minutes = Math.max(1, Math.ceil((observationEnd - now) / 60000));
-  await apiPost("/admin/clock/advance", { minutes }, admin.token);
-  return minutes;
+// Advance the demo clock into the resolvable window of one instance: past
+// its real observation end (read from the server, because the create form's
+// datetime-local input truncates the close to the whole minute, so a locally
+// computed time can be almost a minute off) and with a healthy margin before
+// the evidence deadline. Whole-minute advances preserve the clock's
+// sub-minute phase, so the phase at the moment of the advance decides where
+// inside the 60-second window the clock lands; wait for a phase that leaves
+// at least 30 seconds, or the deadline can pass while the test signs back in
+// (this flake voided the market and removed its card mid-test in CI).
+async function advanceIntoResolveWindow(admin, instanceId) {
+  const instance = await apiGet(`/instances/${instanceId}`);
+  const observationEnd = instance.observation_end_ms;
+  for (let attempt = 0; attempt < 90; attempt++) {
+    const now = (await apiGet("/config")).server_time_ms;
+    const remaining = observationEnd - now;
+    if (remaining <= 0) return 0; // the window is already open
+    if (remaining >= 30000 && remaining % 60000 >= 30000) {
+      const minutes = Math.max(1, Math.ceil(remaining / 60000));
+      await apiPost("/admin/clock/advance", { minutes }, admin.token);
+      return minutes;
+    }
+    // Wrong phase, or inside the final 30 seconds: let wall time move the
+    // clock (entering naturally leaves the full 60-second margin) and retry.
+    await sleep(1000);
+  }
+  throw new Error("never reached a safe phase to advance into the resolve window");
 }
 
 const stamp = Date.now() % 100000;
@@ -164,9 +182,9 @@ async function publishSignedMarket(cdp, title, closeEpochMs, password) {
   await evaluate(cdp, `__set('#market-threshold', '100')`);
   await evaluate(cdp, `__set('#market-source', 'e2e-source')`);
   await evaluate(cdp, `__set('#market-close', ${JSON.stringify(localInputValue(closeEpochMs))})`);
-  // A 5-minute observation leaves a resolvable window between the finalize
-  // point (close + 5min + 1s) and the evidence deadline (close + 6min); a
-  // 9-minute advance from publication lands inside it.
+  // A 5-minute observation leaves a 60-second resolvable window between the
+  // finalize point and the evidence deadline; the advance helper lands the
+  // clock inside it using the instance's real timestamps.
   await evaluate(cdp, `__set('#market-observation', '5')`);
   await evaluate(cdp, `__set('#market-resolution', 'creator')`);
   if (password === undefined) {
@@ -180,11 +198,12 @@ async function publishSignedMarket(cdp, title, closeEpochMs, password) {
 }
 
 // Opening a series means opening one of its brackets: every bracket page
-// carries the schedule, the day view, and the sibling bracket lists.
+// carries the schedule, the day view, and the sibling bracket lists, so the
+// browse grid's market card is the entry point.
 async function openSeries(cdp, title) {
   await evaluate(cdp, `__clickText('button.wordmark', 'Poly')`);
-  await waitFor(cdp, `series chip for ${title}`, `[...document.querySelectorAll('.series-chip strong')].some((s) => s.textContent === ${JSON.stringify(title)})`);
-  await evaluate(cdp, `__clickText('.series-chip', ${JSON.stringify(title)})`);
+  await waitFor(cdp, `market card for ${title}`, `[...document.querySelectorAll('.market-card h3')].some((h) => h.textContent === ${JSON.stringify(title)})`);
+  await evaluate(cdp, `__clickText('.market-card h3', ${JSON.stringify(title)})`);
   await waitFor(cdp, `market page for ${title}`, `__bodyHas(${JSON.stringify(title)}) && __has('.market-facts')`, 30000);
 }
 
@@ -244,16 +263,20 @@ async function main() {
   log(9, "price and volume history chart rendered");
 
   // Close the market by advancing the demo clock, then resolve as the creator.
-  const advanced = await advanceIntoResolveWindow(admin, closeAt);
-  log(10, `demo clock advanced ${advanced} minutes into the resolvable window (past the observation end, before the deadline)`);
+  const advanced = await advanceIntoResolveWindow(admin, series1.instances[0].id);
+  log(10, `demo clock is inside the resolvable window (advanced ${advanced} minutes; past the observation end, before the deadline)`);
   await signOut(cdp);
   await signIn(cdp, creatorEmail, CREATOR_PASSWORD);
   await openSeries(cdp, titles[0]);
-  await waitFor(cdp, "awaiting resolution section", `__bodyHas('Awaiting resolution')`, 30000);
+  // History is collapsed by default; open the Closed tab to resolve.
+  await waitFor(cdp, "bracket history tabs", `__has('.tab-bar')`, 30000);
+  await evaluate(cdp, `__clickText('.tab-bar button', 'Closed')`);
   if (!(await evaluate(cdp, `__has('.resolve-control select')`))) throw new Error("resolve control missing with a cached key");
   await evaluate(cdp, `__clickText('.resolve-control button', 'Resolve')`);
-  await waitFor(cdp, "settled result", `[...document.querySelectorAll('.bracket-list li')].some((li) => li.textContent.includes('Result:'))`, 30000);
-  log(11, "creator resolved the bracket with the cached key; result recorded");
+  await waitFor(cdp, "resolved count in the tab", `(() => { const b = [...document.querySelectorAll('.tab-bar button')].find((x) => x.textContent.startsWith('Resolved')); return b && !b.textContent.includes('(0)'); })()`, 30000);
+  await evaluate(cdp, `__clickText('.tab-bar button', 'Resolved')`);
+  await waitFor(cdp, "settled result", `[...document.querySelectorAll('.bracket-list li')].some((li) => li.textContent.includes('Result:'))`);
+  log(11, "creator resolved the bracket with the cached key; result recorded in the history tab");
   const series1After = await apiGet(`/series/${series1.id}`);
   const settled = series1After.instances.find((i) => i.state === "resolved");
   if (!settled) throw new Error("instance not resolved on the server");
@@ -274,17 +297,20 @@ async function main() {
   // Clear the cache again: resolving must now go through the password prompt.
   await evaluate(cdp, `localStorage.removeItem('polyntu.v2.signing-key')`);
   await navigate(cdp, BASE);
-  await advanceIntoResolveWindow(admin, config2.server_time_ms + 3 * 60000);
-  log(14, "clock advanced again; cached key cleared");
+  await advanceIntoResolveWindow(admin, series2.instances[0].id);
+  log(14, "clock inside the window again; cached key cleared");
   await openSeries(cdp, titles[1]);
-  await waitFor(cdp, "awaiting resolution section", `__bodyHas('Awaiting resolution')`, 30000);
+  await waitFor(cdp, "bracket history tabs", `__has('.tab-bar')`, 30000);
+  await evaluate(cdp, `__clickText('.tab-bar button', 'Closed')`);
   if (!(await evaluate(cdp, `__has('#key-password')`))) throw new Error("password prompt missing on the bracket page");
   if (await evaluate(cdp, `__has('.resolve-control select')`)) throw new Error("resolve control shown without a matching key");
   await evaluate(cdp, `__set('#key-password', ${JSON.stringify(CREATOR_PASSWORD)})`);
   await evaluate(cdp, `__clickText('.resolve-control button', 'Derive signing key')`);
   await waitFor(cdp, "resolve control after derivation", `__has('.resolve-control select')`, 20000);
   await evaluate(cdp, `__clickText('.resolve-control button', 'Resolve')`);
-  await waitFor(cdp, "settled result", `[...document.querySelectorAll('.bracket-list li')].some((li) => li.textContent.includes('Result:'))`, 30000);
+  await waitFor(cdp, "resolved count in the tab", `(() => { const b = [...document.querySelectorAll('.tab-bar button')].find((x) => x.textContent.startsWith('Resolved')); return b && !b.textContent.includes('(0)'); })()`, 30000);
+  await evaluate(cdp, `__clickText('.tab-bar button', 'Resolved')`);
+  await waitFor(cdp, "settled result", `[...document.querySelectorAll('.bracket-list li')].some((li) => li.textContent.includes('Result:'))`);
   const series2After = await apiGet(`/series/${series2.id}`);
   if (!series2After.instances.some((i) => i.state === "resolved")) throw new Error("second instance not resolved on the server");
   log(15, "resolved the second market through the password prompt after losing the cached key");

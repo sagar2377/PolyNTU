@@ -64,13 +64,13 @@ Views are string-selected rather than URL-routed:
 - `create` renders `CreateMarket`, offered only to accounts holding the creator role through a Create market navigation button; and
 - `portfolio` renders `Portfolio`.
 
-Opening a series from the browse strip resolves the series detail and opens one of its brackets: the first live one, or the first bracket overall, retrying briefly so a just-published recurring series can land on its first spawned bracket.
+Publishing resolves the new series' detail and opens one of its brackets: the first live one, or the first bracket overall, retrying briefly so a just-published recurring series can land on its first spawned bracket.
 
 Refreshing the browser does not preserve the selected view/market, but the account and pending trade remain in local storage.
 
-### Account entry panel
+### Account entry dialog and sign-out
 
-Before authentication, the header's top right shows two toggle buttons, Create account and Log in. Either opens a compact sign-in panel as the first panel of the page, holding one form at a time: the NTU registration form (display name, NTU email, password of at least 12 characters, validated client-side to the server's rules) or the email and password login form. Clicking the active toggle button again closes the panel, and a successful sign-in closes it too; the header then shows the account chip with the display name, the role when present, and the available units. In demo mode the panel also carries a Demo accounts disclosure with the one-click demo participant (1,000 units) and a sign-in button for the seeded administrator (`admin@ntu.edu.sg`).
+Before authentication, the header's top right shows two toggle buttons, Create account and Log in. Either opens a centred overlay card over a blurred backdrop (`components/Modal.jsx`: animated, closed by Escape, the close button, or a backdrop click) holding one form at a time: the NTU registration form (display name, NTU email, password of at least 12 characters, validated client-side to the server's rules) or the email and password login form; a successful sign-in closes it, and the header then shows the account chip with the display name, the role when present, the available units, and a Sign out button. Signing out drops the stored session token and the cached signing key; signing in again re-derives the key from the password. In demo mode the card also carries a Demo accounts disclosure with the one-click demo participant (1,000 units) and a sign-in button for the seeded administrator (`admin@ntu.edu.sg`). The demo clock controls use the same overlay, opened from a footer link, so dialogs never push the page content down.
 
 There is no access-token sign-in: the paste path and the Copy account token button are gone. Registered accounts simply log in again after signing out; a demo account has no credentials, so it cannot sign back in, and the account-settings disclosure advises creating a new one instead.
 
@@ -101,11 +101,9 @@ This control is local-demo convenience, not an administrator console.
 
 ## Market discovery: `pages/MarketBrowse.jsx`
 
-State contains the current page of instances, the active series list, selected category, loading flag, and offset. The page loads instances immediately and every ten seconds; the series list loads once per refresh counter change. Category filtering is client-side over only the current 100-row page and also filters the series strip.
+State contains the current page of instances, selected category, loading flag, and offset. The page loads instances immediately and every ten seconds. Category filtering is client-side over only the current 100-row page.
 
-Above the market grid, a strip of chips shows every active series: the title plus the rolling cadence and live count (or One-time) and a no-fee marker. A chip opens one of the series' brackets (the first live one, or the first bracket overall), because every bracket page carries the whole series view.
-
-Each card shows category, effective state, up to three outcomes, marginal percentages, data-mode label, and Singapore close time. Pagination increments by 100 and disables Next when fewer than 100 rows arrive.
+Each card shows category, effective state, up to three outcomes, marginal percentages, data-mode label, and Singapore close time, and opens the bracket's market page, which carries the whole series view; there is no separate series strip or series page. Rows arrive with markets that have not closed yet first, soonest to close first, then closed history most recently closed first, so the grid leads with what resolves soonest and settled markets never bury the live ones.
 
 Consequences:
 
@@ -113,16 +111,14 @@ Consequences:
 - category filtering does not fetch all pages for that category; and
 - templates are not displayed separately.
 
-The strip's no-fee marker reads `fee_charged` from the series list payload, which includes the field, so the marker appears exactly on fee-free series.
-
 ## Market page: `pages/MarketPage.jsx`
 
 The page loads the instance immediately, opens a public `EventSource`, reloads after a 100 ms debounce on each `market` event, and also polls every five seconds. Cleanup closes the stream and timers. When the instance belongs to a series, it also loads the series detail on the same five-second cadence, because every bracket page carries its whole series; there is no separate series page. The series sections:
 
-- the schedule as facts: bracket interval, the daily operating window, the live horizon (maximum concurrency and the minutes it covers), the end date or Perpetual, the trading fee policy, the resolution authority (administrator evidence, the creator's signed statement, or the automatic resolver endpoint), per-bracket liquidity, and the series state, followed by the resolution criterion;
+- the schedule as facts: bracket interval, the daily operating window, the operating days (Every day, Monday to Friday, Saturday and Sunday, or an explicit list), the live horizon (maximum concurrency and the minutes it covers), the end date or Perpetual, the trading fee policy, the resolution authority (administrator evidence, the creator's signed statement, or the automatic resolver, shown as NTU Bus API for the platform's own adapter), per-bracket liquidity, and the series state, followed by the resolution criterion;
 - the day view (UC-21) for binary series: a headline with the volume-weighted first-outcome probability across live brackets (or a notice that it appears with the first trade) and the `DayProbabilityBars` list below;
 - live brackets (recurring series only) with close time and current outcome probabilities, a Trade button per sibling and the bracket being viewed marked This bracket;
-- an Awaiting resolution list for closed or resolving brackets and a Settled list with each result; times render in Singapore time.
+- a Bracket history panel with three tabs, Closed, Voided, and Resolved, each showing its count. History is collapsed by default; opening a tab shows its list (the Closed tab also holds the creator's resolve controls) and clicking the active tab hides it again. Times render in Singapore time.
 
 For the bracket itself it renders:
 
@@ -135,7 +131,7 @@ For the bracket itself it renders:
 - selected public evidence payload inside a disclosure; and
 - `TradePanel`.
 
-When the signed-in account is the series creator and the authority is `creator`, each awaiting bracket gains an outcome picker and a Resolve button: the page generates a `crypto.randomUUID()` nonce, signs the resolution with the account's key, and submits it through `api.resolveMarket`. The page uses the cached key when its public key matches the series' published key; when the cache is missing or does not match, it shows a password field plus a Derive signing key button, derives the keypair in-browser, and verifies the derived public key against the series' published key before storing anything, reporting a mismatch as a wrong password. Resolver-authority brackets show that the automatic resolver is answering.
+When the signed-in account is the series creator and the authority is `creator`, each closed bracket in the Closed tab gains an outcome picker and a Resolve button: the page generates a `crypto.randomUUID()` nonce, signs the resolution with the account's key, and submits it through `api.resolveMarket`. The page uses the cached key when its public key matches the series' published key; when the cache is missing or does not match, it shows a password field plus a Derive signing key button, derives the keypair in-browser, and verifies the derived public key against the series' published key before storing anything, reporting a mismatch as a wrong password. Resolver-authority brackets show that the automatic resolver is answering.
 
 Each snapshot reload increments a counter passed to the chart as `reloadKey`, so the chart refreshes on every SSE-driven reload and on the five-second fallback poll.
 
@@ -143,7 +139,7 @@ The event URL does not include a cursor explicitly; native EventSource reconnect
 
 ## Publish a market: `pages/CreateMarket.jsx`
 
-A creator-only form posting one `api.createSeries` request. It collects the title, resolution criterion, category-specific rule fields (weather station and threshold, bus route/direction/stop, fictional election candidates, or count metric/location/threshold), the evidence source, liquidity, the fee choice (the 25 bps fee with the creator split, or fee-free welfare), the schedule: one-time (close time plus observation minutes) or recurring (interval, live brackets, operating window, optional end date), and the resolution authority (ADR 0007): platform administrator, creator signing, or an external resolver endpoint. The rule shapes mirror the backend's typed rules, and the server rejects unknown fields.
+A creator-only form posting one `api.createSeries` request. It collects the title, resolution criterion, category-specific rule fields (weather station and threshold, bus route/direction/stop, fictional election candidates, or count metric/location/threshold), the evidence source, liquidity, the fee choice (the 25 bps fee with the creator split, or fee-free welfare), the schedule: one-time (close time plus observation minutes) or recurring (interval, live brackets, operating window, operating days as Every day / Weekdays / Weekends, optional end date), and the resolution authority (ADR 0007): platform administrator, creator signing, or an external resolver endpoint. The rule shapes mirror the backend's typed rules, and the server rejects unknown fields.
 
 Choosing creator signing uses the account's password-derived resolution key: the cached keypair when present, otherwise a password field (never sent anywhere; used only in-browser to derive the key) shown while the cache is missing. Only the public key is published, and after publication the derived keypair is cached under `polyntu.v2.signing-key`. Choosing an external resolver asks for the https endpoint and explains the request/response contract. On success the app opens the new market's page (for a recurring series, its first bracket once the scheduler spawns it).
 

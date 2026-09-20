@@ -12,6 +12,7 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
   const [keyPassword, setKeyPassword] = useState("");
   const [deriving, setDeriving] = useState(false);
   const [localKey, setLocalKey] = useState(null);
+  const [historyTab, setHistoryTab] = useState(null);
   useEffect(() => {
     let cancelled = false; let debounce;
     const load = () => api.instance(id).then((value) => { if (!cancelled) { setInstance(value); setReloads((n) => n + 1); } }).catch((e) => { if (!cancelled) onError(e.message); });
@@ -36,9 +37,18 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
   const recurring = series?.schedule?.kind === "recurring";
   const intervalMinutes = Math.round((series?.schedule?.interval_ms || 0) / 60000);
   const windowLabel = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const daysLabel = (days) => {
+    const set = days ?? [];
+    if (set.length === 7) return "Every day";
+    if (set.join(",") === "1,2,3,4,5") return "Monday to Friday";
+    if (set.join(",") === "6,7") return "Saturday and Sunday";
+    return set.map((d) => dayNames[d - 1]).join(", ");
+  };
   const live = series ? series.instances.filter((i) => i.state === "open") : [];
   const awaiting = series ? series.instances.filter((i) => i.state === "closed" || i.state === "resolving") : [];
-  const settled = series ? series.instances.filter((i) => i.state === "resolved" || i.state === "voided") : [];
+  const voided = series ? series.instances.filter((i) => i.state === "voided") : [];
+  const resolved = series ? series.instances.filter((i) => i.state === "resolved") : [];
   const isCreator = account && series && series.creator_account_id === account.id;
   const canSign = isCreator && series.resolution?.authority === "creator";
   const key = localKey || (canSign ? accountSigningKey(account) : null);
@@ -91,11 +101,12 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
     {series && <section className="panel"><h2>How this series works</h2>
       <dl className="market-facts">
         {recurring && <div><dt>Bracket interval</dt><dd>Every {intervalMinutes} minute{intervalMinutes === 1 ? "" : "s"}</dd></div>}
-        {recurring && <div><dt>Operating window</dt><dd>{windowLabel(series.schedule.active_start_minute)} to {windowLabel(series.schedule.active_end_minute)} daily</dd></div>}
+        {recurring && <div><dt>Operating window</dt><dd>{windowLabel(series.schedule.active_start_minute)} to {windowLabel(series.schedule.active_end_minute)} SGT</dd></div>}
+        {recurring && <div><dt>Operating days</dt><dd>{daysLabel(series.schedule.active_days)}</dd></div>}
         {recurring && <div><dt>Live horizon</dt><dd>{series.schedule.max_concurrency} brackets, about {series.schedule.max_concurrency * intervalMinutes} minutes ahead</dd></div>}
         {recurring && <div><dt>Runs until</dt><dd>{series.schedule.end_ms ? timestamp(series.schedule.end_ms) : "Perpetual"}</dd></div>}
         <div><dt>Trading fee</dt><dd>{series.fee_charged ? "25 bps, half funds the creator" : "None, a welfare market"}</dd></div>
-        <div><dt>Resolved by</dt><dd>{series.resolution?.authority === "creator" ? "The creator's signed statement" : series.resolution?.authority === "resolver" ? `An automatic resolver (${series.resolution.endpoint})` : "Platform administrator evidence"}</dd></div>
+        <div><dt>Resolved by</dt><dd>{series.resolution?.authority === "creator" ? "The creator's signed statement" : series.resolution?.authority === "resolver" ? (series.resolution.endpoint?.includes("/resolvers/ntu-bus") ? "NTU Bus API" : `An automatic resolver (${series.resolution.endpoint})`) : "Platform administrator evidence"}</dd></div>
         <div><dt>Liquidity parameter</dt><dd>{series.liquidity_units} units per bracket</dd></div>
         <div><dt>Series state</dt><dd>{series.state === "active" ? "Active" : "Ended"}</dd></div>
       </dl>
@@ -107,34 +118,47 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
         {bracket.id === id ? <span className="muted small">This bracket</span> : <button onClick={() => onSelect(bracket.id)}>Trade</button>}</li>)}
       </ul>
     </section>}
-    {awaiting.length > 0 && <section className="panel"><h2>Awaiting resolution</h2>
-      {canSign && (keyMatches
-        ? <p className="muted small">Pick the outcome for each closed bracket; this browser signs with the key derived from your password.</p>
-        : <div className="resolve-control"><label className="sr-only" htmlFor="key-password">Password</label>
-            <input id="key-password" type="password" placeholder="Account password" value={keyPassword} autoComplete="current-password" onChange={(e) => setKeyPassword(e.target.value)} />
-            <button disabled={deriving || !keyPassword} onClick={deriveKey}>Derive signing key</button></div>)}
-      <ul className="bracket-list">{awaiting.map((bracket) => <li key={bracket.id}>
+    {series && (awaiting.length > 0 || voided.length > 0 || resolved.length > 0) && <section className="panel">
+      <h2>Bracket history</h2>
+      <p className="muted small">History is collapsed by default; open a tab to show it and click it again to hide it.</p>
+      <div className="tab-bar" role="tablist" aria-label="Bracket history">
+        <button role="tab" aria-selected={historyTab === "closed"} className={historyTab === "closed" ? "selected" : ""} onClick={() => setHistoryTab(historyTab === "closed" ? null : "closed")}>Closed ({awaiting.length})</button>
+        <button role="tab" aria-selected={historyTab === "voided"} className={historyTab === "voided" ? "selected" : ""} onClick={() => setHistoryTab(historyTab === "voided" ? null : "voided")}>Voided ({voided.length})</button>
+        <button role="tab" aria-selected={historyTab === "resolved"} className={historyTab === "resolved" ? "selected" : ""} onClick={() => setHistoryTab(historyTab === "resolved" ? null : "resolved")}>Resolved ({resolved.length})</button>
+      </div>
+      {historyTab === "closed" && <>
+        {canSign && (keyMatches
+          ? <p className="muted small">Pick the outcome for each closed bracket; this browser signs with the key derived from your password.</p>
+          : <div className="resolve-control"><label className="sr-only" htmlFor="key-password">Password</label>
+              <input id="key-password" type="password" placeholder="Account password" value={keyPassword} autoComplete="current-password" onChange={(e) => setKeyPassword(e.target.value)} />
+              <button disabled={deriving || !keyPassword} onClick={deriveKey}>Derive signing key</button></div>)}
+        <ul className="bracket-list">{awaiting.map((bracket) => <li key={bracket.id}>
+          <span>Closed {timestamp(bracket.close_ms)} SGT</span>
+          <span>{bracket.outcomes.map((o) => `${o.label} ${(o.probability * 100).toFixed(1)}%`).join(" · ")}</span>
+          {canSign && keyMatches
+            ? <span className="resolve-control"><label className="sr-only" htmlFor={`resolve-${bracket.id}`}>Outcome</label>
+                <select id={`resolve-${bracket.id}`} value={choices[bracket.id] ?? bracket.outcomes[0].id} onChange={(e) => setChoices({ ...choices, [bracket.id]: e.target.value })}>
+                  {bracket.outcomes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+                <button disabled={busy} onClick={() => resolve(bracket, choices[bracket.id] ?? bracket.outcomes[0].id, key)}>Resolve</button></span>
+            : canSign
+              ? <span className="muted small">Derive the signing key above to resolve these brackets.</span>
+              : <span className="muted small">{series.resolution?.authority === "resolver" ? "The automatic resolver is answering" : "Awaiting the resolution authority"}</span>}
+        </li>)}
+        </ul>
+      </>}
+      {historyTab === "voided" && <ul className="bracket-list">{voided.map((bracket) => <li key={bracket.id}>
         <span>Closed {timestamp(bracket.close_ms)} SGT</span>
-        <span>{bracket.outcomes.map((o) => `${o.label} ${(o.probability * 100).toFixed(1)}%`).join(" · ")}</span>
-        {canSign && keyMatches
-          ? <span className="resolve-control"><label className="sr-only" htmlFor={`resolve-${bracket.id}`}>Outcome</label>
-              <select id={`resolve-${bracket.id}`} value={choices[bracket.id] ?? bracket.outcomes[0].id} onChange={(e) => setChoices({ ...choices, [bracket.id]: e.target.value })}>
-                {bracket.outcomes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
-              <button disabled={busy} onClick={() => resolve(bracket, choices[bracket.id] ?? bracket.outcomes[0].id, key)}>Resolve</button></span>
-          : canSign
-            ? <span className="muted small">Derive the signing key above to resolve these brackets.</span>
-            : <span className="muted small">{series.resolution?.authority === "resolver" ? "The automatic resolver is answering" : "Awaiting the resolution authority"}</span>}
-      </li>)}
-      </ul>
-    </section>}
-    {settled.length > 0 && <section className="panel"><h2>Settled brackets</h2>
-      <ul className="bracket-list">{settled.map((bracket) => <li key={bracket.id}>
-        <span>Closed {timestamp(bracket.close_ms)} SGT</span>
-        <span>{bracket.result?.kind === "winner" ? `Result: ${bracket.outcomes[bracket.result.outcome]?.label}` : "Voided"}</span>
+        <span>Voided</span>
         {bracket.id === id ? <span className="muted small">This bracket</span> : <button onClick={() => onSelect(bracket.id)}>View</button>}
       </li>)}
-      </ul>
+      </ul>}
+      {historyTab === "resolved" && <ul className="bracket-list">{resolved.map((bracket) => <li key={bracket.id}>
+        <span>Closed {timestamp(bracket.close_ms)} SGT</span>
+        <span>Result: {bracket.outcomes[bracket.result?.outcome]?.label}</span>
+        {bracket.id === id ? <span className="muted small">This bracket</span> : <button onClick={() => onSelect(bracket.id)}>View</button>}
+      </li>)}
+      </ul>}
     </section>}
     <section className="panel"><h2>How this market resolves</h2><p>{instance.resolution_criterion}</p><p className="muted">{instance.void_policy}</p><dl className="market-facts"><div><dt>Source</dt><dd>{instance.source_id}</dd></div><div><dt>Evidence</dt><dd>{instance.evidence ? `Received ${timestamp(instance.evidence.received_ms)}` : "Awaiting the observation window and final evidence"}</dd></div></dl>{instance.evidence && <details><summary>View resolution evidence</summary><pre>{JSON.stringify(instance.evidence.payload, null, 2)}</pre></details>}</section>
   </>;

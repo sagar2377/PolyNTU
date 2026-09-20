@@ -33,6 +33,7 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
   const [windowStart, setWindowStart] = useState("06:00");
   const [windowEnd, setWindowEnd] = useState("23:59");
   const [concurrency, setConcurrency] = useState("5");
+  const [activeDays, setActiveDays] = useState("every");
   const [endAt, setEndAt] = useState("");
   const [busy, setBusy] = useState(false);
   const chooseResolution = (kind) => {
@@ -54,7 +55,7 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
         const observationMs = closeMs + Number(observationMinutes) * 60000;
         schedule = { kind: "once", close_ms: closeMs, observation_start_ms: closeMs, observation_end_ms: observationMs, finalize_after_ms: observationMs + 1000, evidence_deadline_ms: observationMs + 60000 };
       } else {
-        schedule = { kind: "recurring", interval_ms: Number(intervalMinutes) * 60000, active_start_minute: minutesOfDay(windowStart), active_end_minute: minutesOfDay(windowEnd), max_concurrency: Number(concurrency), end_ms: localToMs(endAt) };
+        schedule = { kind: "recurring", interval_ms: Number(intervalMinutes) * 60000, active_start_minute: minutesOfDay(windowStart), active_end_minute: minutesOfDay(windowEnd), active_days: activeDays === "weekdays" ? [1, 2, 3, 4, 5] : activeDays === "weekends" ? [6, 7] : [1, 2, 3, 4, 5, 6, 7], max_concurrency: Number(concurrency), end_ms: localToMs(endAt) };
       }
       let pair = keyPair;
       if (resolutionKind === "creator" && !pair) {
@@ -169,7 +170,13 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
           <div><label htmlFor="market-end">End date (optional)</label>
             <input id="market-end" type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} /></div>
         </div>
-        <p className="muted small">Brackets spawn on the interval grid, only inside the operating window, and never after the end date. Leave the end date empty for a perpetual series.</p>
+        <label htmlFor="market-days">Operating days</label>
+        <select id="market-days" value={activeDays} onChange={(e) => setActiveDays(e.target.value)}>
+          <option value="every">Every day</option>
+          <option value="weekdays">Weekdays (Monday to Friday)</option>
+          <option value="weekends">Weekends (Saturday and Sunday)</option>
+        </select>
+        <p className="muted small">Brackets spawn on the interval grid, only inside the operating window and on the operating days, and never after the end date. Leave the end date empty for a perpetual series.</p>
       </>}
       <button className="primary" disabled={busy}>{scheduleKind === "once" ? "Publish market" : "Publish series"}</button>
     </form>
