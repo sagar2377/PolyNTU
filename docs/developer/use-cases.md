@@ -319,6 +319,7 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 - Response malformed or naming no published option: treated as missing evidence and retried.
 - Endpoint reports pending: retried.
 - Nothing valid by the deadline: the instance voids per the published policy.
+- A demo clock jump skips the whole ask window: for simulated instances the deterministic answer is recorded as a replay instead of voiding; manual instances keep the hard deadline.
 
 The demo bus series is the built-in example: the platform serves its own adapter at `POST /api/v2/resolvers/ntu-bus`, the NTU Bus API integration point, which answers simulated bus brackets from the deterministic feed once their observation window has ended; the live NTU Bus API feed is deferred work. Resolver-authority instances never fall back to simulated evidence, so a broken resolver is visible instead of masked.
 

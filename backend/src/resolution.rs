@@ -108,13 +108,17 @@ impl Store {
 
     /// An external resolver's answer (ADR 0007), recorded as the evidence
     /// that settles the instance. The outcome was already validated against
-    /// the published options.
+    /// the published options. `replay` admits a deterministic simulated
+    /// answer after the deadline, mirroring `record_evidence`: a demo clock
+    /// jump can skip the whole ask window, and the answer such a jump made
+    /// late is the same answer the adapter would have given in time.
     pub async fn record_resolver_evidence(
         &self,
         id: &str,
         outcome_id: &str,
         request: &Value,
         response: &Value,
+        replay: bool,
     ) -> Result<Value> {
         let mut tx = self.pool.begin().await?;
         let instance: Instance = sqlx::query_as("SELECT * FROM instances WHERE id=$1 FOR UPDATE")
@@ -129,7 +133,7 @@ impl Store {
                 "Resolution is already final; resolver answers cannot change it",
             ));
         }
-        if now >= instance.evidence_deadline_ms {
+        if !replay && now >= instance.evidence_deadline_ms {
             tx.commit().await?;
             return Err(conflict("The published evidence deadline has passed"));
         }

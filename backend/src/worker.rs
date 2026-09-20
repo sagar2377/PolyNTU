@@ -145,12 +145,17 @@ async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
                 );
                 match resolver::parse_response(&body, instance) {
                     resolver::ResolverAnswer::Outcome(outcome_id) => {
+                        // A deterministic simulated answer recorded after a
+                        // demo clock jump is a replay, exactly like the
+                        // simulated-evidence branch; real resolvers keep the
+                        // hard published deadline.
                         if let Err(e) = store
                             .record_resolver_evidence(
                                 &instance.id,
                                 &outcome_id,
                                 &request_value,
                                 &response,
+                                store.demo_mode && instance.data_mode == "simulated",
                             )
                             .await
                         {

@@ -173,7 +173,7 @@ Grouped by area.
 | `creators_resolve_their_markets_with_signed_statements` | A keypair derived from the creator's account password, exactly as the browser derives it, signs a valid ed25519 resolution over the resolution message that settles the bracket; wrong nonce, signature, outcome, or account is rejected. |
 | `resolver_authority_settles_from_the_external_endpoint` | The worker calls the configured endpoint and settles on the returned published outcome id. |
 | `resolver_authority_voids_when_answers_stay_invalid_or_unreachable` | Unpublished answers and unreachable endpoints record nothing and the deadline voids the instance. |
-| `bus_series_settles_through_the_ntu_bus_adapter` | A bus series whose resolver endpoint is the platform's own `/api/v2/resolvers/ntu-bus` settles through the real HTTP route: the worker's call, the adapter's answer from the deterministic simulated feed, the recorded `external-resolver` evidence, and no simulated-evidence fallback. |
+| `bus_series_settles_through_the_ntu_bus_adapter` | A bus series whose resolver endpoint is the platform's own `/api/v2/resolvers/ntu-bus` settles through the real HTTP route: the worker's call, the adapter's answer from the deterministic simulated feed, the recorded `external-resolver` evidence, no simulated-evidence fallback, and resolution even when a demo clock jump skips the ask window past the deadline (replay). |
 
 ### Price history and day view
 

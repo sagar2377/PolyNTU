@@ -1062,6 +1062,32 @@ async fn bus_series_settles_through_the_ntu_bus_adapter() {
             .await
             .unwrap();
     assert_eq!(simulator_evidence, 0);
+    // A demo clock jump that skips the whole ask window still resolves: the
+    // adapter's deterministic answer is recorded as a replay, exactly like
+    // the simulated-evidence branch, instead of voiding the bracket.
+    let now = db.store.now().await.unwrap();
+    let mut jumped = demo_series_spec(&format!("http://{address}/api/v2/resolvers/ntu-bus"));
+    jumped.title = "Blue line · jumped deadline".into();
+    jumped.schedule = Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 121000,
+        evidence_deadline_ms: now + 150000,
+    };
+    let jumped_view = db
+        .store
+        .create_series(None, &jumped, "simulated")
+        .await
+        .unwrap();
+    let jumped_id = jumped_view["instances"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    db.store.advance_demo_clock(3).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    let jumped_settled = db.store.instance(&jumped_id).await.unwrap();
+    assert_eq!(jumped_settled.state, "resolved");
     db.finish().await;
 }
 
