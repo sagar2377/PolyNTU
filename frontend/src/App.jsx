@@ -3,7 +3,6 @@ import { api, TOKEN_KEY, deriveResolutionKeyPair, pendingTrade, storeSigningKey,
 import MarketBrowse from "./pages/MarketBrowse";
 import MarketPage from "./pages/MarketPage";
 import Portfolio from "./pages/Portfolio";
-import SeriesPage from "./pages/SeriesPage";
 import CreateMarket from "./pages/CreateMarket";
 import "./App.css";
 
@@ -12,7 +11,7 @@ export default function App() {
   const [account, setAccount] = useState(null);
   const [view, setView] = useState("browse");
   const [selected, setSelected] = useState(null);
-  const [selectedSeries, setSelectedSeries] = useState(null);
+  const [marketFrom, setMarketFrom] = useState("browse");
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
@@ -87,6 +86,25 @@ export default function App() {
     setAccount(null);
     setVerification(null);
   };
+  // A market page's back button returns to the list it was opened from, so
+  // bracket-to-bracket navigation never stacks layers of back.
+  const openMarket = (instanceId, from = "browse") => {
+    setSelected(instanceId); setMarketFrom(from); setView("market");
+  };
+  // Every bracket page shows its whole series, so opening a series means
+  // opening one of its brackets; a just-published recurring series may need a
+  // moment before its first bracket spawns.
+  const openSeries = async (seriesId) => {
+    try {
+      let target;
+      for (let attempt = 0; attempt < 5 && !target; attempt++) {
+        if (attempt) await new Promise((resolve) => setTimeout(resolve, 800));
+        const detail = await api.series(seriesId);
+        target = detail.instances.find((i) => i.state === "open") ?? detail.instances[0];
+      }
+      if (target) openMarket(target.id, "browse"); else setView("browse");
+    } catch (e) { setError(e.message); }
+  };
   const pending = pendingTrade();
   return <div className="app">
     <header className="topbar"><button className="wordmark" onClick={() => setView("browse")}>Poly<span>NTU</span></button>
@@ -100,7 +118,7 @@ export default function App() {
     </header>
     <div className="notice">Academic campus markets · simulated units only{config?.demo_mode ? " · Demo observations" : ""}</div>
     {error && <div className="error-banner" role="alert"><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError("")}>×</button></div>}
-    {pending && pending.account_id === account?.id && <div className="notice pending">A trade is awaiting a receipt. <button onClick={() => { setSelected(pending.instance_id); setView("market"); }}>Resume trade</button></div>}
+    {pending && pending.account_id === account?.id && <div className="notice pending">A trade is awaiting a receipt. <button onClick={() => openMarket(pending.instance_id, "browse")}>Resume trade</button></div>}
     {pending && pending.account_id !== account?.id && <div className="notice pending">A saved trade belongs to another account. Sign in with that account to retrieve its receipt.</div>}
     {!account && entryView && <section className="panel signin-panel" aria-label="Account access">
       {entryView === "register" ? <>
@@ -137,11 +155,10 @@ export default function App() {
         : verification?.status === "rejected" ? <div><p className="muted">Your last request was rejected: {verification.reason}</p><button disabled={busy} onClick={requestVerification}>Apply again</button></div>
         : <div><p className="muted">Verified creators publish their own markets and earn half of every trading fee. Request verification to get started.</p><button className="primary" disabled={busy} onClick={requestVerification}>Request creator verification</button></div>}
     </section>}
-    {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} onOpenSeries={(id) => { setSelectedSeries(id); setView("series"); }} />}
-    {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView("browse")} onOpenSeries={(id) => { setSelectedSeries(id); setView("series"); }} />}
-    {view === "series" && selectedSeries && <SeriesPage key={selectedSeries} id={selectedSeries} account={account} refresh={refresh} onError={setError} onBack={() => setView("browse")} onSelect={(id) => { setSelected(id); setView("market"); }} />}
-    {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setSelectedSeries(id); setView("series"); setRefresh((n) => n + 1); }} onError={setError} onBack={() => setView("browse")} />}
-    {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} />}
+    {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "browse")} onOpenSeries={openSeries} />}
+    {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView(marketFrom)} onSelect={(id) => openMarket(id, marketFrom)} />}
+    {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setRefresh((n) => n + 1); openSeries(id); }} onError={setError} onBack={() => setView("browse")} />}
+    {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "portfolio")} />}
     <footer><span>PolyNTU · Outcome markets</span>{account && <button className="link-button" onClick={signOut}>Sign out</button>}</footer>
     {account && <details className="account-settings"><summary>Account access</summary><p>Logging in again invalidates every other session. Registered accounts simply log in again; a demo account cannot sign back in after signing out, so create a new one instead.</p></details>}
     {config?.demo_mode && <details className="demo-controls"><summary>Demo clock controls</summary><p>Advance simulated time to observe closing and settlement. Administrator access is required.</p><label htmlFor="admin-token">Administrator token</label><input id="admin-token" type="password" value={admin} autoComplete="off" onChange={(e) => setAdmin(e.target.value)} /><div className="button-row"><button disabled={busy || !admin} onClick={() => advance(60)}>Advance 1 hour</button><button disabled={busy || !admin} onClick={() => advance(1440)}>Advance 1 day</button></div></details>}

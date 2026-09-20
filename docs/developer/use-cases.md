@@ -172,7 +172,7 @@ Full descriptions of all twenty-four use cases, in ID order.
 **Flow of events:**
 
 1. The trader opens the markets page; the browser loads up to 100 instances and refreshes them every ten seconds.
-2. A strip of chips above the grid lists every active series with its rolling cadence and live count (or One-time) plus a no-fee marker; a chip opens the series page.
+2. A strip of chips above the grid lists every active series with its rolling cadence and live count (or One-time) plus a no-fee marker; a chip opens one of the series' brackets, whose market page carries the whole series view.
 3. Category buttons narrow the search to one category; the filter applies client-side to the current page and also filters the series strip.
 4. Each card shows the category, effective state, up to three outcomes with their current probabilities, the data-mode label, and the Singapore close time; a card opens the market page.
 
@@ -241,7 +241,7 @@ Full descriptions of all twenty-four use cases, in ID order.
 1. The creator submits what UC-8 requires plus a recurrence rule: an interval (1 minute to 1 day), an active period (a daily operating window in Singapore time), a maximum concurrency (1 to 50), and an optional end date whose absence means perpetual. The fee choice applies to every bracket, and every spawned bracket's title carries its time window (business rule 6).
 2. The server validates the submission.
 3. The series is published immutably.
-4. The scheduler begins rolling spawn (UC-12), and the series page shows the schedule and its brackets.
+4. The scheduler begins rolling spawn (UC-12), and every bracket's market page shows the schedule and its sibling brackets.
 
 **Alternative flows:**
 
@@ -319,6 +319,8 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 - Response malformed or naming no published option: treated as missing evidence and retried.
 - Endpoint reports pending: retried.
 - Nothing valid by the deadline: the instance voids per the published policy.
+
+The demo bus series is the built-in example: the platform serves its own adapter at `POST /api/v2/resolvers/ntu-bus`, the NTU Bus API integration point, which answers simulated bus brackets from the deterministic feed once their observation window has ended; the live NTU Bus API feed is deferred work. Resolver-authority instances never fall back to simulated evidence, so a broken resolver is visible instead of masked.
 
 ### UC-14: Submit a signed human resolution
 
@@ -445,11 +447,11 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 **Flow of events:**
 
-1. The trader opens the series page.
+1. The trader opens any bracket's market page; the day view appears on every bracket page of a binary series.
 2. The backend aggregates per slot: weighted probability = the sum over live brackets of (units bet in that bracket × its first-outcome price), divided by the total units bet across those brackets; null until a live bracket has traded.
-3. The chart shows each slot's first-outcome probability across the listed brackets, with per-slot volume bars.
-4. Settled slots are pinned to their resolved value; voided slots are omitted from the line.
-5. Live slots refresh through the series page's five-second reload.
+3. The view lists the brackets vertically, each row a horizontal bar whose length is that slot's first-outcome probability, with the slot's time window, percentage, and traded volume.
+4. Slots show their actual implied probability, so an untraded series reads as a flat column of opening probabilities; settled slots are not pinned.
+5. Live slots refresh through the market page's five-second reload.
 
 **Alternative flows:**
 

@@ -55,15 +55,16 @@ Probabilities and average prices are display `Number` values supplied by the bac
 
 ### State
 
-`App` tracks server configuration, authenticated account, current view, selected instance, refresh counter, global error, registration/login form inputs, the active sign-in panel view, demo account name and administrator token inputs, the current verification request, and a shared busy flag.
+`App` tracks server configuration, authenticated account, current view, selected instance, the list a market was opened from (browse or the portfolio, used by the market page's single back link), refresh counter, global error, registration/login form inputs, the active sign-in panel view, demo account name and administrator token inputs, the current verification request, and a shared busy flag.
 
 Views are string-selected rather than URL-routed:
 
 - `browse` renders `MarketBrowse`;
 - `market` renders the selected `MarketPage`;
-- `series` renders the selected `SeriesPage`;
 - `create` renders `CreateMarket`, offered only to accounts holding the creator role through a Create market navigation button; and
 - `portfolio` renders `Portfolio`.
+
+Opening a series from the browse strip resolves the series detail and opens one of its brackets: the first live one, or the first bracket overall, retrying briefly so a just-published recurring series can land on its first spawned bracket.
 
 Refreshing the browser does not preserve the selected view/market, but the account and pending trade remain in local storage.
 
@@ -102,7 +103,7 @@ This control is local-demo convenience, not an administrator console.
 
 State contains the current page of instances, the active series list, selected category, loading flag, and offset. The page loads instances immediately and every ten seconds; the series list loads once per refresh counter change. Category filtering is client-side over only the current 100-row page and also filters the series strip.
 
-Above the market grid, a strip of chips shows every active series: the title plus the rolling cadence and live count (or One-time) and a no-fee marker. A chip opens the series page.
+Above the market grid, a strip of chips shows every active series: the title plus the rolling cadence and live count (or One-time) and a no-fee marker. A chip opens one of the series' brackets (the first live one, or the first bracket overall), because every bracket page carries the whole series view.
 
 Each card shows category, effective state, up to three outcomes, marginal percentages, data-mode label, and Singapore close time. Pagination increments by 100 and disables Next when fewer than 100 rows arrive.
 
@@ -114,46 +115,45 @@ Consequences:
 
 The strip's no-fee marker reads `fee_charged` from the series list payload, which includes the field, so the marker appears exactly on fee-free series.
 
-## Instance page: `pages/MarketPage.jsx`
+## Market page: `pages/MarketPage.jsx`
 
-The page loads the instance immediately, opens a public `EventSource`, reloads after a 100 ms debounce on each `market` event, and also polls every five seconds. Cleanup closes the stream and timers.
+The page loads the instance immediately, opens a public `EventSource`, reloads after a 100 ms debounce on each `market` event, and also polls every five seconds. Cleanup closes the stream and timers. When the instance belongs to a series, it also loads the series detail on the same five-second cadence, because every bracket page carries its whole series; there is no separate series page. The series sections:
 
-It renders:
+- the schedule as facts: bracket interval, the daily operating window, the live horizon (maximum concurrency and the minutes it covers), the end date or Perpetual, the trading fee policy, the resolution authority (administrator evidence, the creator's signed statement, or the automatic resolver endpoint), per-bracket liquidity, and the series state, followed by the resolution criterion;
+- the day view (UC-21) for binary series: a headline with the volume-weighted first-outcome probability across live brackets (or a notice that it appears with the first trade) and the `DayProbabilityBars` list below;
+- live brackets (recurring series only) with close time and current outcome probabilities, a Trade button per sibling and the bracket being viewed marked This bracket;
+- an Awaiting resolution list for closed or resolving brackets and a Settled list with each result; times render in Singapore time.
 
-- a back link, plus a link to the instance's series page when it is a series bracket;
+For the bracket itself it renders:
+
+- a single back link returning to the list the market was opened from (browse or the portfolio), so bracket-to-bracket navigation never stacks layers of back;
 - final/resolving result banner;
 - all marginal probabilities;
 - published times, liquidity, and the trading fee policy (25 bps with the creator split, or none on a welfare market);
-- resolution criterion, source, and void policy;
 - the price and volume history chart (`PriceHistoryChart`, UC-19), described below;
+- resolution criterion, source, and void policy;
 - selected public evidence payload inside a disclosure; and
 - `TradePanel`.
+
+When the signed-in account is the series creator and the authority is `creator`, each awaiting bracket gains an outcome picker and a Resolve button: the page generates a `crypto.randomUUID()` nonce, signs the resolution with the account's key, and submits it through `api.resolveMarket`. The page uses the cached key when its public key matches the series' published key; when the cache is missing or does not match, it shows a password field plus a Derive signing key button, derives the keypair in-browser, and verifies the derived public key against the series' published key before storing anything, reporting a mismatch as a wrong password. Resolver-authority brackets show that the automatic resolver is answering.
 
 Each snapshot reload increments a counter passed to the chart as `reloadKey`, so the chart refreshes on every SSE-driven reload and on the five-second fallback poll.
 
 The event URL does not include a cursor explicitly; native EventSource reconnects can supply `Last-Event-ID`, while periodic snapshots cover missed/gapped updates.
 
-## Series page: `pages/SeriesPage.jsx`
-
-The page loads the series detail immediately and every five seconds. It renders the schedule as facts: bracket interval, the daily operating window, the live horizon (maximum concurrency and the minutes it covers), the end date or Perpetual, the trading fee policy, the resolution authority (administrator evidence, the creator's signed statement, or the external resolver endpoint), per-bracket liquidity, and the series state, followed by the resolution criterion.
-
-For binary series it shows the day view (UC-21): a headline with the volume-weighted first-outcome probability across live brackets (or a notice that it appears with the first trade) and the `DayProbabilityChart` below. Live brackets list their close time and current outcome probabilities with a Trade button; brackets that are closed or resolving wait in an Awaiting resolution list; settled brackets list their result with a View button. Times render in Singapore time.
-
-When the signed-in account is the series creator and the authority is `creator`, each awaiting bracket gains an outcome picker and a Resolve button: the page generates a `crypto.randomUUID()` nonce, signs the resolution with the account's key, and submits it through `api.resolveMarket`. The page uses the cached key when its public key matches the series' published key; when the cache is missing or does not match, it shows a password field plus a Derive signing key button, derives the keypair in-browser, and verifies the derived public key against the series' published key before storing anything, reporting a mismatch as a wrong password. Resolver-authority brackets show that the external resolver is being asked.
-
 ## Publish a market: `pages/CreateMarket.jsx`
 
 A creator-only form posting one `api.createSeries` request. It collects the title, resolution criterion, category-specific rule fields (weather station and threshold, bus route/direction/stop, fictional election candidates, or count metric/location/threshold), the evidence source, liquidity, the fee choice (the 25 bps fee with the creator split, or fee-free welfare), the schedule: one-time (close time plus observation minutes) or recurring (interval, live brackets, operating window, optional end date), and the resolution authority (ADR 0007): platform administrator, creator signing, or an external resolver endpoint. The rule shapes mirror the backend's typed rules, and the server rejects unknown fields.
 
-Choosing creator signing uses the account's password-derived resolution key: the cached keypair when present, otherwise a password field (never sent anywhere; used only in-browser to derive the key) shown while the cache is missing. Only the public key is published, and after publication the derived keypair is cached under `polyntu.v2.signing-key`. Choosing an external resolver asks for the https endpoint and explains the request/response contract. On success the app opens the new series page.
+Choosing creator signing uses the account's password-derived resolution key: the cached keypair when present, otherwise a password field (never sent anywhere; used only in-browser to derive the key) shown while the cache is missing. Only the public key is published, and after publication the derived keypair is cached under `polyntu.v2.signing-key`. Choosing an external resolver asks for the https endpoint and explains the request/response contract. On success the app opens the new market's page (for a recurring series, its first bracket once the scheduler spawns it).
 
-## Charts: `components/PriceHistoryChart.jsx` and `components/DayProbabilityChart.jsx`
+## Charts: `components/PriceHistoryChart.jsx` and `components/DayProbabilityBars.jsx`
 
-Both charts render with lightweight-charts, the only charting dependency.
+The price chart renders with lightweight-charts, the only charting dependency; the day view is a plain CSS bar list.
 
 `PriceHistoryChart` (UC-19) draws one line per outcome plus a volume histogram pane for one instance, using the bucketed history endpoint. It derives the bucket size as the chart span divided by 180, clamped between one second and one hour: direct markets use a one-hour span (20-second buckets), while a series bracket uses its slot length as the span, so intervals up to three minutes clamp to the one-second minimum. It refetches whenever `reloadKey` changes, which the market page raises on every SSE-driven snapshot reload and on its five-second fallback poll, so the chart refreshes with every trade.
 
-`DayProbabilityChart` (UC-21) draws the per-slot first-outcome probability as a line and per-slot volume as a histogram, sorted by close time. Settled slots are pinned to their resolved value (1 or 0 for the first outcome) and voided slots are dropped from the line; volume bars are coloured differently for live slots. It redraws from the series detail payload each five-second reload.
+`DayProbabilityBars` (UC-21) renders the day-long probability view as a vertical list of horizontal bars, one row per bracket sorted by close time: the bracket's time window, a bar whose length is the slot's first-outcome probability, the percentage, and the traded volume when above zero. Slots show their actual implied probability, so an untraded series reads as a flat column of opening probabilities and settled slots are not pinned. It redraws from the series detail payload each five-second reload.
 
 ## Trading UI: `components/TradePanel.jsx`
 

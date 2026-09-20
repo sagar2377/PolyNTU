@@ -176,14 +176,16 @@ async function publishSignedMarket(cdp, title, closeEpochMs, password) {
     await evaluate(cdp, `__set('#market-key-password', ${JSON.stringify(password)})`);
   }
   await evaluate(cdp, `__submit('form.create-form')`);
-  await waitFor(cdp, `series page for ${title}`, `__bodyHas(${JSON.stringify(title)}) && __has('.market-facts')`, 30000);
+  await waitFor(cdp, `market page for ${title}`, `__bodyHas(${JSON.stringify(title)}) && __has('.market-facts')`, 30000);
 }
 
+// Opening a series means opening one of its brackets: every bracket page
+// carries the schedule, the day view, and the sibling bracket lists.
 async function openSeries(cdp, title) {
   await evaluate(cdp, `__clickText('button.wordmark', 'Poly')`);
   await waitFor(cdp, `series chip for ${title}`, `[...document.querySelectorAll('.series-chip strong')].some((s) => s.textContent === ${JSON.stringify(title)})`);
   await evaluate(cdp, `__clickText('.series-chip', ${JSON.stringify(title)})`);
-  await waitFor(cdp, `series facts for ${title}`, `__has('.market-facts')`);
+  await waitFor(cdp, `market page for ${title}`, `__bodyHas(${JSON.stringify(title)}) && __has('.market-facts')`, 30000);
 }
 
 async function main() {
@@ -232,8 +234,6 @@ async function main() {
   await register(cdp, "E2E Trader", traderEmail, "correct e2e password");
   log(7, `registered ${traderEmail}`);
   await openSeries(cdp, titles[0]);
-  await waitFor(cdp, "live bracket trade button", `[...document.querySelectorAll('.bracket-list button')].some((b) => b.textContent === 'Trade')`);
-  await evaluate(cdp, `__clickText('.bracket-list button', 'Trade')`);
   await waitFor(cdp, "trade panel", `__has('#quantity')`);
   await evaluate(cdp, `__submit('.trade-panel form')`);
   await waitFor(cdp, "quote preview", `__has('.quote-preview')`);
@@ -258,7 +258,7 @@ async function main() {
   const settled = series1After.instances.find((i) => i.state === "resolved");
   if (!settled) throw new Error("instance not resolved on the server");
   if (!series1After.day?.slots?.length) throw new Error("day view slots missing");
-  await waitFor(cdp, "day probability chart", `document.querySelectorAll('.chart-container canvas').length > 0`, 15000);
+  await waitFor(cdp, "day probability bars", `document.querySelectorAll('.day-bar-row').length > 0`, 15000);
   log(12, `settled on the server (${settled.result?.kind}); day view and chart render`);
 
   // Second market: clear the cached key to exercise both password prompts.
@@ -278,9 +278,9 @@ async function main() {
   log(14, "clock advanced again; cached key cleared");
   await openSeries(cdp, titles[1]);
   await waitFor(cdp, "awaiting resolution section", `__bodyHas('Awaiting resolution')`, 30000);
-  if (!(await evaluate(cdp, `__has('#series-key-password')`))) throw new Error("password prompt missing on the series page");
+  if (!(await evaluate(cdp, `__has('#key-password')`))) throw new Error("password prompt missing on the bracket page");
   if (await evaluate(cdp, `__has('.resolve-control select')`)) throw new Error("resolve control shown without a matching key");
-  await evaluate(cdp, `__set('#series-key-password', ${JSON.stringify(CREATOR_PASSWORD)})`);
+  await evaluate(cdp, `__set('#key-password', ${JSON.stringify(CREATOR_PASSWORD)})`);
   await evaluate(cdp, `__clickText('.resolve-control button', 'Derive signing key')`);
   await waitFor(cdp, "resolve control after derivation", `__has('.resolve-control select')`, 20000);
   await evaluate(cdp, `__clickText('.resolve-control button', 'Resolve')`);
