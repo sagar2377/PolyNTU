@@ -60,12 +60,12 @@ The executable contains the backend only. The Docker build compiles React separa
 | `backend/src/amm.rs` | Pure LMSR arithmetic, input bounds, funding calculation, prices, and rounded trade amounts. It has no database, clock, network, account, or RNG access. |
 | `backend/src/market.rs` | Outcomes, typed rules and observations, validation, evaluation, instance and series types, schedules, the resolution authority spec, and demo specifications. |
 | `backend/src/execution.rs` | Quote structures, signing claims, amount parsing, idempotency, transaction locking, execution checks, ledger movement, positions, trades, receipts, and trade outbox events. |
-| `backend/src/store.rs` | Pool setup, migrations, bootstrap, database time, account provisioning, instance and series creation/read models, rolling bracket spawn, portfolio and trade history queries, bucketed instance history and the series day view, transfers, audit/events, and reconciliation. |
+| `backend/src/store.rs` | Pool setup, migrations, bootstrap, database time, account provisioning, instance and series creation/read models, rolling bracket spawn, terminal-bracket retention purge, portfolio and trade history queries, bucketed instance history and the series day view, transfers, audit/events, and reconciliation. |
 | `backend/src/cache.rs` | Read-through instance and token caches with a local clock estimate; every mutation invalidates or writes through before returning. |
 | `backend/src/events.rs` | PostgreSQL notification listener, per-instance SSE broadcast channels, and demo clock refresh. |
 | `backend/src/resolution.rs` | Evidence validation/deduplication, creator-signed and resolver evidence recording, suspensions, due-market closing, finalization, bounded settlement, reserve release, and demo clock changes. |
 | `backend/src/resolver.rs` | The external resolver contract (ADR 0007): the fixed request, response parsing against the published options, and the bounded HTTPS call. |
-| `backend/src/worker.rs` | One-second scheduling loop, rolling series bracket spawn, fair actionable-instance selection, private deterministic simulator evidence, external resolver calls, concurrent bounded settlement, and demo seeding (including the rolling bus series). |
+| `backend/src/worker.rs` | One-second scheduling loop, rolling series bracket spawn, fair actionable-instance selection, private deterministic simulator evidence, external resolver calls, concurrent bounded settlement, terminal-bracket retention purge, and demo seeding (including the rolling bus series). |
 
 See [backend code reference](developer/backend.md) for important types and functions in each file.
 
@@ -113,7 +113,7 @@ It does not reserve inventory or write an idempotency row. The cache is safe bec
 One PostgreSQL transaction owns the entire trade. The actual ordering is:
 
 1. insert the account-scoped idempotency claim if absent, replaying any committed response on conflict;
-2. lock the instance row with `FOR UPDATE`, reading authoritative time in the same statement;
+2. lock the instance row with `FOR UPDATE`, then read the authoritative clock in a separate statement, so a request that waited on the lock rechecks its close time against a fresh clock;
 3. lock the participant and reserve account rows in sorted ID order using `FOR NO KEY UPDATE`, reading both balances and the current position in the same statement;
 4. recheck state, cutoff, quote expiry, version, signed amount, user limit, balance, holdings, and reserve coverage;
 5. insert a balanced transfer, whose trigger updates both account balances; and
@@ -148,7 +148,16 @@ open -> closed -> resolving -> resolved
 
 Migration `0002_immutable_rules.sql` rejects changes to published template/category/title/rule/outcomes/source/data mode/times/liquidity/reserve fields. It requires each instance update to advance its version exactly once, forbids inventory changes after closing, and prevents updates to terminal instances or fixed results. Migration `0009_market_series.sql` extends the protected set with the fee flag, creator attribution, series membership, and bracket slot, and applies the same immutability to series definitions, whose only mutable field is the lifecycle state. Migration `0010_resolution_authority.sql` adds the resolution authority, public key, and resolver endpoint to the protected series definition (ADR 0007).
 
-Ledger transfers, trades, evidence, settlement claims, and administrator audit records are append-only through database triggers. Idempotency rows are intentionally updated once with the durable response.
+Ledger transfers, trades, evidence, settlement claims, and administrator audit records are append-only through database triggers; the single sanctioned delete path is the bracket retention purge described below. Idempotency rows are intentionally updated once with the durable response.
+
+## Data retention
+
+One rule covers the current retention behaviour: terminal brackets of recurring series are disposable after a day, everything else stays.
+
+- Deleted: a recurring-series bracket in state `resolved` or `voided` whose evidence deadline passed more than 24 hours ago is purged with its whole subtree (outbox rows, positions, trades, settlement claims, evidence, and the instance) in batches of 20 per worker tick. One-time markets are never purged.
+- Kept forever: the append-only accounting history. Every ledger transfer is shared between two accounts, so drained reserve accounts and their ledger trails survive every purge; admin audit and idempotency rows survive too, since neither references instances by foreign key.
+- A reserve that still holds units blocks the purge, so a settlement anomaly surfaces instead of vanishing.
+- The only delete path through the append-only triggers is this purge, which runs inside a transaction setting the session-local `polyntu.purge = 'on'` flag (migration `0011_bracket_retention.sql`); every other update or delete keeps raising.
 
 ## Worker scheduling and fairness
 
@@ -159,8 +168,9 @@ The worker ticks every second and skips accumulated timer ticks. Each cycle:
 3. selects up to 100 actionable instances rather than simply the oldest closed rows;
 4. generates evidence for due simulated instances using a hash of a private database secret and instance ID;
 5. asks resolver-authority instances' configured endpoints from their finalize window (ADR 0007): a valid answer is recorded as resolver evidence, while pending, malformed, and unreachable sources retry on later ticks until the published deadline voids the instance;
-6. settles independent instances concurrently in bounded chunks of eight, logging an error without ending the worker; and
-7. seeds the rolling demo bus series once and ensures one future demo occurrence exists for each recurring demo template and one election occurrence overall.
+6. settles independent instances concurrently in bounded chunks of eight, logging an error without ending the worker;
+7. purges terminal recurring brackets past the retention window in batches of 20, logging an error without ending the worker; and
+8. seeds the rolling demo bus series once and ensures one future demo occurrence exists for each recurring demo template and one election occurrence overall.
 
 The actionable query prevents many markets waiting for evidence from starving a later market that is ready to resolve; it also admits resolver-authority instances from their finalize window so the worker can ask their external source. Each instance still settles serially under its row lock; concurrency is across instances only.
 
@@ -168,7 +178,7 @@ The actionable query prevents many markets waiting for evidence from starving a 
 
 State-changing instance transactions append an `outbox` row and issue a `pg_notify` on the same channel in the same statement, so the notification is delivered exactly when the transaction commits. A dedicated listener connection in each process receives these notifications and fans them out to connected SSE subscribers through per-instance broadcast channels. Each stream first replays the durable outbox by global sequence ID — accepting `Last-Event-ID` or `?after=` for resumption — and re-checks it on a slow interval, so a lost or lagged notification delays an event but never drops it. The UI treats an event as a signal to refetch the current snapshot; it also polls periodically.
 
-Events may be delivered more than once and are not a replacement for snapshots. Retention and compaction are not implemented, so operators must monitor outbox growth before public deployment.
+Events may be delivered more than once and are not a replacement for snapshots. Outbox rows are deleted only by the bracket retention purge; no general compaction exists, so operators must still monitor outbox growth from one-time markets before public deployment.
 
 ## Concurrency and multicore use
 

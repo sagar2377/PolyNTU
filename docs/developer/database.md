@@ -16,6 +16,7 @@ PostgreSQL stores all active v2 state. SQLx embeds and applies the numbered migr
 | `0008_admin_role.sql` | Extend the role check with the `admin` role. |
 | `0009_market_series.sql` | Add the `market_series` table, the instance series/bracket/fee columns, the `protect_series` trigger, and the extended `protect_instance`. |
 | `0010_resolution_authority.sql` | Fix the resolution authority at series creation: the `admin` default, the creator's ed25519 public key, or the external resolver endpoint, all immutable ([ADR 0007](../decisions/0007-resolution-authority.md)). |
+| `0011_bracket_retention.sql` | Bracket retention: recreate `immutable_record` so deletes pass only inside a purge transaction setting `polyntu.purge = 'on'`, make the circular `instances_evidence_id_fkey` deferrable, and add the partial `instances_purge` index. |
 
 Never edit an applied migration. Add a numbered migration and verify both fresh creation and upgrade.
 
@@ -226,11 +227,23 @@ Primary key `(instance_id, account_id)` guarantees one final credit per account/
 
 `BIGSERIAL id` is the resumable event cursor. Each row carries instance ID, resulting instance version, event type, and time. The index `(instance_id,id)` supports SSE polling.
 
-Outbox records are durable but not immutable by trigger, and no retention/compaction job exists. Application code only inserts. Treat manual updates/deletes as unsupported until a documented retention policy exists.
+Outbox records are durable but not immutable by trigger. Application code only inserts, with one exception: the bracket retention purge deletes the outbox rows of purged recurring brackets together with the rest of their subtree. No general retention or compaction exists for other rows, so treat manual updates/deletes as unsupported.
 
 ### `admin_audit`
 
-Append-only record with generated ID, action, optional instance ID, JSON detail, and time. It covers instance/resolution/clock operations described in the security guide, but not every administrator endpoint.
+Append-only record with generated ID, action, optional instance ID, JSON detail, and time. It covers instance/resolution/clock operations described in the security guide, but not every administrator endpoint. Audit rows survive the bracket retention purge because `instance_id` is a logical reference, not a foreign key.
+
+## Bracket retention
+
+Recurring series accumulate hundreds of settled brackets per day, so terminal brackets (state `resolved` or `voided`) of recurring series whose evidence deadline passed more than 24 hours ago are purged by `Store::purge_expired_brackets` in batches of 20 per worker tick. One-time markets are never purged.
+
+The purge deletes each bracket's whole subtree in one transaction: outbox rows, positions, trades, settlement claims, evidence, and the instance row. The append-only accounting history is untouched, because every ledger transfer is shared between two accounts: the drained reserve account and its ledger trail remain forever, as do admin audit and idempotency rows, neither of which references instances by foreign key. A reserve that still holds units blocks the purge (the candidate query requires a zero balance), so a settlement anomaly surfaces instead of vanishing.
+
+Migration 0011 provides the schema side:
+
+- `immutable_record()` is recreated so a delete passes only inside a transaction that sets the session-local flag `polyntu.purge = 'on'`; every other update and delete of the protected tables keeps raising `Audit records are append-only`. The purge transaction also defers constraints; both settings revert at commit.
+- `instances.evidence_id` and `evidence.instance_id` reference each other, so the circular `instances_evidence_id_fkey` becomes `DEFERRABLE INITIALLY IMMEDIATE`, letting both tables be deleted in one transaction without changing any other check.
+- The partial index `instances_purge` on `instances(evidence_deadline_ms) WHERE state IN ('resolved','voided')` covers the purge scan.
 
 ## Reserve reconciliation query
 

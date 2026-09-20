@@ -50,7 +50,7 @@ Security properties and limits:
 - possession grants full account access;
 - there is no campus SSO, MFA, or password reset/recovery;
 - display names are not unique identities; and
-- sign-out deletes browser storage but does not itself invalidate the token; logging in again rotates it, and only registered accounts can log in (a demo account's token is its only credential).
+- sign-out deletes browser storage but does not itself invalidate the token; logging in again rotates it, and only registered accounts can log in. The browser sign-in paths are registration, email/password login, and demo account creation; with the access-token paste path removed, a signed-out demo account cannot return, so its token must be preserved or a new account created.
 
 Do not deploy account tokens or passwords through email, logs, screenshots, or public issue reports.
 
@@ -96,6 +96,8 @@ CORS is not authentication and does not protect non-browser clients. The reposit
 
 PostgreSQL constraints and triggers enforce nonnegative non-issuance balances, bounded inventories, valid lifecycle transitions, immutable published fields/results, append-only ledger/trade/evidence/claim/audit records, unique trades per version, and unique claims/idempotency/event identities.
 
+The single sanctioned delete path through the append-only triggers is the bracket retention purge (migration 0011): it runs only inside a transaction that sets the session-local `polyntu.purge = 'on'` flag, is restricted to terminal recurring brackets past their retention window, and cannot touch the ledger or the administrator audit trail, which survive every purge. Every other update or delete keeps raising.
+
 Application processes currently use one database URL rather than separate least-privilege migration/runtime roles. The portable Windows cluster uses trust authentication on loopback. Production should use password/certificate authentication, encrypted transport as appropriate, restricted network access, separate backup credentials, and least-privilege roles.
 
 ## Evidence privacy
@@ -130,7 +132,7 @@ React escapes normal text interpolation, including titles, evidence JSON, and er
 | Duplicate uncertain trade | Account-scoped body-hash idempotency | Rows have no retention policy |
 | Spend twice concurrently | Account locks and nonnegative DB constraint | Production contention not fully saturated |
 | Trade after close | Database time rechecked under instance lock | Clock depends on database/operator integrity |
-| Rewrite result/evidence | Immutable triggers and append-only revisions | Shared admin token controls ingestion |
+| Rewrite result/evidence | Immutable triggers and append-only revisions; the only delete path is the guarded purge | Shared admin token controls ingestion |
 | Double settlement | Unique claim key and transactional batches | Operational monitoring is manual |
 | Infer future demo outcome | Private persisted seed plus instance ID | Database readers can access the secret |
 | Leak attendee data | Aggregate evidence contract and documentation | No automatic reference redaction |
@@ -151,7 +153,7 @@ Tracing records request/service errors. Internal/database error strings are logg
 Before changing from local/institutional evaluation to a public service:
 
 1. define legal/product approval for the market categories and simulated-unit use;
-2. implement campus SSO/session recovery and a reviewed custody story for creator resolution keys, since browser local storage is demo-grade;
+2. implement campus SSO and password recovery, and review whether password-derived resolution keys need a stronger custody story than the account password;
 3. introduce secret storage and tested rotation procedures;
 4. restrict database roles/network and enable tested backups;
 5. add TLS, proxy/security headers, CSP, and rate limits;

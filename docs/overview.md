@@ -36,7 +36,7 @@ The same pricing, ledger, quote, execution, and settlement infrastructure suppor
 
 ## User journey
 
-1. A participant registers with an NTU email and password, creates a demo account, or receives an administrator-provisioned account token.
+1. A participant registers with an NTU email and password, logs in with them, or creates a one-click demo account in demo mode; administrator-provisioned token accounts exist only through the API.
 2. The browser lists persisted market instances and their current outcome probabilities.
 3. The participant selects an outcome, buy or sell, and a share quantity.
 4. The backend calculates a signed quote, including the trading fee, without changing market state.
@@ -116,8 +116,9 @@ Every use case in the model is marked existing. The one deferred item is the rea
 - The shared administrator token carries no per-action identity; administrators resolve only platform-authority markets, and the seeded demo administrator (`admin@ntu.edu.sg`, password `admin`) exists only in demo-mode databases.
 - No request-rate limiting or public deployment hardening.
 - No live provider adapters or independent verification of manual observations; the real bus timing adapter remains deferred, and resolver-based resolution trusts the configured endpoint.
-- No outbox retention or compaction.
+- No outbox retention or compaction beyond the bracket purge.
+- Settled brackets of recurring series are purged 24 hours after their evidence deadline, together with their trades, positions, evidence, and settlement credits, so old recurring-series data does not pile up; one-time markets and the append-only ledger and audit history are kept forever.
 - No resting orders, short selling, leverage, real-money payments, or budget-to-share inversion.
-- No visual-browser verification was performed by the development agent because project instructions prohibit browser automation.
+- A scripted headless-browser end-to-end test drives the real UI in CI; interactive browser control stays prohibited, so visual layout, keyboard focus, and aesthetics still rely on human review.
 
 For implementation details, continue with the [developer guide](developer-guide.md).

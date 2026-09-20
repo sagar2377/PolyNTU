@@ -273,7 +273,7 @@ Validation includes:
 - recurring: `interval_ms` between 1 minute and 1 day, `max_concurrency` between 1 and 50, and an active window in minutes of day (start 0–1438, end 1–1439, start before end) interpreted in Singapore time; `end_ms` is optional and must leave room for at least one more slot, and its absence means perpetual; and
 - once: the same future time ordering as an instance (`close <= observation start < observation end <= finalize < deadline`, within one year).
 
-A one-time series publishes its single instance immediately; if the bracket cannot be funded, the series row is removed again so nothing half-published remains. Recurring brackets close and observe their slot `[T, T+interval)`, finalize one second after the observation end, and carry an evidence deadline 60 seconds after it. The response is the series view below.
+A one-time series publishes its single instance immediately; if the bracket cannot be funded, the series row is removed again so nothing half-published remains. Recurring brackets close and observe their slot `[T, T+interval)`, finalize one second after the observation end, and carry an evidence deadline 60 seconds after it. Each spawned recurring bracket's title is `{series title} · HH:MM to HH:MM` (Singapore time, the bracket's `[T, T+interval)` window), truncated on a character boundary to fit the 240-character instance bound; a one-time series' instance keeps the creator's title unchanged. The response is the series view below.
 
 `GET /api/v2/series` returns up to 100 rows ordered active series first, then newest. Each row contains `id`, `creator_account_id`, `title`, `category`, `state`, `recurrence`, `interval_ms`, `max_concurrency`, `fee_charged`, `end_ms`, and `created_ms`.
 
@@ -293,7 +293,7 @@ Instance list and detail endpoints share the following core fields:
 | `id` | Instance UUID. |
 | `template_id` | Stable grouping/scheduling key. |
 | `category` | `weather`, `bus`, `elections`, `queue_crowd`, or `attendance`. |
-| `title` | Published human-readable question title. |
+| `title` | Published human-readable question title; a spawned recurring-series bracket carries its time window (see [Market series](#market-series)). |
 | `resolution_criterion` | Published explanation of how the result is chosen. |
 | `rule` | Typed immutable rule JSON. |
 | `source_id` | Required evidence source identifier. |
@@ -470,6 +470,16 @@ The same `limit` and `offset` are applied independently to the positions query a
 ### `GET /api/v2/me/trades?limit=100&offset=0`
 
 Returns private trades ordered newest first. Each entry contains trade/instance IDs, title, outcome label, side, quantity, amount string, and creation time. This endpoint has pagination independent from the portfolio request.
+
+## Bracket retention
+
+Terminal brackets (`resolved` or `voided`) of recurring series whose evidence deadline passed more than 24 hours ago are purged by the worker in batches, together with their trades, positions, evidence, settlement claims, and outbox events. One-time markets are kept indefinitely.
+
+Client-visible effects:
+
+- instance detail, history, and events for a purged bracket return 404 `not_found`;
+- purged brackets disappear from the series bracket list and the computed day view; the series row itself remains; and
+- positions, settlement credits, and trades of purged brackets disappear from the portfolio and trade history, while balances keep the settled units: the append-only ledger trail survives every purge.
 
 ## Creator verification
 

@@ -145,7 +145,7 @@ After waiting for locks, execution rechecks:
 8. buyer balance covers the all-in debit or seller holdings cover the quantity; and
 9. resulting reserve balance covers maximum inventory liability.
 
-Checking time after locking prevents a request queued before close from executing after close.
+Checking time after locking prevents a request queued before close from executing after close. The clock is read in its own statement once the instance lock is held: a statement takes its snapshot when it starts, so combining the lock and the clock read would let a request that waited on the lock wake with the time from before its wait.
 
 ## Atomic writes
 

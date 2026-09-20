@@ -37,3 +37,5 @@ These were rejected for the active rebuild. The original analysis remains in the
 - `backend/src/lib.rs` contains `#![forbid(unsafe_code)]`.
 - `.github/workflows/verify.yml` installs Rust 1.88 and runs locked tests/clippy.
 - [Verification](../verification.md) records the measured results and limitations.
+
+Superseded in part: [ADR 0008](0008-latest-toolchain-and-dependencies.md) replaces the Rust 1.88 and SQLx 0.8.6 pins with the latest stable toolchain and latest registry dependencies. The rest of this decision stands.

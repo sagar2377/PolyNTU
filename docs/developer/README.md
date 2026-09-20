@@ -14,9 +14,8 @@ Start with the repository-level [developer guide](../developer-guide.md), then u
 | [Frontend](frontend.md) | React pages, client state, browser persistence, polling, and receipt recovery |
 | [Security and privacy](security-and-privacy.md) | Trust boundaries, authentication, authorization, sensitive data, and deployment gaps |
 | [Operations](operations.md) | Process model, scheduler, observability, reconciliation, backup, and incident checks |
-| [Testing and verification](testing-and-verification.md) | Test inventory, invariant coverage, fixture generation, benchmarks, and reproduction commands |
-| [Code traceability](code-traceability.md) | Human-review matrix from product behaviour to source, schema, tests, and documentation |
-| [Use case model](use-cases.md) | Actors, use case register, business rules, and detailed flows for the planned platform |
+| [Verification and traceability](../verification.md) | Repository-level test inventory, workloads, evidence record, reproduction commands, and the requirements-to-code matrix |
+| [Use case model](use-cases.md) | Actors, use case register, business rules, and detailed flows for every registered use case |
 | [Glossary](glossary.md) | Domain, pricing, accounting, evidence, and lifecycle terms |
 
-These documents describe the working tree audited on 9 September 2026. The [documentation register](../README.md) explains authority, maintenance, and the uncommitted-baseline caveat. The [use case model](use-cases.md) is the exception to the working-tree rule: it describes the planned platform and marks each use case as existing, partial, or new.
+These documents describe the working tree audited on 9 September 2026. The [documentation register](../README.md) explains authority, maintenance, and the uncommitted-baseline caveat. The [use case model](use-cases.md) describes the implemented platform: every registered use case is marked existing and carries a detailed flow.

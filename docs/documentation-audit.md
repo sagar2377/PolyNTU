@@ -72,11 +72,11 @@ The [documentation register](README.md) assigns one primary maintained explanati
 | Frontend | [Frontend reference](developer/frontend.md) | Pages, API helpers, state, polling/SSE, local storage, and uncertain-trade recovery documented. |
 | Security and privacy | [Security reference](developer/security-and-privacy.md) | Trust, tokens, signed quotes, public evidence, current controls, threats, and production gaps documented. |
 | Operations | [Operations reference](developer/operations.md) | Startup, health limits, incidents, reconciliation, settlement, backup/restore, secret loss, and safe deployment documented. |
-| Tests and measurements | [Verification record](verification.md) and [testing reference](developer/testing-and-verification.md) | Test inventory, raw reports, environment, boundaries, and unestablished claims documented. |
+| Tests and measurements | [Verification record](verification.md) | Test inventory, raw reports, environment, boundaries, reproduction commands, and unestablished claims documented. |
 | Extension process | [Adding a market type](adding-a-market-type.md) | Domain, schema, UI, evidence, privacy, tests, operations, and documentation checklist provided. |
 | Migration and history | [Migration policy](migration.md) | Python archive, database preservation, cutover, continuity, and forward recovery documented. |
 | Architectural rationale | [Decision records](decisions/README.md) | Rust, LMSR/accounting, and evidence/settlement decisions indexed with status. |
-| Human verification | [Traceability matrix](developer/code-traceability.md) | Requirements mapped to implementation, database enforcement, tests, and known gaps. |
+| Human verification | [Verification record](verification.md) | Requirements mapped to implementation, database enforcement, tests, and known gaps. |
 
 ## External-data treatment
 

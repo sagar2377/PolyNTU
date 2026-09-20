@@ -6,7 +6,7 @@ Status: **current contributor setup**
 
 | Dependency | Required/verified version | Purpose |
 |---|---|---|
-| Rust and Cargo | 1.88 or newer | Backend build, tests, clippy, formatting, benchmark |
+| Rust and Cargo | 1.94 or newer (sqlx 0.9 requires at least 1.94) | Backend build, tests, clippy, formatting, benchmark |
 | Native C/C++ build tools | Platform-compatible | Link dependencies on Windows and other platforms |
 | PostgreSQL | 17 verified | Durable application and integration-test database |
 | Node.js | 22 or newer; 25.7 used in the retained local run | React build, lint, and HTTP workloads |
@@ -126,7 +126,7 @@ npm run lint
 npm run build
 ```
 
-The project instructions prohibit browser/computer automation. A human may open the local URL for visual review. Source inspection, builds, unit/integration tests, and HTTP checks remain the automated verification path.
+The project instructions prohibit interactive browser/computer control; scripted headless-browser tests over the Chrome DevTools protocol are the permitted exception, and the browser end-to-end test (`scripts/browser-e2e.mjs`) runs in CI. A human may still open the local URL for visual review, which remains the path for layout, keyboard focus, and aesthetics.
 
 ## Fixture regeneration
 
@@ -162,7 +162,7 @@ When implementation behaviour changes:
 
 1. update the canonical topic document and API/schema examples;
 2. update the relevant ADR if an accepted decision changed;
-3. update tests and the [traceability matrix](developer/code-traceability.md);
+3. update tests and the [traceability matrix](verification.md);
 4. add an entry to [changes](changes.md);
 5. run internal link checks and the relevant build/test commands; and
 6. record the commit and verification date in the documentation index.

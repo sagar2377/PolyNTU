@@ -55,7 +55,7 @@ Probabilities and average prices are display `Number` values supplied by the bac
 
 ### State
 
-`App` tracks server configuration, authenticated account, current view, selected instance, refresh counter, global error, registration/login form inputs, demo account name and access-token inputs, administrator token input, the current verification request, and a shared busy flag.
+`App` tracks server configuration, authenticated account, current view, selected instance, refresh counter, global error, registration/login form inputs, the active sign-in panel view, demo account name and administrator token inputs, the current verification request, and a shared busy flag.
 
 Views are string-selected rather than URL-routed:
 
@@ -69,7 +69,9 @@ Refreshing the browser does not preserve the selected view/market, but the accou
 
 ### Account entry panel
 
-Before authentication, the entry panel leads with the NTU registration form (display name, NTU email, password of at least 12 characters, validated client-side to the server's rules). A collapsible email and password login form follows. In demo mode, further disclosures add the one-click demo participant and a sign-in button for the seeded administrator (`admin@ntu.edu.sg`); the access-token paste flow remains the last disclosure. Once authenticated, the header account chip shows the display name, the role when present, and the available units.
+Before authentication, the header's top right shows two toggle buttons, Create account and Log in. Either opens a compact sign-in panel as the first panel of the page, holding one form at a time: the NTU registration form (display name, NTU email, password of at least 12 characters, validated client-side to the server's rules) or the email and password login form. Clicking the active toggle button again closes the panel, and a successful sign-in closes it too; the header then shows the account chip with the display name, the role when present, and the available units. In demo mode the panel also carries a Demo accounts disclosure with the one-click demo participant (1,000 units) and a sign-in button for the seeded administrator (`admin@ntu.edu.sg`).
+
+There is no access-token sign-in: the paste path and the Copy account token button are gone. Registered accounts simply log in again after signing out; a demo account has no credentials, so it cannot sign back in, and the account-settings disclosure advises creating a new one instead.
 
 ### Creator verification panel
 
@@ -79,7 +81,7 @@ Members (`account.role === "member"`) see a verification panel with three states
 
 An effect requests configuration and, when a token exists, `/me`. It repeats every five seconds and reruns after the refresh counter changes. Cleanup marks the effect cancelled and clears its timer so stale promises cannot update state.
 
-Registration, login, demo account creation, and token sign-in all store the returned token and account; token sign-in verifies `/me` first. After a successful registration or login, `App` also derives the account's resolution keypair from the submitted password and caches it under `polyntu.v2.signing-key` (best effort: a failure just means the password is asked for where the key is needed). A 401 from the polled `/me`, meaning the token was rotated out by a login elsewhere, clears the stored session and account instead of erroring on every poll. Sign-out deletes the account token and clears the verification state; a pending trade is intentionally preserved so it cannot be silently lost.
+Registration, login, and demo account creation all store the returned token and account. After a successful registration or login, `App` also derives the account's resolution keypair from the submitted password and caches it under `polyntu.v2.signing-key` (best effort: a failure just means the password is asked for where the key is needed). A 401 from the polled `/me`, meaning the token was rotated out by a login elsewhere, clears the stored session and account instead of erroring on every poll. Sign-out deletes the account token and clears the verification state; a pending trade is intentionally preserved so it cannot be silently lost.
 
 ### Pending trade notice
 
@@ -209,7 +211,7 @@ Next is disabled only when all three returned lists contain fewer than 100 entri
 
 `App.css` provides responsive grids, semantic focus-visible outlines, muted/status/error colours, horizontal table overflow, a screen-reader-only utility, and a single-column layout below 760 px.
 
-Implemented semantic aids include navigation labels, form labels, fieldsets/legends, `aria-pressed`, alert/status roles, and keyboard-focus outlines. Visual contrast, screen-reader flow, zoom, mobile interaction, and browser compatibility still require human review; project instructions prohibit automated browser control.
+Implemented semantic aids include navigation labels, form labels, fieldsets/legends, `aria-pressed`, alert/status roles, and keyboard-focus outlines. Visual contrast, screen-reader flow, zoom, mobile interaction, and browser compatibility still require human review; project instructions prohibit interactive browser control, with scripted headless-browser tests over the Chrome DevTools protocol as the permitted exception (see [verification](../verification.md)).
 
 ## Security limitations
 

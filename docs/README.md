@@ -20,7 +20,7 @@ This index separates concise project documentation from the detailed material in
 | [`architecture.md`](architecture.md) | Component boundaries and transaction model | Developers | Current | Backend maintainer |
 | [`api.md`](api.md) | External HTTP contract | Frontend/backend developers | Current | Backend maintainer |
 | [`development.md`](development.md) | Setup, configuration, and local commands | Contributors | Current | Project maintainer |
-| [`verification.md`](verification.md) | Test and performance evidence | Reviewers and developers | Current evidence record | Verification owner |
+| [`verification.md`](verification.md) | Test, performance, and traceability evidence | Reviewers and developers | Current evidence record | Verification owner |
 | [`adding-a-market-type.md`](adding-a-market-type.md) | Extending rules and observations | Backend developers | Current | Backend maintainer |
 | [`migration.md`](migration.md) | v1 archive and v2 cutover policy | Maintainers | Current | Project maintainer |
 | [`changes.md`](changes.md) | User-facing implementation changes | Everyone | Current | Project maintainer |

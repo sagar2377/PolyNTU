@@ -1,6 +1,6 @@
 # PolyNTU use case model
 
-This is the use case model of the PolyNTU platform: the actors, the complete register of use cases, the business rules behind them, and detailed flows for the most significant cases. The register marks each case as existing, partial, or new:
+This is the use case model of the PolyNTU platform: the actors, the complete register of use cases, the business rules behind them, and detailed flows for every registered use case. The register marks each case as existing, partial, or new:
 
 - **exists**: implemented and working in the current build;
 - **partial**: a smaller or earlier version works in the current build;
@@ -59,7 +59,7 @@ Notes:
 
 - Visitor is the unauthenticated role that UC-1 turns into a Trader.
 - UC-3: the 10,000-unit gift applies to registered accounts; the one-click demo account keeps its 1,000-unit grant as a development fixture.
-- UC-20 exists today, including its creator self-trading ban alternative flow (see the detailed description).
+- UC-20 includes its creator self-trading ban alternative flow (see the detailed description).
 - The diagram also shows four relationship use cases that this register does not number: Validate the response against the options (included by UC-13), Verify the ed25519 signature (included by UC-14), Charge the 25 bps trading fee (included by UC-20), and Reject the creator's own trades (extends UC-20).
 
 ## Business rules
@@ -67,16 +67,17 @@ Notes:
 1. Accounts require an NTU email (existing; [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)). The address must match `^[^@\s]+@([a-z0-9-]+\.)*ntu\.edu\.sg$` (case-insensitive), so `billy@ntu.edu.sg` and `billy@scse.ntu.edu.sg` pass and anything else is rejected.
 2. Registered accounts receive a 10,000-unit welcome gift from the treasury; the demo account keeps its 1,000-unit grant (existing; ADR 0005). Total issuance rises from 1M to 1B units, applied as a second idempotent bootstrap transfer rather than a migration, so the gift budget is not exhausted after 100 users.
 3. Every trade on a fee-charging market pays a 25-basis-point fee on the LMSR amount, included in the quoted all-in amount, accumulated in the market reserve, and split 50/50 between the creator and the treasury at settlement (existing; [ADR 0004](../decisions/0004-trade-fees.md)). The fee is a market attribute fixed at creation (`fee_charged`, default true): the administrator sets it creating instances directly and creators set it publishing a series. A fee-free market charges nothing, collects no fee, and pays no creator share; bus timing is the welfare example.
-4. Creators cannot trade in their own markets; the fee share is their compensation (existing).
-5. A perpetual market is a recurring market with no end date: it recurs forever with automatically refreshing resolution times (existing).
-6. Rolling spawn: a new bracket instance is created every interval while the live count is below the maximum concurrency; the covered horizon is maximum concurrency × interval.
-7. Recurrence only spawns brackets inside the creator-set active period, a daily window interpreted in Singapore time. A bus series, for example, runs 06:00 to 23:59 because buses do not run at midnight (existing).
-8. Market reserves remain treasury-funded; creators contribute definitions and earn through the fee share, not through deposits (existing).
+4. Creators cannot trade in their own markets; the fee share is their compensation.
+5. A perpetual market is a recurring market with no end date: it recurs forever with automatically refreshing resolution times.
+6. Rolling spawn: a new bracket instance is created every interval while the live count is below the maximum concurrency; the covered horizon is maximum concurrency × interval. Each spawned bracket's title carries its time window (`{series title} · HH:MM to HH:MM` in Singapore time), so brackets of one series stay distinguishable; a one-time market keeps the creator's title unchanged.
+7. Recurrence only spawns brackets inside the creator-set active period, a daily window interpreted in Singapore time. A bus series, for example, runs 06:00 to 23:59 because buses do not run at midnight.
+8. Market reserves remain treasury-funded; creators contribute definitions and earn through the fee share, not through deposits.
 9. The resolution authority is fixed at market creation: the platform administrator (the default), the market creator (human), or a configured external resolver endpoint (automatic) (existing; [ADR 0007](../decisions/0007-resolution-authority.md)).
 10. Human resolution requires a valid ed25519 signature from the key fixed at creation. The signing key is derived from the creator's account password (ADR 0007 amendment), so holding the password is holding the key and any browser where the creator signs in can resolve; a lost password means the market voids by the published policy, since no password recovery exists (existing; ADR 0007).
 11. The administrator cannot resolve markets whose authority is fixed to their creator or an external resolver, by design (existing; ADR 0007).
 12. Automatic resolution that stays unreachable, malformed, pending, or names an unpublished option through the published evidence deadline voids the market (existing; ADR 0007).
-13. A market offers 2 to 8 direct outcomes (existing).
+13. A market offers 2 to 8 direct outcomes.
+14. Terminal brackets of a recurring series are purged 24 hours after their evidence deadline, together with their trades, positions, evidence, and settlement claims; one-time markets are kept indefinitely. The append-only ledger trail and audit history survive every purge, and balances keep settled units after the corresponding credits vanish from the portfolio history.
 
 ## Domain entities
 
@@ -94,7 +95,7 @@ Notes:
 
 ## Detailed descriptions
 
-Full descriptions of the twelve most significant use cases, in ID order. A step marked "(existing)" or "(new)" appears only where one flow mixes both.
+Full descriptions of all twenty-four use cases, in ID order.
 
 ### UC-1: Create an account with an NTU email
 
@@ -131,6 +132,55 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 - Unknown email or wrong password: the server returns the same generic rejection for both, so accounts cannot be enumerated.
 - Repeated failures: the current build has no rate limiting; rate limiting is deferred.
 
+### UC-3: Receive the 10,000-unit welcome gift
+
+**Precondition:** the visitor has submitted a valid registration (UC-1).
+
+**Flow of events:**
+
+1. The server inserts the new member account.
+2. In the same transaction it locks the treasury and the new account and checks that the treasury balance covers the gift.
+3. The treasury transfers the 10,000-unit welcome gift to the account as a `grant` ledger transfer with the fixed reference `grant:{account id}`.
+4. The registration response returns the funded balance, and the gift stays visible in the ledger trail of both accounts.
+
+**Alternative flows:**
+
+- The treasury balance is below the gift: registration is rejected with a conflict and no account remains.
+- Demo and administrator-provisioned accounts receive the smaller 1,000-unit grant instead (UC-23); only registered accounts receive the welcome gift.
+
+### UC-4: View portfolio, trades, and pending receipts
+
+**Precondition:** an authenticated account.
+
+**Flow of events:**
+
+1. The trader opens the portfolio page; the browser requests the portfolio and the private trade history together and refreshes both every five seconds.
+2. The portfolio returns the account with its available balance, every positive position (market, outcome, share count, current state or result, and whether it was redeemed), and one settlement credit per settled market.
+3. The trade history lists the account's own trades newest first: market and outcome, side, shares, all-in amount, and time.
+4. When a trade response was interrupted, the browser has kept the exact request body and idempotency key; the app shows a pending-trade notice with a Resume trade control, and the retry either executes it once or retrieves the committed receipt.
+
+**Alternative flows:**
+
+- The saved pending trade belongs to another account: the app explains that the account must sign in to retrieve its receipt.
+- One offset paginates positions, credits, and trades together, so a page can be sparse in one list and full in another; Next is disabled only when all three lists return fewer than 100 rows.
+- A settled recurring bracket past the retention window: its positions and credits disappear from the lists while the balance keeps the units (business rule 14).
+
+### UC-5: Browse and search markets
+
+**Precondition:** none; discovery is public.
+
+**Flow of events:**
+
+1. The trader opens the markets page; the browser loads up to 100 instances and refreshes them every ten seconds.
+2. A strip of chips above the grid lists every active series with its rolling cadence and live count (or One-time) plus a no-fee marker; a chip opens the series page.
+3. Category buttons narrow the search to one category; the filter applies client-side to the current page and also filters the series strip.
+4. Each card shows the category, effective state, up to three outcomes with their current probabilities, the data-mode label, and the Singapore close time; a card opens the market page.
+
+**Alternative flows:**
+
+- No market on the current page matches the category: an empty-state message appears; the filter does not fetch further pages.
+- Fewer than 100 rows arrive: Next is disabled, because the server returns no total count.
+
 ### UC-6: Request creator verification
 
 **Precondition:** an authenticated member account.
@@ -140,7 +190,7 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 1. The member submits a verification request.
 2. The server stores the request as pending.
 3. The request becomes visible to the administrator.
-4. Once approved through UC-7, the account holds the creator role permanently without re-verifying (creating markets as a creator is UC-8, which now exists).
+4. Once approved through UC-7, the account holds the creator role permanently without re-verifying (creating markets as a creator is UC-8).
 
 **Alternative flows:**
 
@@ -156,7 +206,7 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 1. The administrator reviews the pending request.
 2. The administrator approves it.
 3. The account role becomes creator, permanently, and the decision is recorded in the administrator audit.
-4. The requester is notified and keeps the creator role without re-verifying (creating markets as a creator is UC-8, which now exists).
+4. The requester is notified and keeps the creator role without re-verifying (creating markets as a creator is UC-8).
 
 **Alternative flows:**
 
@@ -188,7 +238,7 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 
 **Flow of events:**
 
-1. The creator submits what UC-8 requires plus a recurrence rule: an interval (1 minute to 1 day), an active period (a daily operating window in Singapore time), a maximum concurrency (1 to 50), and an optional end date whose absence means perpetual. The fee choice applies to every bracket.
+1. The creator submits what UC-8 requires plus a recurrence rule: an interval (1 minute to 1 day), an active period (a daily operating window in Singapore time), a maximum concurrency (1 to 50), and an optional end date whose absence means perpetual. The fee choice applies to every bracket, and every spawned bracket's title carries its time window (business rule 6).
 2. The server validates the submission.
 3. The series is published immutably.
 4. The scheduler begins rolling spawn (UC-12), and the series page shows the schedule and its brackets.
@@ -200,6 +250,39 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 - Empty or inverted active period: rejected.
 - End date too close to leave room for one more slot: rejected.
 
+### UC-10: Configure automatic resolution
+
+**Precondition:** an authenticated creator is publishing a series (UC-8 or UC-9).
+
+**Flow of events:**
+
+1. The creator chooses the external API as the resolution authority and supplies the endpoint URL.
+2. The create form states the contract: PolyNTU posts the instance identifier, the bracket and observation window, and the rule; the endpoint must answer with exactly one published outcome identifier or pending.
+3. The server validates the endpoint (https, plain http on loopback only for local adapters) and fixes it at publication as part of the immutable series definition.
+4. From each bracket's finalize window the settlement worker calls the endpoint (UC-13); a valid answer settles, and pending, malformed, or unreachable answers retry every tick until the published deadline.
+
+**Alternative flows:**
+
+- Insecure endpoint (plain http off loopback): rejected at publication.
+- No valid answer by the evidence deadline: the bracket voids (UC-17).
+
+### UC-11: Declare human, creator-only resolution
+
+**Precondition:** an authenticated creator with a registered email account is publishing a series.
+
+**Flow of events:**
+
+1. The creator chooses their own signature as the resolution authority.
+2. The browser uses the cached signing keypair derived from the account password, or asks for the password once and derives the keypair in-browser; the password never leaves the browser.
+3. Only the public key is published with the series, fixed at creation as part of the immutable definition, and the derived keypair is cached for later resolutions.
+4. The administrator is excluded from resolving this series by design (business rule 11); each closed bracket is later resolved by the creator's signature (UC-14).
+
+**Alternative flows:**
+
+- The cached key is missing: the form asks for the password, derives the keypair in-browser, and caches it after publication.
+- The account has no email, for example a demo account: publishing a signed market is refused.
+- The password is lost: the key cannot be re-derived and the affected markets void at their deadlines, because no password recovery exists.
+
 ### UC-12: Spawn the next bracket on a rolling schedule
 
 **Precondition:** an active recurring series exists; the actor is the Scheduler.
@@ -208,8 +291,8 @@ Full descriptions of the twelve most significant use cases, in ID order. A step 
 
 1. On each tick, the scheduler walks every grid slot strictly after now, up to maximum concurrency slots ahead.
 2. It skips slots outside the active period, slots past the series end date, and slots that already have a bracket.
-3. For each remaining slot it creates the instance for bracket [T, T+interval) with the series' rule, funds the new instance's reserve from the treasury, and publishes it.
-4. A recurring series ends when its end date has passed and no non-terminal bracket remains; a one-time series ends when its single instance settles.
+3. For each remaining slot it creates the instance for bracket [T, T+interval) with the series' rule, funds the new instance's reserve from the treasury, and publishes it. The spawned bracket's title is `{series title} · HH:MM to HH:MM` (Singapore time), carrying its [T, T+interval) window so brackets of one series stay distinguishable.
+4. A recurring series ends when its end date has passed and no non-terminal bracket remains; a one-time series ends when its single instance settles. A settled bracket whose evidence deadline passed more than 24 hours ago is purged with its whole subtree (business rule 14); the series row itself remains.
 
 **Alternative flows:**
 
@@ -256,6 +339,71 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 - An administrator attempts it: rejected by design; the admin evidence route refuses markets with creator or resolver authority, and no valid signature exists.
 - The password is lost: the signing key cannot be re-derived, resolution is impossible, and the instance voids at the deadline (no password recovery exists).
 
+### UC-15: Settle and pay out
+
+**Precondition:** a closed instance has reached its finalize window; the actor is the Settlement Worker.
+
+**Flow of events:**
+
+1. The worker selects up to 100 actionable instances per tick, so markets waiting for evidence cannot starve ones whose results are ready, and settles independent instances concurrently in bounded chunks while each instance stays serial under its row lock.
+2. It locks the instance and fixes the evaluated result of the latest evidence revision, moving the instance to resolving; with no result it waits until the evidence deadline and then voids (UC-17).
+3. It credits up to 100 unsettled accounts per batch: each winning share pays one unit from the reserve, recorded as a unique settlement claim per account and instance.
+4. With no unclaimed positive positions left, the worker releases the unused reserve to the treasury, splits the accumulated fee pot (UC-16), and marks the instance resolved or voided.
+
+**Alternative flows:**
+
+- A credit fails: the batch transaction rolls back and the next tick retries; committed claims are never repeated, so settlement resumes from the accounts without a claim.
+- More than 100 accounts hold shares: later batches continue until every account is credited.
+- The reserve cannot cover a credit: settlement stops with the invariant error rather than underpaying.
+
+### UC-16: Split the fee pot with the creator
+
+**Precondition:** an instance is settling (UC-15) and its recorded trades carried the 25-basis-point fee.
+
+**Flow of events:**
+
+1. The worker sums the fee component of the instance's recorded trades; the fees accumulated inside the reserve as trading happened.
+2. With a recorded market creator, half the pot, rounded down to the microcredit, transfers from the reserve to the creator as a `fee` ledger transfer.
+3. The treasury receives the remainder, including any odd microcredit, as its own `fee` transfer.
+
+**Alternative flows:**
+
+- Platform-created market with no recorded creator: the whole pot is treasury revenue.
+- Fee-free market: no pot exists, nothing is split, and no creator share is paid.
+
+### UC-17: Void on missing or invalid evidence
+
+**Precondition:** a closed instance has passed its finalize window; the actor is the Settlement Worker.
+
+**Flow of events:**
+
+1. No complete final evidence has been selected by the published evidence deadline, or the rule itself evaluated to a void, for example a final election with no winner.
+2. The worker fixes a void result with the recorded reason and moves the instance to resolving.
+3. Each share redeems at 1/n units: an account's holdings are aggregated across all outcomes and the credit is rounded down to a whole microcredit.
+4. Claims are credited from the reserve as in a winner settlement, the unused reserve is released, and the instance becomes voided.
+
+**Alternative flows:**
+
+- Complete final evidence arrives before the deadline: its evaluated result settles instead and the void path never runs.
+- Incomplete evidence, for example a partial observation or a non-final election state, waits rather than settling early; the deadline alone decides.
+
+### UC-18: View live quotes and probabilities
+
+**Precondition:** the market page is open. Probabilities are public; a personal quote requires a signed-in account.
+
+**Flow of events:**
+
+1. The market page shows every outcome's current probability as a percentage, with the note that prices reflect trading activity rather than a provider forecast.
+2. Each market event on the SSE stream refreshes the snapshot, with a five-second fallback poll, and the price history chart refreshes with it.
+3. A signed-in trader picks an outcome, a side, and a share quantity and previews the trade: the server returns the exact all-in cost or proceeds with the fee reported separately, the average price per share, the probability after the trade, and an expiry of at most 15 seconds.
+4. The preview is signed and bound to the account and the market version; it reserves nothing, and a changed price requires a new preview.
+
+**Alternative flows:**
+
+- Not signed in: the panel says to sign in from the top right to preview and place a trade.
+- The market is suspended or closed: the preview form is disabled.
+- The account created this market: the quote is rejected, because creators cannot trade their own markets.
+
 ### UC-19: View the price and volume history chart
 
 **Precondition:** an instance exists and the page is open.
@@ -273,23 +421,23 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 ### UC-20: Place a trade
 
-**Precondition:** an authenticated account, an open instance, and a sufficient balance (all existing).
+**Precondition:** an authenticated account, an open instance, and a sufficient balance.
 
 **Flow of events:**
 
-1. The account requests a quote: signed, bound to the account and market version, expiring within 15 seconds, and all-in including the 25-basis-point fee on fee-charging markets (existing).
+1. The account requests a quote: signed, bound to the account and market version, expiring within 15 seconds, and all-in including the 25-basis-point fee on fee-charging markets.
 2. The account confirms.
-3. The server rechecks the quote, account, market version, cutoff, balance, holdings, and reserve inside one transaction and executes atomically with idempotency (existing).
-4. The receipt is returned and an SSE event is published (existing).
+3. The server rechecks the quote, account, market version, cutoff, balance, holdings, and reserve inside one transaction and executes atomically with idempotency.
+4. The receipt is returned and an SSE event is published.
 
 **Alternative flows:**
 
-- Expired quote: rejected (existing).
-- Insufficient balance: rejected (existing).
-- Closed market: rejected (existing).
-- Limit not met: rejected (existing).
-- Duplicate delivery: the same receipt is returned (existing).
-- The account is the creator of this instance: rejected (existing); creators cannot trade their own markets, and the fee share is their compensation.
+- Expired quote: rejected.
+- Insufficient balance: rejected.
+- Closed market: rejected.
+- Limit not met: rejected.
+- Duplicate delivery: the same receipt is returned.
+- The account is the creator of this instance: rejected; creators cannot trade their own markets, and the fee share is their compensation.
 
 ### UC-21: View the day-long probability visualization
 
@@ -307,3 +455,49 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 
 - No live bracket has traded volume yet: the headline says the weighted probability appears with the first trade.
 - A single live bracket: its weighted probability is its own price.
+
+### UC-22: Suspend an instance
+
+**Precondition:** an open instance exists; the actor is the administrator.
+
+**Flow of events:**
+
+1. The administrator submits a suspension or resumption with a reason of 5 to 1,000 characters.
+2. The server locks the instance, flips the suspended flag, and advances the version.
+3. The decision is recorded in the administrator audit and announced as a suspension event on the market's stream.
+4. While suspended, quotes and trades are refused; the published definition, times, and result policy are untouched.
+
+**Alternative flows:**
+
+- The instance is not open: rejected with a conflict.
+- The reason is missing or outside the bounds: rejected.
+
+### UC-23: Grant units from the treasury
+
+**Precondition:** the actor is the administrator; the treasury holds units.
+
+**Flow of events:**
+
+1. The administrator provisions a new account by submitting a display name.
+2. The server validates the name (2 to 60 characters, no control characters), creates the account, and returns its token once.
+3. After checking the budget, the treasury transfers the 1,000-unit grant to the new account in the same transaction.
+
+**Alternative flows:**
+
+- The treasury balance is below the grant: rejected with a conflict and no account remains.
+- In demo mode the one-click demo endpoint performs the same provisioning for any visitor with the same grant.
+- The provisioned account carries no email, password, or role: it cannot log in, and with the token sign-in path gone from the browser its token is the only way in, so the token must be kept.
+
+### UC-24: Run reconciliation
+
+**Precondition:** the actor is the administrator.
+
+**Flow of events:**
+
+1. The administrator requests reconciliation.
+2. The server opens one repeatable-read, read-only snapshot and checks four invariants: every account balance equals the sum of its ledger entries; every instance inventory equals the sum of its positions per outcome; every reserve covers its remaining liabilities, being the maximum outstanding outcome while unresolved, the unclaimed winning positions once a winner is fixed, and the aggregated fractional credits once a void is fixed; and the total balance across all accounts is zero.
+3. The response reports the error counts and the net total, and ok is true only when all are zero.
+
+**Alternative flows:**
+
+- Any count is nonzero or the net total differs from zero: ok is false and the counts name the area; reconciliation detects divergence but repairs nothing.

@@ -11,5 +11,6 @@ Architectural decision records explain important choices, the alternatives consi
 | [0005](0005-ntu-accounts-and-creator-roles.md) | Accepted and implemented | Register accounts with NTU email, passwords, and creator roles |
 | [0006](0006-market-series-and-recurrence.md) | Accepted and implemented | Recurring and perpetual markets as creator-owned series with rolling spawn |
 | [0007](0007-resolution-authority.md) | Accepted and implemented | Creator-signed human resolution and contracted external resolvers |
+| [0008](0008-latest-toolchain-and-dependencies.md) | Accepted and implemented | Track the latest stable Rust toolchain and registry dependencies (supersedes ADR 0001's pins) |
 
 Add a new numbered record when a change materially alters system boundaries, trust assumptions, accounting, pricing, resolution, persistence, or operational guarantees. Do not rewrite an accepted historical decision to hide a later change; supersede it with a new record and link both ways.

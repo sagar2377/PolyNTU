@@ -13,8 +13,8 @@ This guide is the entry point for engineers who need to understand, review, modi
 7. [Frontend reference](developer/frontend.md) for React state, browser storage, polling, and receipt recovery.
 8. [Security and privacy](developer/security-and-privacy.md).
 9. [Operations](developer/operations.md) and [development setup](development.md).
-10. [Testing and verification](developer/testing-and-verification.md) and [traceability](developer/code-traceability.md).
-11. [Use case model](developer/use-cases.md) for the planned platform: actors, the use case register, business rules, and the gap against the current build. Nothing it marks as new is implemented yet.
+10. [Verification and traceability](verification.md) for the test inventory, workloads, evidence record, and the requirements-to-code matrix.
+11. [Use case model](developer/use-cases.md): actors, the use case register, business rules, and detailed flows for every registered use case, all implemented in the current build.
 
 Use the [glossary](developer/glossary.md) when a domain or accounting term is unfamiliar.
 
