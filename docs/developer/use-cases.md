@@ -330,20 +330,3 @@ Every planned capability is implemented; nothing in the table below remains to b
 | Settlement, void policy, reconciliation | Shipped | none |
 
 Method: each planned capability was compared against the current build as verified in the working tree. Size grades relative implementation effort from small to large; none means nothing remains to build.
-
-## Implementation phases
-
-1. Accounts and access (ADR 0005): registration, login, welcome gift, roles, verification workflow. Implemented.
-2. Market series (ADR 0006): series entity, recurrence, scheduler, the bus demo as a rolling 2-minute fee-free series with maximum concurrency 5, creator trading ban, per-market fee policy. Implemented.
-3. Resolution authority (ADR 0007): resolution authority fixed at creation, signed human resolution with admin exclusion, the external resolver contract. Implemented.
-4. Market experience: bucketed price and volume history, the price and volume history chart, the day-long visualization. Implemented.
-
-The real bus timing adapter stays deferred; it is a live data source, not platform work.
-
-## Related records
-
-- [ADR 0005: NTU accounts and creator roles](../decisions/0005-ntu-accounts-and-creator-roles.md)
-- [ADR 0006: Market series and recurrence](../decisions/0006-market-series-and-recurrence.md)
-- [ADR 0007: Resolution authority](../decisions/0007-resolution-authority.md)
-- [ADR 0004: Trade fees](../decisions/0004-trade-fees.md) (the existing fee and creator split)
-- [General overview](../overview.md)
