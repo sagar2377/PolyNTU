@@ -39,6 +39,11 @@ export default function PriceHistoryChart({ instance, reloadKey }) {
         const points = await api.history(instance.id, bucketMs);
         if (cancelled || !chart.current) return;
         const outcomeCount = instance.outcomes.length;
+        // A single bucket (an untraded market) draws no segment, so extend it
+        // with one same-valued bucket to render the flat opening price.
+        const drawn = points.length === 1 && points[0]
+          ? [points[0], { ...points[0], start_ms: points[0].start_ms + bucketMs }]
+          : points;
         while (series.current.lines.length < outcomeCount) {
           const index = series.current.lines.length;
           series.current.lines.push(chart.current.addSeries(LineSeries, {
@@ -48,12 +53,13 @@ export default function PriceHistoryChart({ instance, reloadKey }) {
           }));
         }
         series.current.lines.forEach((line, index) => {
-          line.setData(points.map((point) => ({
+          line.setData(drawn.map((point) => ({
             time: Math.round(point.start_ms / 1000),
-            value: point.prices[index] ?? 0,
+            // The axis is a percent scale, so 0.5 must be fed as 50.
+            value: (point.prices[index] ?? 0) * 100,
           })));
         });
-        series.current.volume.setData(points.map((point) => ({
+        series.current.volume.setData(drawn.map((point) => ({
           time: Math.round(point.start_ms / 1000),
           value: point.volume_micros,
           color: "#c6d7fa",

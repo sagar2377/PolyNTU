@@ -26,23 +26,28 @@ pub async fn seed_demo(store: &Store) -> Result<()> {
     // hours; brackets resolve through the external-resolver contract (ADR
     // 0007): the settlement worker asks the platform's own NTU Bus API
     // adapter, served by this process, over HTTP like any other resolver.
-    // The URL points back at the loopback address demo mode binds.
+    // The URL points back at the loopback address demo mode binds. The series
+    // are owned by the seeded bus market creator, bus@ntu.edu.sg, so the
+    // creator experience can be demonstrated.
+    const DEMO_BUS_CREATOR: &str = "demo-bus";
     let bind = std::env::var("POLYNTU_BIND").unwrap_or_else(|_| "127.0.0.1:8000".into());
     let endpoint = format!("http://{bind}/api/v2/resolvers/ntu-bus");
     let specs = demo_series_specs(&endpoint);
-    let active: Vec<(String, String)> = sqlx::query_as(
-        "SELECT rule->>'route_id', rule->>'stop_id' FROM market_series WHERE data_mode='simulated' AND rule->>'kind'='bus' AND state='active'",
+    let active: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT rule->>'route_id', rule->>'stop_id', creator_account_id FROM market_series WHERE data_mode='simulated' AND rule->>'kind'='bus' AND state='active'",
     )
     .fetch_all(&store.pool)
     .await?;
-    // Definitions are immutable, so a database seeded with different stops or
-    // routes keeps its old bus series but ended; the current specs take over
-    // the same lines.
-    for (route, stop) in &active {
-        if !specs
+    let matches_spec = |route: &str, stop: &str, creator: Option<&str>| {
+        specs
             .iter()
-            .any(|spec| bus_route_stop(spec) == (route.as_str(), stop.as_str()))
-        {
+            .any(|spec| bus_route_stop(spec) == (route, stop) && creator == Some(DEMO_BUS_CREATOR))
+    };
+    // Definitions are immutable, so a database seeded with different stops,
+    // routes, or ownership keeps its old bus series but ended; the current
+    // specs take over the same lines.
+    for (route, stop, creator) in &active {
+        if !matches_spec(route, stop, creator.as_deref()) {
             sqlx::query(
                 "UPDATE market_series SET state='ended' WHERE data_mode='simulated' AND rule->>'kind'='bus' AND state='active' AND rule->>'route_id'=$1 AND rule->>'stop_id'=$2",
             )
@@ -53,11 +58,13 @@ pub async fn seed_demo(store: &Store) -> Result<()> {
         }
     }
     for spec in &specs {
-        if !active
-            .iter()
-            .any(|(route, stop)| (route.as_str(), stop.as_str()) == bus_route_stop(spec))
-        {
-            store.create_series(None, spec, "simulated").await?;
+        if !active.iter().any(|(route, stop, creator)| {
+            bus_route_stop(spec) == (route.as_str(), stop.as_str())
+                && creator.as_deref() == Some(DEMO_BUS_CREATOR)
+        }) {
+            store
+                .create_series(Some(DEMO_BUS_CREATOR), spec, "simulated")
+                .await?;
         }
     }
     for spec in demo_specs(now) {

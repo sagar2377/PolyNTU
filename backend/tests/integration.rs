@@ -987,6 +987,23 @@ async fn the_demo_bus_covers_the_scheduled_campus_lines() {
         assert_eq!(days, &json!(expected), "operating days for {route}");
         assert!(stop.contains('-'), "kebab-case stop id for {route}");
     }
+    // The welfare lines are owned by the seeded bus market creator, so the
+    // creator experience can be demonstrated by signing in as bus@ntu.edu.sg.
+    let (creator_role, grant): (String, bool) = sqlx::query_as(
+        "SELECT a.role, EXISTS(SELECT 1 FROM ledger_transfers WHERE reference='grant:demo-bus') FROM accounts a WHERE a.id='demo-bus'",
+    )
+    .fetch_one(&db.store.pool)
+    .await
+    .unwrap();
+    assert_eq!(creator_role, "creator");
+    assert!(grant, "the bus creator received the welcome grant");
+    let owned: Vec<String> = sqlx::query_scalar(
+        "SELECT creator_account_id FROM market_series WHERE data_mode='simulated' AND rule->>'kind'='bus' AND state='active'",
+    )
+    .fetch_all(&db.store.pool)
+    .await
+    .unwrap();
+    assert!(owned.iter().all(|id| id == "demo-bus"));
     let series_id: String = sqlx::query_scalar(
         "SELECT id FROM market_series WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue'",
     )

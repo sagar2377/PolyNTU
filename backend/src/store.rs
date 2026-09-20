@@ -231,38 +231,57 @@ impl Store {
             .bind(INITIAL_ISSUANCE_UNITS * amm::CREDIT_SCALE).bind(now).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO ledger_transfers(id,from_account,to_account,amount_micros,kind,reference,created_ms) VALUES('issuance-expansion','issuance','treasury',$1,'issuance','issuance-expansion',$2) ON CONFLICT DO NOTHING")
             .bind((TOTAL_ISSUANCE_UNITS - INITIAL_ISSUANCE_UNITS) * amm::CREDIT_SCALE).bind(now).execute(&mut *tx).await?;
-        // Demo and test databases seed an administrator account:
-        // admin@ntu.edu.sg with password "admin". Its session token is
-        // generated fresh at each login; the seed token's plaintext is
-        // discarded, so the only way in is the password.
+        // Demo and test databases seed an administrator account,
+        // admin@ntu.edu.sg with password "admin", and the bus market creator,
+        // bus@ntu.edu.sg with password "bus", so the creator experience can
+        // be demonstrated. Session tokens are generated fresh at each login;
+        // the seed tokens' plaintexts are discarded, so the only way in is the
+        // password.
         if self.demo_mode {
-            let seeded_token = auth::random_token()?;
-            sqlx::query(
-                "INSERT INTO accounts(id,display_name,kind,token_hash,email,password_hash,role) VALUES('demo-admin','Administrator','user',$1,'admin@ntu.edu.sg',$2,'admin') ON CONFLICT (email) DO NOTHING",
-            )
-            .bind(auth::hash(seeded_token.as_bytes()))
-            .bind(auth::hash_password("admin")?)
-            .execute(&mut *tx)
-            .await?;
-            // The seeded administrator trades in the demo too, so it gets
-            // the same treasury-funded welcome gift, exactly once.
-            let granted: bool = sqlx::query_scalar(
-                "SELECT EXISTS(SELECT 1 FROM ledger_transfers WHERE reference='grant:demo-admin')",
-            )
-            .fetch_one(&mut *tx)
-            .await?;
-            if !granted {
-                lock_accounts(&mut tx, &["demo-admin".into(), "treasury".into()]).await?;
-                transfer(
-                    &mut tx,
-                    "treasury",
+            let seeded_accounts = [
+                (
                     "demo-admin",
-                    WELCOME_GIFT_UNITS * amm::CREDIT_SCALE,
-                    "grant",
-                    "grant:demo-admin",
-                    now,
+                    "Administrator",
+                    "admin@ntu.edu.sg",
+                    "admin",
+                    "admin",
+                ),
+                ("demo-bus", "NTU Bus", "bus@ntu.edu.sg", "bus", "creator"),
+            ];
+            for (id, display_name, email, password, role) in seeded_accounts {
+                let seeded_token = auth::random_token()?;
+                sqlx::query(
+                    "INSERT INTO accounts(id,display_name,kind,token_hash,email,password_hash,role) VALUES($1,$2,'user',$3,$4,$5,$6) ON CONFLICT (email) DO NOTHING",
                 )
+                .bind(id)
+                .bind(display_name)
+                .bind(auth::hash(seeded_token.as_bytes()))
+                .bind(email)
+                .bind(auth::hash_password(password)?)
+                .bind(role)
+                .execute(&mut *tx)
                 .await?;
+                // The seeded accounts trade in the demo too, so each gets
+                // the same treasury-funded welcome gift, exactly once.
+                let granted: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM ledger_transfers WHERE reference=$1)",
+                )
+                .bind(format!("grant:{id}"))
+                .fetch_one(&mut *tx)
+                .await?;
+                if !granted {
+                    lock_accounts(&mut tx, &[id.into(), "treasury".into()]).await?;
+                    transfer(
+                        &mut tx,
+                        "treasury",
+                        id,
+                        WELCOME_GIFT_UNITS * amm::CREDIT_SCALE,
+                        "grant",
+                        &format!("grant:{id}"),
+                        now,
+                    )
+                    .await?;
+                }
             }
         }
         tx.commit().await?;

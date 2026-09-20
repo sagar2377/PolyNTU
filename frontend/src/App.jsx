@@ -68,9 +68,9 @@ export default function App() {
       else openSession(await api.createAccount(name));
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
-  const signInDemoAdmin = async () => {
+  const signInDemoAccount = async (email, password) => {
     setBusy(true); setError("");
-    try { openSession(await api.login({ email: "admin@ntu.edu.sg", password: "admin" })); }
+    try { openSession(await api.login({ email, password }), password); }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const requestVerification = async () => {
@@ -119,7 +119,6 @@ export default function App() {
             <button className={entryView === "login" ? "active" : ""} onClick={() => setEntryView(entryView === "login" ? null : "login")}>Log in</button>
           </div>}
     </header>
-    <div className="notice">Academic campus markets · simulated units only{config?.demo_mode ? " · Demo observations" : ""}</div>
     {error && <div className="error-banner" role="alert"><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError("")}>×</button></div>}
     {pending && pending.account_id === account?.id && <div className="notice pending">A trade is awaiting a receipt. <button onClick={() => openMarket(pending.instance_id, "browse")}>Resume trade</button></div>}
     {pending && pending.account_id !== account?.id && <div className="notice pending">A saved trade belongs to another account. Sign in with that account to retrieve its receipt.</div>}
@@ -147,9 +146,12 @@ export default function App() {
         </form>
       </>}
       {config?.demo_mode && <details><summary>Demo accounts</summary>
-        <p className="muted small">A one-click participant with 1,000 units, or the seeded administrator.</p>
+        <p className="muted small">A one-click participant with 1,000 units, the bus market creator, or the seeded administrator.</p>
         <form onSubmit={(e) => signIn(e, "demo")}><label htmlFor="display-name">Demo display name</label><div className="inline-form"><input id="display-name" value={name} minLength={2} maxLength={60} required onChange={(e) => setName(e.target.value)} placeholder="Your name" /><button disabled={busy}>Start with 1,000 units</button></div></form>
-        <div className="button-row"><button disabled={busy} onClick={signInDemoAdmin}>Sign in as admin@ntu.edu.sg</button></div>
+        <div className="button-row">
+          <button disabled={busy} onClick={() => signInDemoAccount("bus@ntu.edu.sg", "bus")}>Sign in as bus@ntu.edu.sg</button>
+          <button disabled={busy} onClick={() => signInDemoAccount("admin@ntu.edu.sg", "admin")}>Sign in as admin@ntu.edu.sg</button>
+        </div>
       </details>}
     </Modal>}
     {account?.role === "member" && <section className="panel" aria-label="Creator verification">
@@ -163,7 +165,6 @@ export default function App() {
     {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setRefresh((n) => n + 1); openSeries(id); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "portfolio")} />}
     <footer><span>PolyNTU · Outcome markets</span><span className="footer-actions">{config?.demo_mode && <button className="link-button" onClick={() => setClockOpen(true)}>Demo clock</button>}</span></footer>
-    {account && <details className="account-settings"><summary>Account access</summary><p>Logging in again invalidates every other session. Registered accounts simply log in again; a demo account cannot sign back in after signing out, so create a new one instead.</p></details>}
     {config?.demo_mode && clockOpen && <Modal label="Demo clock controls" onClose={() => setClockOpen(false)}>
       <h2>Demo clock controls</h2>
       <p className="muted small">Advance simulated time to observe closing and settlement. Administrator access is required.</p>

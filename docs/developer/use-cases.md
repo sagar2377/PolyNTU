@@ -132,6 +132,7 @@ Full descriptions of all twenty-five use cases, in ID order.
 
 - Unknown email or wrong password: the server returns the same generic rejection for both, so accounts cannot be enumerated.
 - Repeated failures: the current build has no rate limiting; rate limiting is deferred.
+- Demo mode: the login dialog's Demo accounts disclosure also offers one-click sign-in buttons for the seeded bus market creator (`bus@ntu.edu.sg`, the account that owns the welfare bus series, so the creator experience can be demonstrated) and the seeded administrator (`admin@ntu.edu.sg`).
 
 ### UC-3: Receive the 10,000-unit welcome gift
 
@@ -173,9 +174,10 @@ Full descriptions of all twenty-five use cases, in ID order.
 **Flow of events:**
 
 1. The trader opens the markets page; the browser loads up to 100 instances and refreshes them every ten seconds.
-2. The grid lists every market bracket directly, markets that have not closed yet first and soonest to close first; each card opens the bracket's market page, which carries the whole series view.
-3. Category buttons narrow the search to one category; the filter applies client-side to the current page and also filters the series strip.
-4. Each card shows the category, effective state, up to three outcomes with their current probabilities, the data-mode label, and the Singapore close time; a card opens the market page.
+2. The grid lists every market bracket directly, live markets only, soonest to close first; each card opens the bracket's market page, which carries the whole series view.
+3. Closed, voided, and resolved markets are collapsed into a history panel with Closed, Voided, and Resolved tabs that default to hidden; opening a tab lists its markets, most recently closed first, and clicking a card opens that market page.
+4. Category buttons narrow the search to one category; the filter applies client-side to the current page, across the live grid and the history tabs alike.
+5. Each card shows the category, effective state, up to three outcomes with their current probabilities, the data-mode label, and the Singapore close time; a card opens the market page.
 
 **Alternative flows:**
 

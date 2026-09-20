@@ -11,6 +11,9 @@
 // Locally: scripts/run-prod.ps1 plus
 //   chrome --headless=new --remote-debugging-port=9223 \
 //     --user-data-dir=.local/chrome-profile about:blank
+// A local run leaves its markets in the shared demo database; run
+// scripts/e2e-cleanup.ps1 afterwards to keep the demo clean (CI runs against
+// its own throwaway database).
 const BASE = process.env.E2E_BASE_URL ?? "http://127.0.0.1:8000";
 const API = `${BASE}/api/v2`;
 const CDP = process.env.E2E_CDP_URL ?? "http://127.0.0.1:9223";
@@ -199,10 +202,16 @@ async function publishSignedMarket(cdp, title, closeEpochMs, password) {
 
 // Opening a series means opening one of its brackets: every bracket page
 // carries the schedule, the day view, and the sibling bracket lists, so the
-// browse grid's market card is the entry point.
+// browse grid's market card is the entry point. A closed market is collapsed
+// behind the browse history tabs, so open the Closed tab when it is not live.
 async function openSeries(cdp, title) {
   await evaluate(cdp, `__clickText('button.wordmark', 'Poly')`);
-  await waitFor(cdp, `market card for ${title}`, `[...document.querySelectorAll('.market-card h3')].some((h) => h.textContent === ${JSON.stringify(title)})`);
+  await waitFor(cdp, "browse page loaded", `!__bodyHas('Loading markets…')`, 15000);
+  const cardInGrid = `[...document.querySelectorAll('.market-card h3')].some((h) => h.textContent === ${JSON.stringify(title)})`;
+  if (!(await evaluate(cdp, cardInGrid))) {
+    await evaluate(cdp, `__clickText('.tab-bar button', 'Closed')`);
+    await waitFor(cdp, `market card for ${title}`, cardInGrid, 15000);
+  }
   await evaluate(cdp, `__clickText('.market-card h3', ${JSON.stringify(title)})`);
   await waitFor(cdp, `market page for ${title}`, `__bodyHas(${JSON.stringify(title)}) && __has('.market-facts')`, 30000);
 }
@@ -262,11 +271,12 @@ async function main() {
   await waitFor(cdp, "price history chart", `document.querySelectorAll('.chart-container canvas').length > 0`, 15000);
   log(9, "price and volume history chart rendered");
 
-  // Close the market by advancing the demo clock, then resolve as the creator.
-  const advanced = await advanceIntoResolveWindow(admin, series1.instances[0].id);
-  log(10, `demo clock is inside the resolvable window (advanced ${advanced} minutes; past the observation end, before the deadline)`);
+  // Sign back in as the creator BEFORE advancing: the resolvable window is
+  // only sixty seconds of demo time, so no sign-in work may happen inside it.
   await signOut(cdp);
   await signIn(cdp, creatorEmail, CREATOR_PASSWORD);
+  const advanced = await advanceIntoResolveWindow(admin, series1.instances[0].id);
+  log(10, `demo clock is inside the resolvable window (advanced ${advanced} minutes; past the observation end, before the deadline)`);
   await openSeries(cdp, titles[0]);
   // History is collapsed by default; open the Closed tab to resolve.
   await waitFor(cdp, "bracket history tabs", `__has('.tab-bar')`, 30000);
@@ -284,13 +294,22 @@ async function main() {
   await waitFor(cdp, "day probability bars", `document.querySelectorAll('.day-bar-row').length > 0`, 15000);
   log(12, `settled on the server (${settled.result?.kind}); day view and chart render`);
 
+  // The browse grid lists live markets only; settled ones sit behind the
+  // hidden-by-default history tabs.
+  await evaluate(cdp, `__clickText('button.wordmark', 'Poly')`);
+  await waitFor(cdp, "browse history tabs", `__has('.tab-bar')`, 15000);
+  if (await evaluate(cdp, `[...document.querySelectorAll('.market-card h3')].some((h) => h.textContent === ${JSON.stringify(titles[0])})`)) throw new Error("resolved market still shown in the live grid");
+  await evaluate(cdp, `__clickText('.tab-bar button', 'Resolved')`);
+  await waitFor(cdp, "resolved card in the history tab", `[...document.querySelectorAll('.market-card h3')].some((h) => h.textContent === ${JSON.stringify(titles[0])})`);
+  log(13, "browse grid collapsed the settled market behind the Resolved tab");
+
   // Second market: clear the cached key to exercise both password prompts.
   await evaluate(cdp, `localStorage.removeItem('polyntu.v2.signing-key')`);
   await navigate(cdp, BASE);
   const config2 = await apiGet("/config");
   await waitFor(cdp, "creator nav button restored", `__bodyHas('Create market')`, 15000);
   await publishSignedMarket(cdp, titles[1], config2.server_time_ms + 3 * 60000, CREATOR_PASSWORD);
-  log(13, "publish form asked for the password once the cache was cleared, and published with the derived key");
+  log(14, "publish form asked for the password once the cache was cleared, and published with the derived key");
   const series2 = await apiGet(`/series/${(await apiGet("/series")).find((s) => s.title === titles[1])?.id}`);
   if (!series2 || series2.resolution?.authority !== "creator") throw new Error("second series not published with creator authority");
 
@@ -298,7 +317,7 @@ async function main() {
   await evaluate(cdp, `localStorage.removeItem('polyntu.v2.signing-key')`);
   await navigate(cdp, BASE);
   await advanceIntoResolveWindow(admin, series2.instances[0].id);
-  log(14, "clock inside the window again; cached key cleared");
+  log(15, "clock inside the window again; cached key cleared");
   await openSeries(cdp, titles[1]);
   await waitFor(cdp, "bracket history tabs", `__has('.tab-bar')`, 30000);
   await evaluate(cdp, `__clickText('.tab-bar button', 'Closed')`);
@@ -313,7 +332,7 @@ async function main() {
   await waitFor(cdp, "settled result", `[...document.querySelectorAll('.bracket-list li')].some((li) => li.textContent.includes('Result:'))`);
   const series2After = await apiGet(`/series/${series2.id}`);
   if (!series2After.instances.some((i) => i.state === "resolved")) throw new Error("second instance not resolved on the server");
-  log(15, "resolved the second market through the password prompt after losing the cached key");
+  log(16, "resolved the second market through the password prompt after losing the cached key");
   console.log("E2E PASSED");
 }
 
