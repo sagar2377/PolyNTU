@@ -8,41 +8,43 @@ import { units } from "../api";
 export default function DayProbabilityChart({ series, reloadKey }) {
   const container = useRef(null);
   const chart = useRef(null);
+  const created = useRef({ line: null, volume: null });
 
   useEffect(() => {
-    const created = createChart(container.current, {
+    const instance = createChart(container.current, {
       autoSize: true,
       layout: { attributionLogo: false },
       timeScale: { timeVisible: true, secondsVisible: false },
       grid: { vertLines: { color: "#edf0f5" }, horzLines: { color: "#edf0f5" } },
     });
-    created.addSeries(LineSeries, {
+    // Hold refs to the created series; the chart object's series accessor is
+    // not available in every lightweight-charts build.
+    created.current.line = instance.addSeries(LineSeries, {
       color: "#245ce4",
       lineWidth: 2,
       priceFormat: { type: "percent", precision: 1, minMove: 0.001 },
     });
-    created.addSeries(HistogramSeries, {
+    created.current.volume = instance.addSeries(HistogramSeries, {
       priceFormat: { type: "custom", formatter: (value) => units(value) },
       priceScaleId: "volume",
     }, 1);
-    chart.current = created;
-    return () => { created.remove(); chart.current = null; };
+    chart.current = instance;
+    return () => { instance.remove(); chart.current = null; created.current = { line: null, volume: null }; };
   }, []);
 
   useEffect(() => {
-    if (!chart.current || !series?.day) return;
+    if (!chart.current || !series?.day || !created.current.line) return;
     const slots = [...series.day.slots].sort((a, b) => a.close_ms - b.close_ms);
-    const lines = chart.current.getSeries();
     const probabilityOf = (slot) => {
       if (slot.state === "resolved" && slot.result?.kind === "winner") {
         return slot.result.outcome === 0 ? 1 : 0;
       }
       return slot.probability;
     };
-    lines[0].setData(slots
+    created.current.line.setData(slots
       .filter((slot) => slot.state !== "voided")
       .map((slot) => ({ time: Math.round(slot.close_ms / 1000), value: probabilityOf(slot) })));
-    lines[1].setData(slots.map((slot) => ({
+    created.current.volume.setData(slots.map((slot) => ({
       time: Math.round(slot.close_ms / 1000),
       value: slot.volume_micros,
       color: slot.state === "open" ? "#c6d7fa" : "#dce2e9",
