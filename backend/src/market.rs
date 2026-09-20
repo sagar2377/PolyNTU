@@ -449,7 +449,7 @@ impl Series {
         let interval = self.interval_ms.unwrap_or(60_000);
         NewInstance {
             template_id: self.id.clone(),
-            title: self.title.clone(),
+            title: bracket_title(&self.title, slot_start_ms, interval),
             resolution_criterion: self.resolution_criterion.clone(),
             rule: self.rule.0.clone(),
             source_id: self.source_id.clone(),
@@ -483,6 +483,31 @@ pub struct EvidenceInput {
 /// Series brackets finalize shortly after their observation window so the
 /// rolling horizon does not pile up unsettled instances.
 pub const BRACKET_FINALIZE_MARGIN_MS: i64 = 1_000;
+
+/// The SGT (UTC+8) wall-clock time of an instant as HH:MM, matching the
+/// active-window interpretation.
+fn sgt_hhmm(epoch_ms: i64) -> String {
+    let minute_of_day = (epoch_ms.div_euclid(60_000) + 8 * 60).rem_euclid(1440);
+    format!("{:02}:{:02}", minute_of_day / 60, minute_of_day % 60)
+}
+
+/// Recurring brackets all share the series definition, so each bracket title
+/// carries its time window to stay distinguishable, e.g.
+/// "Blue line · arrival at North Spine · 14:20 to 14:22". The base title is
+/// truncated on a character boundary so the result fits the instance bound.
+fn bracket_title(base: &str, slot_start_ms: i64, interval_ms: i64) -> String {
+    let suffix = format!(
+        " · {} to {}",
+        sgt_hhmm(slot_start_ms),
+        sgt_hhmm(slot_start_ms + interval_ms)
+    );
+    let room = 240usize.saturating_sub(suffix.len());
+    let mut cut = base.len().min(room);
+    while !base.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}{}", &base[..cut], suffix)
+}
 pub const BRACKET_DEADLINE_MARGIN_MS: i64 = 60_000;
 
 /// A series schedule: one explicit window, or a recurrence rule whose slots
@@ -907,6 +932,29 @@ mod tests {
         assert!(!inside_active_window(900_000, 480, 495));
         // One day later wraps to the same minute of day.
         assert!(inside_active_window(86_400_000, 480, 496));
+    }
+    #[test]
+    fn bracket_titles_carry_their_time_window() {
+        // The Unix epoch is 08:00 SGT, so the epoch slot is 08:00 to 08:02.
+        assert_eq!(sgt_hhmm(0), "08:00");
+        assert_eq!(
+            bracket_title("Blue line · arrival at North Spine", 0, 120_000),
+            "Blue line · arrival at North Spine · 08:00 to 08:02"
+        );
+        // A window crossing midnight wraps the clock: 23:59 SGT is
+        // 57,540,000 ms past the epoch.
+        assert_eq!(
+            bracket_title("Bus", 57_540_000, 120_000),
+            "Bus · 23:59 to 00:01"
+        );
+        // An over-long base title is truncated on a character boundary so
+        // the suffixed title still fits the instance bound.
+        let long = "ä".repeat(240);
+        let title = bracket_title(&long, 0, 120_000);
+        let suffix = " · 08:00 to 08:02";
+        assert!(title.len() <= 240);
+        assert!(title.ends_with(suffix));
+        assert!(title.is_char_boundary(title.len() - suffix.len()));
     }
     #[test]
     fn elections_require_distinct_fictional_candidates() {
