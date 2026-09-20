@@ -3,13 +3,15 @@ on: [push, pull_request]
 jobs:
   # Path-scoped verification: each job below runs only when the commit could
   # have affected it. Backend/trading changes gate the Rust checks and the
-  # performance job; frontend changes gate the frontend build; anything else
-  # (docs, scripts) skips both.
+  # performance job; frontend changes gate the frontend build; the browser
+  # end-to-end job runs on any backend, frontend, or test-script change;
+  # anything else (docs, other scripts) skips all of them.
   changes:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      e2e: ${{ steps.filter.outputs.e2e }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -27,10 +29,12 @@ jobs:
             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
             echo "frontend=true" >> "$GITHUB_OUTPUT"
+            echo "e2e=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           backend=false
           frontend=false
+          e2e=false
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             FILES=$(git diff --name-only "$BASE...$GITHUB_SHA")
           else
@@ -38,12 +42,14 @@ jobs:
           fi
           while IFS= read -r file; do
             case "$file" in
-              backend|backend/*|scripts/benchmark-kpi.mjs|.github/workflows/verify.yml) backend=true ;;
-              frontend|frontend/*) frontend=true ;;
+              backend|backend/*|scripts/benchmark-kpi.mjs|.github/workflows/verify.yml) backend=true; e2e=true ;;
+              frontend|frontend/*) frontend=true; e2e=true ;;
+              scripts/browser-e2e.mjs) e2e=true ;;
             esac
           done <<< "$FILES"
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
 
   verify:
     needs: changes
@@ -149,3 +155,77 @@ jobs:
           path: |
             kpi-report.json
             server.log
+
+  # Drives the real React UI in headless Chrome over the DevTools protocol:
+  # registration with password-derived resolution keys, creator verification,
+  # publishing, trading, charts, and both resolution paths. Demo mode is
+  # required for the seeded administrator and the clock advance.
+  browser-e2e:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: polyntu
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U polyntu -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://polyntu:test-only-password@localhost:5432/postgres
+      POLYNTU_QUOTE_SECRET: ci-only-quote-secret-0123456789abcdef
+      POLYNTU_ADMIN_TOKEN: ci-only-admin-token-0123456789abcdef
+      POLYNTU_DEMO_MODE: "true"
+      POLYNTU_BIND: 127.0.0.1:8000
+      POLYNTU_FRONTEND_DIR: frontend/dist
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: rustup toolchain install 1.88.0 --profile minimal
+      - run: rustup override set 1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - run: cargo build --manifest-path backend/Cargo.toml --release --locked
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - name: Start headless Chrome with a debug port
+        run: |
+          google-chrome --headless=new --remote-debugging-port=9223 \
+            --user-data-dir="$RUNNER_TEMP/chrome-e2e-profile" --no-sandbox \
+            --disable-gpu --disable-dev-shm-usage --no-first-run about:blank &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:9223/json/version >/dev/null && exit 0
+            sleep 1
+          done
+          echo "Chrome debug endpoint never became ready" >&2
+          exit 1
+      - name: Run the browser end-to-end flow
+        run: |
+          ./backend/target/release/polyntu > server.log 2>&1 &
+          SERVER=$!
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8000/health >/dev/null || { cat server.log >&2; exit 1; }
+          # The runner shell uses -e; disable it around the test so the server
+          # is killed and the exit status is propagated, not skipped.
+          set +e
+          node scripts/browser-e2e.mjs
+          STATUS=$?
+          set -e
+          kill $SERVER 2>/dev/null || true
+          exit $STATUS
+      - name: Retain server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-e2e-server-log
+          path: server.log
