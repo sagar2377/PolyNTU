@@ -5,6 +5,7 @@ use crate::{
     events::EventBus,
     execution::{QuoteRequest, TradeRequest},
     market::{EvidenceInput, NewInstance, NewSeries},
+    resolver,
     store::{Account, Store, instance_view},
     worker,
 };
@@ -94,6 +95,7 @@ pub fn router(state: AppState, origins: Vec<HeaderValue>) -> Router {
         .route("/instances/{id}/history", get(instance_history))
         .route("/instances/{id}/events", get(events))
         .route("/instances/{id}/resolution", post(creator_resolution))
+        .route("/resolvers/ntu-bus", post(ntu_bus_resolver))
         .route("/quotes", post(quote))
         .route("/trades", post(trade))
         .route(
@@ -436,6 +438,16 @@ async fn creator_resolution(
                 &req.signature,
             )
             .await?,
+    ))
+}
+/// The platform's own NTU Bus API adapter (ADR 0007): it answers the fixed
+/// resolver request for bus brackets; see `resolver::ntu_bus_answer`.
+async fn ntu_bus_resolver(
+    State(s): State<AppState>,
+    Json(call): Json<resolver::ResolverCall>,
+) -> Result<Json<Value>> {
+    Ok(Json(
+        resolver::ntu_bus_answer(&s.store, &call.instance_id).await?,
     ))
 }
 #[derive(Deserialize)]

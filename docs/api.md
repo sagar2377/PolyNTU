@@ -74,6 +74,7 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `GET /api/v2/instances/{id}/history` | None | Time-bucketed price and volume history for one instance. |
 | `GET /api/v2/instances/{id}/events` | None | Resumable public SSE events. |
 | `POST /api/v2/instances/{id}/resolution` | Account; only the series creator | Submits a signed creator resolution for one closed instance. |
+| `POST /api/v2/resolvers/ntu-bus` | None | The platform's own NTU Bus API adapter: answers the fixed resolver request for simulated bus brackets once their observation window has ended. |
 | `POST /api/v2/quotes` | Account | Read-only signed price preview. |
 | `POST /api/v2/trades` | Account plus idempotency header | Executes or retrieves one exact quoted trade. |
 | `GET /api/v2/me/portfolio` | Account | Paginated positions and settlement credits. |
@@ -747,6 +748,10 @@ Anything else, including unknown outcome IDs and malformed bodies, is invalid.
 - `pending`, malformed, and unreachable answers retry on every worker tick (one second) until the published evidence deadline, when the instance voids per the existing policy.
 - Requests time out after 5 seconds; responses above 64 KiB are rejected.
 - Endpoints must be https; plain http is accepted only on loopback, where local adapters run during development and tests.
+
+### The platform's NTU Bus API adapter
+
+The demo bus series resolves through this same contract with an endpoint the platform serves itself: `POST /api/v2/resolvers/ntu-bus`, the NTU Bus API integration point. It accepts the fixed resolver request (only `instance_id` is read; the stored instance is the authority for its rule, window, and outcomes) and answers from the deterministic simulated feed once the bracket's observation window has ended, so it reveals nothing before the simulator itself would; anything else answers `{"pending": true}`. The live NTU Bus API feed is deferred work. Demo seeding builds the endpoint URL from the server's own `POLYNTU_BIND` loopback address, and resolver-authority instances never fall back to simulated evidence, so a broken resolver is visible instead of masked.
 
 ## Demo clock, worker, and reconciliation
 

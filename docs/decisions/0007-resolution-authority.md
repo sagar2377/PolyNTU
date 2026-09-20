@@ -62,3 +62,12 @@ Honest notes:
 - The published public key now permits offline password guessing: each guess costs one PBKDF2 run. The 600,000 iterations and the 12-character minimum make guessing expensive, but the scheme is strictly weaker than a random key no password determines.
 - Losing the password now loses the key, and no password recovery exists; affected markets void at their published deadlines.
 - Series published before this amendment keep the public keys they were published with; those keys were browser-generated and no password derives them, so their custody remains as originally documented.
+
+## Amendment (20 September 2026): the platform hosts the NTU Bus API adapter
+
+The demo bus series now resolves through the external-resolver contract instead of administrator evidence, and the adapter the consequences section anticipated (the bus timing API needs a small adapter) is an endpoint the platform serves itself.
+
+- `POST /api/v2/resolvers/ntu-bus` (`backend/src/resolver.rs`, `ntu_bus_answer`) accepts the fixed resolver request and answers simulated bus brackets from the deterministic feed once their observation window has ended, so it reveals nothing before the simulator itself would; anything else answers pending. The live NTU Bus API feed is deferred work.
+- Demo seeding publishes the bus series with resolver authority and an endpoint built from the server's own `POLYNTU_BIND` loopback address. Databases seeded before this change keep their old bus series but ended, and a fresh resolver-authority series takes over, because published definitions are immutable.
+- Resolver-authority instances never fall back to the simulated-evidence path the demo uses for administrator-authority markets, so a broken resolver surfaces as retries and a deadline void instead of being masked by automatic evidence.
+- The resolve controls and password prompt moved from the series page to every bracket's market page when the series page was merged into it; the signing path itself is unchanged.

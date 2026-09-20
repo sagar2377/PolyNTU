@@ -16,7 +16,7 @@ use polyntu::{
     fee,
     market::{
         EvidenceInput, Instance, NewInstance, NewSeries, Observation, Resolution, ResolutionSpec,
-        Rule, Schedule, demo_specs,
+        Rule, Schedule, demo_series_spec, demo_specs,
     },
     store::{Account, Store, db_now, transfer},
     worker,
@@ -944,6 +944,11 @@ async fn the_demo_bus_is_a_rolling_fee_free_series() {
     .unwrap();
     let view = db.store.series_view(&series_id).await.unwrap();
     assert_eq!(view["fee_charged"], false);
+    assert_eq!(view["resolution"]["authority"], "resolver");
+    assert_eq!(
+        view["resolution"]["endpoint"],
+        "http://127.0.0.1:8000/api/v2/resolvers/ntu-bus"
+    );
     assert_eq!(view["schedule"]["interval_ms"], 120000);
     assert_eq!(view["schedule"]["max_concurrency"], 5);
     assert_eq!(view["schedule"]["active_start_minute"], 360);
@@ -976,6 +981,87 @@ async fn the_demo_bus_is_a_rolling_fee_free_series() {
         .await
         .unwrap();
     assert_eq!(templates, 0);
+    db.finish().await;
+}
+
+/// The demo bus resolves through the platform's own NTU Bus API adapter
+/// (ADR 0007): the worker asks the adapter over HTTP like any external
+/// resolver, and the adapter answers from the deterministic simulated feed.
+#[tokio::test]
+async fn bus_series_settles_through_the_ntu_bus_adapter() {
+    let db = TestDb::new().await;
+    // Serve the real app so the settlement worker's resolver call exercises
+    // the actual adapter route.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let app = db.app();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let now = db.store.now().await.unwrap();
+    let mut spec = demo_series_spec(&format!("http://{address}/api/v2/resolvers/ntu-bus"));
+    spec.title = "Blue line · adapter test".into();
+    spec.schedule = Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 121000,
+        evidence_deadline_ms: now + 240000,
+    };
+    let view = db
+        .store
+        .create_series(None, &spec, "simulated")
+        .await
+        .unwrap();
+    let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+    let instance = db.store.instance(&instance_id).await.unwrap();
+    let (trader, _) = db.account().await;
+    buy(&db, &trader, &instance, 1000).await;
+    // Past the finalize window the worker asks the adapter, whose answer must
+    // equal the deterministic simulated evaluation for this bracket.
+    db.store.advance_demo_clock(3).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    let settled = db.store.instance(&instance_id).await.unwrap();
+    assert_eq!(settled.state, "resolved");
+    let secret: String =
+        sqlx::query_scalar("SELECT simulation_secret FROM settings WHERE singleton")
+            .fetch_one(&db.store.pool)
+            .await
+            .unwrap();
+    let seed = auth::hash(format!("{secret}:{instance_id}").as_bytes());
+    let observation = instance
+        .rule
+        .simulated(&seed, instance.observation_start_ms, instance.observation_end_ms);
+    let expected = instance
+        .rule
+        .evaluate(
+            &observation,
+            instance.observation_start_ms,
+            instance.observation_end_ms,
+        )
+        .unwrap()
+        .expect("bus observations are always complete");
+    assert_eq!(settled.result.as_ref().unwrap().0, expected);
+    let expected_outcome_id = match &expected {
+        Resolution::Winner { outcome } => instance.outcomes[*outcome].id.clone(),
+        _ => unreachable!("bus observations are always complete"),
+    };
+    let evidence: Value = sqlx::query_scalar(
+        "SELECT payload FROM evidence WHERE instance_id=$1 AND source_id='external-resolver'",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.store.pool)
+    .await
+    .unwrap();
+    assert_eq!(evidence["request"]["instance_id"], instance_id);
+    assert_eq!(evidence["response"]["outcome_id"], expected_outcome_id);
+    // The simulated-evidence fallback never fired for the resolver-authority
+    // bracket; the adapter is the only evidence source.
+    let simulator_evidence: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM evidence WHERE instance_id=$1 AND source_id='polyntu-simulator-v1'")
+            .bind(&instance_id)
+            .fetch_one(&db.store.pool)
+            .await
+            .unwrap();
+    assert_eq!(simulator_evidence, 0);
     db.finish().await;
 }
 

@@ -833,8 +833,10 @@ pub fn demo_specs(now: i64) -> Vec<NewInstance> {
 
 /// The demo bus market (ADR 0006): a rolling, fee-free welfare series. A new
 /// bracket every 2 minutes, at most 5 live at once, covering a rolling
-/// 10-minute horizon, only during operating hours.
-pub fn demo_series_spec() -> NewSeries {
+/// 10-minute horizon, only during operating hours. Every bracket resolves
+/// through the external-resolver contract (ADR 0007): the settlement worker
+/// asks the platform's own NTU Bus API adapter at `resolver_endpoint`.
+pub fn demo_series_spec(resolver_endpoint: &str) -> NewSeries {
     NewSeries {
         title: "Blue line · arrival at North Spine".into(),
         resolution_criterion: "Yes if at least one matching bus arrives in the published [start, end) window. No requires complete observation coverage with no matching arrival. This market exists for student welfare: crowd-sourced arrival estimation, so no trading fee is charged.".into(),
@@ -846,7 +848,9 @@ pub fn demo_series_spec() -> NewSeries {
         source_id: "polyntu-simulator-v1".into(),
         liquidity_units: 100,
         fee_charged: false,
-        resolution: None,
+        resolution: Some(ResolutionSpec::Resolver {
+            endpoint: resolver_endpoint.into(),
+        }),
         schedule: Schedule::Recurring {
             interval_ms: 120000,
             active_start_minute: 360,
@@ -890,7 +894,7 @@ mod tests {
         let specs = demo_specs(1000);
         let mut categories: std::collections::HashSet<_> =
             specs.iter().map(|s| s.rule.category()).collect();
-        let series = demo_series_spec();
+        let series = demo_series_spec("http://127.0.0.1:8000/api/v2/resolvers/ntu-bus");
         categories.insert(series.rule.category());
         assert_eq!(categories.len(), 5);
         for spec in specs {

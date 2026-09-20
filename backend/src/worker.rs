@@ -11,16 +11,29 @@ pub async fn seed_demo(store: &Store) -> Result<()> {
         return Ok(());
     }
     let now = store.now().await?;
-    // The bus demo is a rolling, fee-free welfare series (ADR 0006): a new
-    // bracket every 2 minutes, 5 live at once, during operating hours.
+    // The bus demo is a rolling, fee-free welfare series (ADR 0006) whose
+    // brackets resolve through the external-resolver contract (ADR 0007):
+    // the settlement worker asks the platform's own NTU Bus API adapter,
+    // served by this process, over HTTP like any other resolver. The URL
+    // points back at the loopback address demo mode binds.
+    let bind = std::env::var("POLYNTU_BIND").unwrap_or_else(|_| "127.0.0.1:8000".into());
+    let endpoint = format!("http://{bind}/api/v2/resolvers/ntu-bus");
+    // Definitions are immutable, so a database seeded before the bus moved to
+    // resolver authority keeps its old series but ended; a fresh
+    // resolver-authority series takes over the same route.
+    sqlx::query(
+        "UPDATE market_series SET state='ended' WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue' AND resolution_authority<>'resolver'",
+    )
+    .execute(&store.pool)
+    .await?;
     let seeded: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM market_series WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue')",
+        "SELECT EXISTS(SELECT 1 FROM market_series WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue' AND resolution_authority='resolver')",
     )
     .fetch_one(&store.pool)
     .await?;
     if !seeded {
         store
-            .create_series(None, &demo_series_spec(), "simulated")
+            .create_series(None, &demo_series_spec(&endpoint), "simulated")
             .await?;
     }
     for spec in demo_specs(now) {
@@ -83,10 +96,25 @@ const SETTLE_CONCURRENCY: usize = 8;
 /// Simulated evidence for one closed demo instance, then one settlement batch.
 /// Logs and continues on failure; the next tick retries.
 async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
+    // ADR 0007: resolver-authority instances ask their external source at the
+    // finalize window. A valid answer settles; pending, malformed, or
+    // unreachable sources retry on later ticks until the published deadline
+    // voids the instance. The simulated-evidence fallback never applies to
+    // them, so a broken resolver is visible instead of masked.
+    let series: Option<Series> = match &instance.series_id {
+        Some(series_id) => sqlx::query_as("SELECT * FROM market_series WHERE id=$1")
+            .bind(series_id)
+            .fetch_optional(&store.pool)
+            .await?,
+        None => None,
+    };
     if store.demo_mode
         && instance.data_mode == "simulated"
         && instance.state == "closed"
         && instance.evidence_id.is_none()
+        && series
+            .as_ref()
+            .is_none_or(|s| s.resolution_authority != "resolver")
     {
         let secret: String =
             sqlx::query_scalar("SELECT simulation_secret FROM settings WHERE singleton")
@@ -104,50 +132,39 @@ async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
             }
         }
     }
-    // ADR 0007: resolver-authority instances ask their external source at the
-    // finalize window. A valid answer settles; pending, malformed, or
-    // unreachable sources retry on later ticks until the published deadline
-    // voids the instance.
     if instance.state == "closed"
         && instance.evidence_id.is_none()
-        && let Some(series_id) = &instance.series_id
+        && let Some(series) = series.filter(|s| s.resolution_authority == "resolver")
+        && let Some(endpoint) = series.resolver_endpoint.clone()
     {
-        let series: Option<Series> = sqlx::query_as("SELECT * FROM market_series WHERE id=$1")
-            .bind(series_id)
-            .fetch_optional(&store.pool)
-            .await?;
-        if let Some(series) = series.filter(|s| s.resolution_authority == "resolver")
-            && let Some(endpoint) = series.resolver_endpoint.clone()
-        {
-            let request = resolver::ResolverRequest::of(instance);
-            match resolver::call(&endpoint, &request).await {
-                Ok((body, request_value)) => {
-                    let response = serde_json::from_slice::<Value>(&body).unwrap_or_else(
-                        |_| json!({"raw": String::from_utf8_lossy(&body).to_string()}),
-                    );
-                    match resolver::parse_response(&body, instance) {
-                        resolver::ResolverAnswer::Outcome(outcome_id) => {
-                            if let Err(e) = store
-                                .record_resolver_evidence(
-                                    &instance.id,
-                                    &outcome_id,
-                                    &request_value,
-                                    &response,
-                                )
-                                .await
-                            {
-                                tracing::error!(instance_id=%instance.id, error=%e, "resolver evidence failed");
-                            }
-                        }
-                        resolver::ResolverAnswer::Pending => {}
-                        resolver::ResolverAnswer::Invalid => {
-                            tracing::warn!(instance_id=%instance.id, "resolver answer is invalid; retrying until the deadline");
+        let request = resolver::ResolverRequest::of(instance);
+        match resolver::call(&endpoint, &request).await {
+            Ok((body, request_value)) => {
+                let response = serde_json::from_slice::<Value>(&body).unwrap_or_else(
+                    |_| json!({"raw": String::from_utf8_lossy(&body).to_string()}),
+                );
+                match resolver::parse_response(&body, instance) {
+                    resolver::ResolverAnswer::Outcome(outcome_id) => {
+                        if let Err(e) = store
+                            .record_resolver_evidence(
+                                &instance.id,
+                                &outcome_id,
+                                &request_value,
+                                &response,
+                            )
+                            .await
+                        {
+                            tracing::error!(instance_id=%instance.id, error=%e, "resolver evidence failed");
                         }
                     }
+                    resolver::ResolverAnswer::Pending => {}
+                    resolver::ResolverAnswer::Invalid => {
+                        tracing::warn!(instance_id=%instance.id, "resolver answer is invalid; retrying until the deadline");
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(instance_id=%instance.id, error=%e, "resolver unreachable; retrying until the deadline");
-                }
+            }
+            Err(e) => {
+                tracing::warn!(instance_id=%instance.id, error=%e, "resolver unreachable; retrying until the deadline");
             }
         }
     }

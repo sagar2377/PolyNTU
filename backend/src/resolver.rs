@@ -3,11 +3,16 @@
 //! request; the response must name exactly one of the published outcome
 //! identifiers. Unreachable, malformed, or out-of-options answers count as
 //! missing evidence, and the instance voids at the published deadline.
+//!
+//! This module also hosts the platform's own NTU Bus API adapter, the
+//! resolver endpoint the demo bus series points at.
 use crate::{
     error::{Error, Result},
-    market::{Instance, Rule},
+    market::{Instance, Resolution, Rule},
+    store::Store,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::time::Duration;
 
 /// The fixed request every resolver must accept.
@@ -93,6 +98,62 @@ pub async fn call(
     let request_value =
         serde_json::to_value(request).map_err(|e| Error::Internal(e.to_string()))?;
     Ok((body.to_vec(), request_value))
+}
+
+/// The request body the platform's own adapter accepts: the fixed resolver
+/// request, of which only the instance identifier is needed; the stored
+/// instance is the authority for its rule, window, and outcomes.
+#[derive(Debug, Deserialize)]
+pub struct ResolverCall {
+    pub instance_id: String,
+}
+
+/// The platform's built-in NTU Bus API adapter (ADR 0007). Bus brackets
+/// resolve through the external-resolver contract like any other series, and
+/// this endpoint is the bus timing source: today it answers from the
+/// deterministic simulated feed once the bracket's observation window has
+/// ended, so it reveals nothing before the simulator itself would; the live
+/// NTU Bus API integration is deferred work. Anything it cannot answer stays
+/// pending, and the instance voids at its published deadline if that never
+/// changes.
+pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
+    let pending = || json!({"pending": true});
+    let instance: Option<Instance> = sqlx::query_as("SELECT * FROM instances WHERE id=$1")
+        .bind(instance_id)
+        .fetch_optional(&store.pool)
+        .await?;
+    let Some(instance) = instance else {
+        return Ok(pending());
+    };
+    let now = store.now().await?;
+    if instance.data_mode != "simulated"
+        || now < instance.observation_end_ms
+        || !matches!(instance.rule.0, Rule::Bus { .. })
+    {
+        return Ok(pending());
+    }
+    let secret: String =
+        sqlx::query_scalar("SELECT simulation_secret FROM settings WHERE singleton")
+            .fetch_one(&store.pool)
+            .await?;
+    let private_seed = crate::auth::hash(format!("{secret}:{}", instance.id).as_bytes());
+    let observation = instance.rule.simulated(
+        &private_seed,
+        instance.observation_start_ms,
+        instance.observation_end_ms,
+    );
+    Ok(
+        match instance.rule.evaluate(
+            &observation,
+            instance.observation_start_ms,
+            instance.observation_end_ms,
+        )? {
+            Some(Resolution::Winner { outcome }) => {
+                json!({"outcome_id": instance.outcomes[outcome].id})
+            }
+            _ => pending(),
+        },
+    )
 }
 
 #[cfg(test)]
