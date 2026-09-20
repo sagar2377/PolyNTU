@@ -6,7 +6,7 @@ The active product is version 0.2: a Rust/Axum backend, PostgreSQL accounting st
 
 ## Quick start on the project Windows workspace
 
-Prerequisites are Rust 1.88 or newer, a compatible C/C++ build toolchain, PostgreSQL 17 or newer, and Node.js 22 or newer. This workspace can use its project-local PostgreSQL installation.
+Prerequisites are Rust 1.94 or newer, a compatible C/C++ build toolchain, PostgreSQL 17 or newer, and Node.js 22 or newer. This workspace can use its project-local PostgreSQL installation.
 
 ```powershell
 # From the repository root. Install frontend packages once on a fresh checkout.
