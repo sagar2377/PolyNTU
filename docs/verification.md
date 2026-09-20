@@ -50,7 +50,7 @@ PolyNTU separates arithmetic tests, database/HTTP integration tests, frontend st
 |---|---:|---|
 | Rust library tests | 14 passed | `backend/src`, catalogued below |
 | Independent numerical test | 1 passed | `backend/tests/numerical.rs` and the committed fixture JSON |
-| PostgreSQL integration tests | 38 passed | `backend/tests/integration.rs`, catalogued below |
+| PostgreSQL integration tests | 39 passed | `backend/tests/integration.rs`, catalogued below |
 | Rust formatting | Passed | `cargo fmt --check` |
 | Rust clippy | Passed with warnings denied | `cargo clippy --all-targets -- -D warnings` |
 | React lint/build | Passed | `npm run lint`, `npm run build` |
@@ -154,7 +154,7 @@ Grouped by area.
 | `creators_publish_one_time_series_with_their_single_instance` | A creator-role account publishes a one-shot series with its instance; non-creators are refused. |
 | `recurring_series_keep_the_rolling_horizon_filled` | Worker ticks spawn brackets on the grid up to the concurrency limit inside the operating window. |
 | `series_end_stops_spawning_and_settled_brackets_end_the_series` | Past the end no new brackets spawn; when every bracket settles the series ends. |
-| `the_demo_bus_is_a_rolling_fee_free_series` | The demo bus seeds as a platform-owned fee-free recurring series with NTU Bus API resolver authority and spawns only inside the SGT window. |
+| `the_demo_bus_covers_the_scheduled_campus_lines` | The demo seeds one platform-owned fee-free recurring series per scheduled campus line (Blue and Red daily, Green weekdays, Brown weekends), each on its published operating window with real pickup points and NTU Bus API resolver authority. |
 | `old_recurring_brackets_purge_but_one_time_markets_stay` | A terminal recurring bracket past the retention window is purged with its whole subtree (outbox, positions, trades, claims, evidence, instance) while the drained reserve and its ledger trail remain; the one-time market and its trade history stay, the spawned title carries its time window, the append-only guard still rejects deletes outside the purge path, and reconciliation passes. |
 
 ### Fees and creator trading
@@ -173,7 +173,8 @@ Grouped by area.
 | `creators_resolve_their_markets_with_signed_statements` | A keypair derived from the creator's account password, exactly as the browser derives it, signs a valid ed25519 resolution over the resolution message that settles the bracket; wrong nonce, signature, outcome, or account is rejected. |
 | `resolver_authority_settles_from_the_external_endpoint` | The worker calls the configured endpoint and settles on the returned published outcome id. |
 | `resolver_authority_voids_when_answers_stay_invalid_or_unreachable` | Unpublished answers and unreachable endpoints record nothing and the deadline voids the instance. |
-| `bus_series_settles_through_the_ntu_bus_adapter` | A bus series whose resolver endpoint is the platform's own `/api/v2/resolvers/ntu-bus` settles through the real HTTP route: the worker's call, the adapter's answer from the deterministic simulated feed, the recorded `external-resolver` evidence, no simulated-evidence fallback, and resolution even when a demo clock jump skips the ask window past the deadline (replay). |
+| `bus_series_settles_through_the_ntu_bus_adapter` | A bus series whose resolver endpoint is the platform's own `/api/v2/resolvers/ntu-bus` settles through the real HTTP route: the worker's call, the adapter's answer from the deterministic simulated feed (live path disabled), the recorded `external-resolver` evidence, no simulated-evidence fallback, and resolution even when a demo clock jump skips the ask window past the deadline (replay). |
+| `bus_adapter_relays_the_live_provider_answer` | With a live provider configured, the adapter relays its answer instead of the simulated fallback, and the recorded request carries the full integrator contract: published outcomes, title, and the evidence deadline. |
 
 ### Price history and day view
 
@@ -204,7 +205,7 @@ Grouped by area.
 
 `npm run lint` uses Oxlint with React rules-of-hooks as an error and only-export-components as a warning. `npm run build` runs the Vite production build.
 
-A scripted browser end-to-end test, `scripts/browser-e2e.mjs`, drives the real React UI in headless Chrome over the Chrome DevTools protocol using only Node's global WebSocket, covering registration with the password-derived resolution key, creator verification through the seeded administrator, publishing a signed market with the cached key, trading through quote and confirm, the price history chart and the day probability bars, resolution with the cached key, and both password-prompt paths after the cache is cleared. Continuous integration runs it as the path-scoped `browser-e2e` job on any backend, frontend, or test-script change: the job builds the release backend and the frontend, serves them together in demo mode against a PostgreSQL 17 service, and runs headless Chrome on a debug port with a dedicated user data dir, retaining the server log as an artifact on failure. Locally the script needs the app serving the built frontend in demo mode and a Chrome with `--remote-debugging-port` on a dedicated `--user-data-dir`; the script header documents the invocation.
+A scripted browser end-to-end test, `scripts/browser-e2e.mjs`, drives the real React UI in headless Chrome over the Chrome DevTools protocol using only Node's global WebSocket, covering registration with the password-derived resolution key, creator verification through the seeded administrator, publishing a signed market with the cached key, trading through quote and confirm, the price history chart and the day probability bars, resolution with the cached key, and both password-prompt paths after the cache is cleared. Clock advances into the resolvable window use the instance's real timestamps (the create form truncates the close to the whole minute) and a sub-minute phase that guarantees at least a 30-second margin before the evidence deadline, so the flow does not depend on the second-of-minute at publication; wait timeouts report what the page actually shows. Continuous integration runs it as the path-scoped `browser-e2e` job on any backend, frontend, or test-script change: the job builds the release backend and the frontend, serves them together in demo mode against a PostgreSQL 17 service, and runs headless Chrome on a debug port with a dedicated user data dir, retaining the server log as an artifact on failure. Locally the script needs the app serving the built frontend in demo mode and a Chrome with `--remote-debugging-port` on a dedicated `--user-data-dir`; the script header documents the invocation.
 
 There are no frontend unit, component, or accessibility tests, and interactive browser control remains prohibited, so the development workflow still requires human visual/interaction review for:
 

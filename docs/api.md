@@ -74,7 +74,7 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `GET /api/v2/instances/{id}/history` | None | Time-bucketed price and volume history for one instance. |
 | `GET /api/v2/instances/{id}/events` | None | Resumable public SSE events. |
 | `POST /api/v2/instances/{id}/resolution` | Account; only the series creator | Submits a signed creator resolution for one closed instance. |
-| `POST /api/v2/resolvers/ntu-bus` | None | The platform's own NTU Bus API adapter: answers the fixed resolver request for simulated bus brackets once their observation window has ended. |
+| `POST /api/v2/resolvers/ntu-bus` | None | The platform's own NTU Bus API adapter: asks the live provider first, falls back to the deterministic simulated feed, and answers pending before a bracket's observation window has ended. |
 | `POST /api/v2/quotes` | Account | Read-only signed price preview. |
 | `POST /api/v2/trades` | Account plus idempotency header | Executes or retrieves one exact quoted trade. |
 | `GET /api/v2/me/portfolio` | Account | Paginated positions and settlement credits. |
@@ -271,14 +271,14 @@ Validation includes:
 - a valid typed rule and liquidity 10–100,000;
 - `fee_charged` defaults to true and is fixed at publication;
 - an optional `resolution` field fixes the resolution authority at publication ([ADR 0007](../decisions/0007-resolution-authority.md)): `{"kind":"creator","public_key":"base64"}` (a 32-byte ed25519 public key) or `{"kind":"resolver","endpoint":"https://..."}`; absent means the platform administrator resolves;
-- recurring: `interval_ms` between 1 minute and 1 day, `max_concurrency` between 1 and 50, and an active window in minutes of day (start 0–1438, end 1–1439, start before end) interpreted in Singapore time; `end_ms` is optional and must leave room for at least one more slot, and its absence means perpetual; and
+- recurring: `interval_ms` between 1 minute and 1 day, `max_concurrency` between 1 and 50, and an active window in minutes of day (start 0–1438, end 1–1439, start before end) interpreted in Singapore time; `active_days` optionally restricts which days of the week spawn brackets, as ISO day numbers (1 = Monday to 7 = Sunday, non-empty, stored sorted and deduplicated; absent means every day); `end_ms` is optional and must leave room for at least one more slot, and its absence means perpetual; and
 - once: the same future time ordering as an instance (`close <= observation start < observation end <= finalize < deadline`, within one year).
 
 A one-time series publishes its single instance immediately; if the bracket cannot be funded, the series row is removed again so nothing half-published remains. Recurring brackets close and observe their slot `[T, T+interval)`, finalize one second after the observation end, and carry an evidence deadline 60 seconds after it. Each spawned recurring bracket's title is `{series title} · HH:MM to HH:MM` (Singapore time, the bracket's `[T, T+interval)` window), truncated on a character boundary to fit the 240-character instance bound; a one-time series' instance keeps the creator's title unchanged. The response is the series view below.
 
 `GET /api/v2/series` returns up to 100 rows ordered active series first, then newest. Each row contains `id`, `creator_account_id`, `title`, `category`, `state`, `recurrence`, `interval_ms`, `max_concurrency`, `fee_charged`, `end_ms`, and `created_ms`.
 
-`GET /api/v2/series/{id}` returns the full definition: `id`, `creator_account_id`, `title`, `resolution_criterion`, `rule`, `source_id`, `data_mode`, `liquidity_units`, `fee_charged`, `state`, `created_ms`, a `resolution` object with `authority`, `public_key`, and `endpoint` ([ADR 0007](../decisions/0007-resolution-authority.md)), a `schedule` object with `kind`, `interval_ms`, `active_start_minute`, `active_end_minute`, `max_concurrency`, and `end_ms` (null where not applicable), up to 100 `instances` ordered by newest close time first, and a computed `day` object (see below).
+`GET /api/v2/series/{id}` returns the full definition: `id`, `creator_account_id`, `title`, `resolution_criterion`, `rule`, `source_id`, `data_mode`, `liquidity_units`, `fee_charged`, `state`, `created_ms`, a `resolution` object with `authority`, `public_key`, and `endpoint` ([ADR 0007](../decisions/0007-resolution-authority.md)), a `schedule` object with `kind`, `interval_ms`, `active_start_minute`, `active_end_minute`, `active_days`, `max_concurrency`, and `end_ms` (null where not applicable), up to 100 `instances` ordered by newest close time first, and a computed `day` object (see below).
 
 The `day` object is computed on request from the listed brackets; it is never stored. It contains:
 
@@ -365,7 +365,7 @@ GET /api/v2/instances?limit=100&offset=0
 GET /api/v2/markets/bus-blue/instances?limit=100&offset=0
 ```
 
-The server does not return a total count or next-page token. A client infers that it reached the last page when fewer than `limit` rows are returned.
+The server does not return a total count or next-page token. A client infers that it reached the last page when fewer than `limit` rows are returned. Rows are ordered so markets that have not closed yet come first, soonest close first, followed by closed markets, most recently closed first; settled one-time markets can never bury the live ones on the first page.
 
 ## Quotes
 
@@ -726,11 +726,14 @@ This is the interface an external service implements when a series is published 
   "bracket_start_ms": 1788919200000,
   "window_start_ms": 1788919200000,
   "window_end_ms": 1788919260000,
-  "rule": {"kind": "bus", "route_id": "NTU-blue", "direction": "clockwise", "stop_id": "north-spine"}
+  "outcomes": [{"id": "yes", "label": "Yes"}, {"id": "no", "label": "No"}],
+  "title": "Blue line · arrival at Opp SPMS · 14:20 to 14:22",
+  "evidence_deadline_ms": 1788919320000,
+  "rule": {"kind": "bus", "route_id": "NTU-blue", "direction": "clockwise", "stop_id": "opp-spms"}
 }
 ```
 
-`bracket_start_ms` is null for a one-time series; `window_start_ms`/`window_end_ms` are the instance's observation window. The response must be exactly one of:
+`bracket_start_ms` is null for a one-time series; `window_start_ms`/`window_end_ms` are the instance's observation window. The request is self-contained so an integrator can answer without a second lookup: `outcomes` lists every published outcome ID and label the answer may name, `title` identifies the bracket in human logs, and `evidence_deadline_ms` is the moment after which answers no longer count. The response must be exactly one of:
 
 ```json
 {"outcome_id": "yes"}
@@ -742,7 +745,7 @@ naming one published outcome ID of that instance, or
 {"pending": true}
 ```
 
-Anything else, including unknown outcome IDs and malformed bodies, is invalid.
+Anything else, including unknown outcome IDs and malformed bodies, is invalid. Extra response fields are ignored; the platform's own adapter adds a `source` field that the recorded evidence keeps, naming the path that answered.
 
 - A valid answer is recorded as evidence with source `external-resolver` and settles through the normal pipeline.
 - `pending`, malformed, and unreachable answers retry on every worker tick (one second) until the published evidence deadline, when the instance voids per the existing policy.
@@ -751,7 +754,9 @@ Anything else, including unknown outcome IDs and malformed bodies, is invalid.
 
 ### The platform's NTU Bus API adapter
 
-The demo bus series resolves through this same contract with an endpoint the platform serves itself: `POST /api/v2/resolvers/ntu-bus`, the NTU Bus API integration point. It accepts the fixed resolver request (only `instance_id` is read; the stored instance is the authority for its rule, window, and outcomes) and answers from the deterministic simulated feed once the bracket's observation window has ended, so it reveals nothing before the simulator itself would; anything else answers `{"pending": true}`. The live NTU Bus API feed is deferred work. Demo seeding builds the endpoint URL from the server's own `POLYNTU_BIND` loopback address, and resolver-authority instances never fall back to simulated evidence, so a broken resolver is visible instead of masked. A valid answer that a demo clock jump made late is still recorded for simulated instances: the answer is deterministic, so recording it after the deadline is a replay exactly like simulated evidence; manual instances keep the hard published deadline.
+The demo bus series resolves through this same contract with an endpoint the platform serves itself: `POST /api/v2/resolvers/ntu-bus`. The live data path comes first: the NTU Bus API provider (`provider/ntubus/service.py`, a standalone service that implements this contract and watches the live Omnibus feed, polling every route's buses and pickup points). The adapter tries the provider a few times and relays its answer with `"source": "ntubus-live"`; only when the provider stays without a definitive answer does the deterministic simulated feed answer, with `"source": "simulated-fallback"`, so development and CI work without the provider running. The recorded evidence carries the source, so which path answered is auditable. `POLYNTU_NTUBUS_PROVIDER` configures the provider URL (the default is the provider's own loopback default, `http://127.0.0.1:8090/resolve`; an empty value disables the live path).
+
+The adapter accepts the fixed resolver request (only `instance_id` is read; the stored instance is the authority for its rule, window, and outcomes) and answers pending until the bracket's observation window has ended, so nothing is revealed early. Demo seeding builds the adapter URL from the server's own `POLYNTU_BIND` loopback address and covers the four scheduled campus lines (Blue and Red daily, Green weekdays, Brown weekends, each on its published 07:30 to 23:00 span; the Grey line has no published schedule), with real pickup points as stops. A valid answer that a demo clock jump made late is still recorded for simulated instances: the answer is deterministic, so recording it after the deadline is a replay exactly like simulated evidence; manual instances keep the hard published deadline.
 
 ## Demo clock, worker, and reconciliation
 

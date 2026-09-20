@@ -15,7 +15,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::time::Duration;
 
-/// The fixed request every resolver must accept.
+/// The fixed request every resolver must accept. Besides identifying the
+/// bracket, it carries everything an integrator needs to answer without a
+/// second lookup: the published outcomes the answer may name, the instance
+/// title for logs, and the evidence deadline after which answers no longer
+/// count.
 #[derive(Debug, Serialize)]
 pub struct ResolverRequest<'a> {
     pub instance_id: &'a str,
@@ -23,7 +27,17 @@ pub struct ResolverRequest<'a> {
     pub bracket_start_ms: Option<i64>,
     pub window_start_ms: i64,
     pub window_end_ms: i64,
+    pub outcomes: Vec<OutcomeRef<'a>>,
+    pub title: &'a str,
+    pub evidence_deadline_ms: i64,
     pub rule: &'a Rule,
+}
+
+/// One published outcome of the request's instance.
+#[derive(Debug, Serialize)]
+pub struct OutcomeRef<'a> {
+    pub id: &'a str,
+    pub label: &'a str,
 }
 
 impl<'a> ResolverRequest<'a> {
@@ -34,6 +48,16 @@ impl<'a> ResolverRequest<'a> {
             bracket_start_ms: instance.bracket_start_ms,
             window_start_ms: instance.observation_start_ms,
             window_end_ms: instance.observation_end_ms,
+            outcomes: instance
+                .outcomes
+                .iter()
+                .map(|o| OutcomeRef {
+                    id: &o.id,
+                    label: &o.label,
+                })
+                .collect(),
+            title: &instance.title,
+            evidence_deadline_ms: instance.evidence_deadline_ms,
             rule: &instance.rule.0,
         }
     }
@@ -78,8 +102,19 @@ pub async fn call(
     endpoint: &str,
     request: &ResolverRequest<'_>,
 ) -> Result<(Vec<u8>, serde_json::Value)> {
+    call_within(endpoint, request, Duration::from_secs(5)).await
+}
+
+/// The same call with a caller-chosen timeout. The bus adapter uses a short
+/// one so its provider retries always fit inside the settlement worker's own
+/// 5-second budget for calling the adapter.
+pub async fn call_within(
+    endpoint: &str,
+    request: &ResolverRequest<'_>,
+    timeout: Duration,
+) -> Result<(Vec<u8>, serde_json::Value)> {
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(timeout)
         .build()
         .map_err(|e| Error::Internal(e.to_string()))?;
     let response = client
@@ -110,12 +145,15 @@ pub struct ResolverCall {
 
 /// The platform's built-in NTU Bus API adapter (ADR 0007). Bus brackets
 /// resolve through the external-resolver contract like any other series, and
-/// this endpoint is the bus timing source: today it answers from the
-/// deterministic simulated feed once the bracket's observation window has
-/// ended, so it reveals nothing before the simulator itself would; the live
-/// NTU Bus API integration is deferred work. Anything it cannot answer stays
-/// pending, and the instance voids at its published deadline if that never
-/// changes.
+/// this endpoint is the bus timing source. The live data path comes first:
+/// the NTU Bus API provider (`provider/ntubus`), a standalone service that
+/// speaks this same resolver contract and watches the live Omnibus feed. A
+/// few attempts ride out a blip; only when the provider stays without a
+/// definitive answer does the deterministic simulated feed answer, so
+/// development and CI work without the provider running. The `source` field
+/// records which path answered, and the recorded evidence carries it. Before
+/// a bracket's observation window has ended the answer is always pending, so
+/// nothing is revealed early.
 pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
     let pending = || json!({"pending": true});
     let instance: Option<Instance> = sqlx::query_as("SELECT * FROM instances WHERE id=$1")
@@ -131,6 +169,23 @@ pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
         || !matches!(instance.rule.0, Rule::Bus { .. })
     {
         return Ok(pending());
+    }
+    let provider = store
+        .ntubus_provider
+        .as_deref()
+        .unwrap_or("http://127.0.0.1:8090/resolve");
+    if !provider.is_empty() {
+        let request = ResolverRequest::of(&instance);
+        for attempt in 0..3 {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            if let Ok((body, _)) = call_within(provider, &request, Duration::from_secs(1)).await
+                && let ResolverAnswer::Outcome(outcome_id) = parse_response(&body, &instance)
+            {
+                return Ok(json!({"outcome_id": outcome_id, "source": "ntubus-live"}));
+            }
+        }
     }
     let secret: String =
         sqlx::query_scalar("SELECT simulation_secret FROM settings WHERE singleton")
@@ -148,9 +203,10 @@ pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
             instance.observation_start_ms,
             instance.observation_end_ms,
         )? {
-            Some(Resolution::Winner { outcome }) => {
-                json!({"outcome_id": instance.outcomes[outcome].id})
-            }
+            Some(Resolution::Winner { outcome }) => json!({
+                "outcome_id": instance.outcomes[outcome].id,
+                "source": "simulated-fallback",
+            }),
             _ => pending(),
         },
     )

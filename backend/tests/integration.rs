@@ -16,7 +16,7 @@ use polyntu::{
     fee,
     market::{
         EvidenceInput, Instance, NewInstance, NewSeries, Observation, Resolution, ResolutionSpec,
-        Rule, Schedule, demo_series_spec, demo_specs,
+        Rule, Schedule, demo_series_specs, demo_specs,
     },
     store::{Account, Store, db_now, transfer},
     worker,
@@ -565,6 +565,7 @@ async fn recurring_series_keep_the_rolling_horizon_filled() {
         interval_ms: 120000,
         active_start_minute: 0,
         active_end_minute: 1439,
+        active_days: vec![1, 2, 3, 4, 5, 6, 7],
         max_concurrency: 5,
         end_ms: None,
     });
@@ -601,6 +602,33 @@ async fn recurring_series_keep_the_rolling_horizon_filled() {
     worker::tick(&db.store).await.unwrap();
     let view = db.store.series_view(&series_id).await.unwrap();
     assert_eq!(view["instances"].as_array().unwrap().len(), 6);
+    // A series whose operating days exclude today spawns nothing, whichever
+    // day the test runs.
+    let today = polyntu::market::sgt_iso_day(db.store.now().await.unwrap());
+    let mut off = rain_series(Schedule::Recurring {
+        interval_ms: 120000,
+        active_start_minute: 0,
+        active_end_minute: 1439,
+        active_days: (1..=7).filter(|d| *d != today).collect(),
+        max_concurrency: 3,
+        end_ms: None,
+    });
+    off.title = "No spawn today".into();
+    let off_id = db
+        .store
+        .create_series(Some(&creator.id), &off, "manual")
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    worker::tick(&db.store).await.unwrap();
+    let off_view = db.store.series_view(&off_id).await.unwrap();
+    assert_eq!(
+        off_view["instances"].as_array().unwrap().len(),
+        0,
+        "operating days exclude today"
+    );
     db.finish().await;
 }
 
@@ -613,6 +641,7 @@ async fn series_end_stops_spawning_and_settled_brackets_end_the_series() {
         interval_ms: 60000,
         active_start_minute: 0,
         active_end_minute: 1439,
+        active_days: vec![1, 2, 3, 4, 5, 6, 7],
         max_concurrency: 2,
         end_ms: Some(now + 300000),
     });
@@ -659,6 +688,7 @@ async fn old_recurring_brackets_purge_but_one_time_markets_stay() {
         interval_ms: 60000,
         active_start_minute: 0,
         active_end_minute: 1439,
+        active_days: vec![1, 2, 3, 4, 5, 6, 7],
         max_concurrency: 1,
         end_ms: Some(now + 120000),
     });
@@ -922,20 +952,41 @@ async fn creators_cannot_trade_in_their_own_markets() {
 }
 
 #[tokio::test]
-async fn the_demo_bus_is_a_rolling_fee_free_series() {
+async fn the_demo_bus_covers_the_scheduled_campus_lines() {
     let db = TestDb::new().await;
     worker::seed_demo(&db.store).await.unwrap();
-    // Move the simulated clock inside the 06:00 to 23:59 operating window so
+    // Move the simulated clock inside the 07:30 to 23:00 operating window so
     // the test does not depend on wall-clock time.
     let now = db.store.now().await.unwrap();
     let sgt_minute = (now / 60000 + 480) % 1440;
-    if !(360..=1370).contains(&sgt_minute) {
+    if !(450..=1370).contains(&sgt_minute) {
         db.store
-            .advance_demo_clock((390 - sgt_minute + 1440) % 1440)
+            .advance_demo_clock((480 - sgt_minute + 1440) % 1440)
             .await
             .unwrap();
     }
     worker::tick(&db.store).await.unwrap();
+    // One welfare series per scheduled line, on its published days: Blue and
+    // Red daily, Green weekdays, Brown weekends; Grey has no schedule.
+    let rows: Vec<(String, String, Value)> = sqlx::query_as(
+        "SELECT rule->>'route_id', rule->>'stop_id', active_days FROM market_series WHERE data_mode='simulated' AND rule->>'kind'='bus' AND state='active' ORDER BY rule->>'route_id'",
+    )
+    .fetch_all(&db.store.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        rows.iter().map(|(r, _, _)| r.as_str()).collect::<Vec<_>>(),
+        ["NTU-blue", "NTU-brown", "NTU-green", "NTU-red"]
+    );
+    for (route, stop, days) in &rows {
+        let expected: Vec<u32> = match route.as_str() {
+            "NTU-green" => vec![1, 2, 3, 4, 5],
+            "NTU-brown" => vec![6, 7],
+            _ => vec![1, 2, 3, 4, 5, 6, 7],
+        };
+        assert_eq!(days, &json!(expected), "operating days for {route}");
+        assert!(stop.contains('-'), "kebab-case stop id for {route}");
+    }
     let series_id: String = sqlx::query_scalar(
         "SELECT id FROM market_series WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue'",
     )
@@ -951,7 +1002,8 @@ async fn the_demo_bus_is_a_rolling_fee_free_series() {
     );
     assert_eq!(view["schedule"]["interval_ms"], 120000);
     assert_eq!(view["schedule"]["max_concurrency"], 5);
-    assert_eq!(view["schedule"]["active_start_minute"], 360);
+    assert_eq!(view["schedule"]["active_start_minute"], 450);
+    assert_eq!(view["schedule"]["active_end_minute"], 1380);
     let live: Vec<&Value> = view["instances"]
         .as_array()
         .unwrap()
@@ -989,7 +1041,11 @@ async fn the_demo_bus_is_a_rolling_fee_free_series() {
 /// resolver, and the adapter answers from the deterministic simulated feed.
 #[tokio::test]
 async fn bus_series_settles_through_the_ntu_bus_adapter() {
-    let db = TestDb::new().await;
+    let mut db = TestDb::new().await;
+    // No live provider here: this test asserts the simulated fallback, so it
+    // disables the live path explicitly instead of depending on port 8090
+    // being quiet on the machine running the tests.
+    db.store.ntubus_provider = Some(String::new());
     // Serve the real app so the settlement worker's resolver call exercises
     // the actual adapter route.
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -997,7 +1053,8 @@ async fn bus_series_settles_through_the_ntu_bus_adapter() {
     let app = db.app();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let now = db.store.now().await.unwrap();
-    let mut spec = demo_series_spec(&format!("http://{address}/api/v2/resolvers/ntu-bus"));
+    let mut spec =
+        demo_series_specs(&format!("http://{address}/api/v2/resolvers/ntu-bus")).remove(0);
     spec.title = "Blue line · adapter test".into();
     spec.schedule = Schedule::Once {
         close_ms: now + 60000,
@@ -1027,9 +1084,11 @@ async fn bus_series_settles_through_the_ntu_bus_adapter() {
             .await
             .unwrap();
     let seed = auth::hash(format!("{secret}:{instance_id}").as_bytes());
-    let observation = instance
-        .rule
-        .simulated(&seed, instance.observation_start_ms, instance.observation_end_ms);
+    let observation = instance.rule.simulated(
+        &seed,
+        instance.observation_start_ms,
+        instance.observation_end_ms,
+    );
     let expected = instance
         .rule
         .evaluate(
@@ -1055,18 +1114,20 @@ async fn bus_series_settles_through_the_ntu_bus_adapter() {
     assert_eq!(evidence["response"]["outcome_id"], expected_outcome_id);
     // The simulated-evidence fallback never fired for the resolver-authority
     // bracket; the adapter is the only evidence source.
-    let simulator_evidence: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM evidence WHERE instance_id=$1 AND source_id='polyntu-simulator-v1'")
-            .bind(&instance_id)
-            .fetch_one(&db.store.pool)
-            .await
-            .unwrap();
+    let simulator_evidence: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM evidence WHERE instance_id=$1 AND source_id='polyntu-simulator-v1'",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.store.pool)
+    .await
+    .unwrap();
     assert_eq!(simulator_evidence, 0);
     // A demo clock jump that skips the whole ask window still resolves: the
     // adapter's deterministic answer is recorded as a replay, exactly like
     // the simulated-evidence branch, instead of voiding the bracket.
     let now = db.store.now().await.unwrap();
-    let mut jumped = demo_series_spec(&format!("http://{address}/api/v2/resolvers/ntu-bus"));
+    let mut jumped =
+        demo_series_specs(&format!("http://{address}/api/v2/resolvers/ntu-bus")).remove(0);
     jumped.title = "Blue line · jumped deadline".into();
     jumped.schedule = Schedule::Once {
         close_ms: now + 60000,
@@ -1088,6 +1149,74 @@ async fn bus_series_settles_through_the_ntu_bus_adapter() {
     worker::tick(&db.store).await.unwrap();
     let jumped_settled = db.store.instance(&jumped_id).await.unwrap();
     assert_eq!(jumped_settled.state, "resolved");
+    db.finish().await;
+}
+
+/// The bus adapter relays a live provider's answer instead of the simulated
+/// fallback, and the recorded request carries the developer-friendly
+/// contract: the published outcomes, the title, and the evidence deadline,
+/// so an integrator can answer from the request alone (ADR 0007).
+#[tokio::test]
+async fn bus_adapter_relays_the_live_provider_answer() {
+    let mut db = TestDb::new().await;
+    // A stand-in for provider/ntubus/service.py on the live data path.
+    db.store.ntubus_provider = Some(spawn_resolver(json!({"outcome_id": "no"})).await);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let app = db.app();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let now = db.store.now().await.unwrap();
+    let mut spec =
+        demo_series_specs(&format!("http://{address}/api/v2/resolvers/ntu-bus")).remove(0);
+    spec.title = "Blue line · live provider test".into();
+    spec.schedule = Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 121000,
+        evidence_deadline_ms: now + 240000,
+    };
+    let view = db
+        .store
+        .create_series(None, &spec, "simulated")
+        .await
+        .unwrap();
+    let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+    let instance = db.store.instance(&instance_id).await.unwrap();
+    let (trader, _) = db.account().await;
+    buy(&db, &trader, &instance, 1000).await;
+    db.store.advance_demo_clock(3).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    let settled = db.store.instance(&instance_id).await.unwrap();
+    assert_eq!(settled.state, "resolved");
+    assert_eq!(
+        settled.result.as_ref().unwrap().0,
+        Resolution::Winner { outcome: 1 },
+        "the provider answered no"
+    );
+    let evidence: Value = sqlx::query_scalar(
+        "SELECT payload FROM evidence WHERE instance_id=$1 AND source_id='external-resolver'",
+    )
+    .bind(&instance_id)
+    .fetch_one(&db.store.pool)
+    .await
+    .unwrap();
+    assert_eq!(evidence["response"]["outcome_id"], "no");
+    assert_eq!(evidence["response"]["source"], "ntubus-live");
+    assert_eq!(evidence["request"]["outcomes"][0]["id"], "yes");
+    assert_eq!(evidence["request"]["outcomes"][0]["label"], "Yes");
+    assert_eq!(evidence["request"]["outcomes"][1]["id"], "no");
+    assert_eq!(
+        evidence["request"]["title"],
+        "Blue line · live provider test"
+    );
+    assert_eq!(
+        evidence["request"]["evidence_deadline_ms"]
+            .as_i64()
+            .unwrap(),
+        instance.evidence_deadline_ms
+    );
+    assert_eq!(evidence["request"]["rule"]["kind"], "bus");
     db.finish().await;
 }
 
@@ -1458,6 +1587,7 @@ async fn series_day_view_weights_live_brackets_by_units_bet() {
         interval_ms: 60000,
         active_start_minute: 0,
         active_end_minute: 1439,
+        active_days: vec![1, 2, 3, 4, 5, 6, 7],
         max_concurrency: 3,
         end_ms: None,
     });
@@ -1511,6 +1641,12 @@ async fn demo_databases_seed_an_administrator_account() {
     let session = db.store.login("admin@ntu.edu.sg", "admin").await.unwrap();
     assert_eq!(session["account"]["role"], "admin");
     assert_eq!(session["account"]["email"], "admin@ntu.edu.sg");
+    // The administrator trades in the demo too, funded once with the same
+    // welcome gift as a registered account.
+    assert_eq!(
+        session["account"]["balance_micros"],
+        (10_000 * amm::CREDIT_SCALE).to_string()
+    );
     let token = session["token"].as_str().unwrap().to_owned();
     let app = db.app();
     let (status, _) = http(

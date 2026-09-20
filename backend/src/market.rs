@@ -433,6 +433,9 @@ pub struct Series {
     pub interval_ms: Option<i64>,
     pub active_start_minute: Option<i32>,
     pub active_end_minute: Option<i32>,
+    /// ISO days of the week (1 = Monday to 7 = Sunday) on which slots
+    /// spawn; every day for series published before this field existed.
+    pub active_days: Json<Vec<u32>>,
     pub max_concurrency: i64,
     pub end_ms: Option<i64>,
     pub anchor_ms: i64,
@@ -491,6 +494,13 @@ fn sgt_hhmm(epoch_ms: i64) -> String {
     format!("{:02}:{:02}", minute_of_day / 60, minute_of_day % 60)
 }
 
+/// The ISO day of the week (1 = Monday to 7 = Sunday) of an instant in
+/// Singapore time, for recurrence day filters.
+pub fn sgt_iso_day(epoch_ms: i64) -> u32 {
+    let day = (epoch_ms + 8 * 3_600_000).div_euclid(86_400_000);
+    ((day + 3).rem_euclid(7) + 1) as u32
+}
+
 /// Recurring brackets all share the series definition, so each bracket title
 /// carries its time window to stay distinguishable, e.g.
 /// "Blue line · arrival at North Spine · 14:20 to 14:22". The base title is
@@ -529,6 +539,11 @@ pub enum Schedule {
         /// saving), as minutes of day; slots never start outside it.
         active_start_minute: i32,
         active_end_minute: i32,
+        /// ISO days of the week (1 = Monday to 7 = Sunday) on which slots
+        /// spawn; absent means every day. Some services run only on
+        /// weekdays or weekends, like the campus bus lines.
+        #[serde(default = "every_day")]
+        active_days: Vec<u32>,
         /// How many upcoming slots stay live; the covered horizon is
         /// max_concurrency multiplied by interval_ms. Capped at 50.
         max_concurrency: i64,
@@ -536,6 +551,11 @@ pub enum Schedule {
         #[serde(default)]
         end_ms: Option<i64>,
     },
+}
+
+/// The default operating-day set: every day of the week.
+fn every_day() -> Vec<u32> {
+    vec![1, 2, 3, 4, 5, 6, 7]
 }
 
 /// How a series resolves (ADR 0007), fixed at creation. Absent means the
@@ -638,6 +658,7 @@ impl Schedule {
                 interval_ms,
                 active_start_minute,
                 active_end_minute,
+                active_days,
                 max_concurrency,
                 end_ms,
             } => {
@@ -655,6 +676,11 @@ impl Schedule {
                 {
                     return Err(invalid(
                         "Active period must be a daily window like 06:00 to 23:59 Singapore time",
+                    ));
+                }
+                if active_days.is_empty() || active_days.iter().any(|d| !(1..=7).contains(d)) {
+                    return Err(invalid(
+                        "Operating days must be a non-empty set of ISO days, 1 (Monday) to 7 (Sunday)",
                     ));
                 }
                 if end_ms.is_some_and(|end| end <= now + interval_ms) {
@@ -831,19 +857,35 @@ pub fn demo_specs(now: i64) -> Vec<NewInstance> {
     }).collect()
 }
 
-/// The demo bus market (ADR 0006): a rolling, fee-free welfare series. A new
-/// bracket every 2 minutes, at most 5 live at once, covering a rolling
-/// 10-minute horizon, only during operating hours. Every bracket resolves
-/// through the external-resolver contract (ADR 0007): the settlement worker
-/// asks the platform's own NTU Bus API adapter at `resolver_endpoint`.
-pub fn demo_series_spec(resolver_endpoint: &str) -> NewSeries {
-    NewSeries {
-        title: "Blue line · arrival at North Spine".into(),
+/// The demo bus markets (ADR 0006): rolling, fee-free welfare series covering
+/// the internal campus shuttle lines, a new bracket every 2 minutes, at most
+/// 5 live at once, during each line's published operating hours and days
+/// (NTU's internal campus shuttle page: Blue and Red run daily, Green
+/// weekdays only, Brown weekends only; the Grey line has no published
+/// schedule). Stops are real pickup points from the NTU Omnibus API. Every
+/// bracket resolves through the external-resolver contract (ADR 0007): the
+/// settlement worker asks the platform's own NTU Bus API adapter at
+/// `resolver_endpoint`, which prefers the live Omnibus feed through the
+/// provider and falls back to the deterministic simulated feed only when
+/// the live path stays unavailable.
+pub fn demo_series_specs(resolver_endpoint: &str) -> Vec<NewSeries> {
+    const EVERY_DAY: &[u32] = &[1, 2, 3, 4, 5, 6, 7];
+    const WEEKDAYS: &[u32] = &[1, 2, 3, 4, 5];
+    const WEEKENDS: &[u32] = &[6, 7];
+    [
+        ("Blue", "NTU-blue", "opp-spms", "Blue line · arrival at Opp SPMS", EVERY_DAY),
+        ("Red", "NTU-red", "lee-wee-nam-lib", "Red line · arrival at Lee Wee Nam Lib", EVERY_DAY),
+        ("Green", "NTU-green", "hall-2", "Green line · arrival at Hall 2", WEEKDAYS),
+        ("Brown", "NTU-brown", "hall-1", "Brown line · arrival at Hall 1", WEEKENDS),
+    ]
+    .into_iter()
+    .map(|(_, route_id, stop_id, title, days)| NewSeries {
+        title: title.into(),
         resolution_criterion: "Yes if at least one matching bus arrives in the published [start, end) window. No requires complete observation coverage with no matching arrival. This market exists for student welfare: crowd-sourced arrival estimation, so no trading fee is charged.".into(),
         rule: Rule::Bus {
-            route_id: "NTU-blue".into(),
+            route_id: route_id.into(),
             direction: "clockwise".into(),
-            stop_id: "north-spine".into(),
+            stop_id: stop_id.into(),
         },
         source_id: "polyntu-simulator-v1".into(),
         liquidity_units: 100,
@@ -853,12 +895,15 @@ pub fn demo_series_spec(resolver_endpoint: &str) -> NewSeries {
         }),
         schedule: Schedule::Recurring {
             interval_ms: 120000,
-            active_start_minute: 360,
-            active_end_minute: 1439,
+            // Each line's published service span, 07:30 to 23:00 SGT.
+            active_start_minute: 450,
+            active_end_minute: 1380,
+            active_days: days.to_vec(),
             max_concurrency: 5,
             end_ms: None,
         },
-    }
+    })
+    .collect()
 }
 
 #[cfg(test)]
@@ -894,8 +939,20 @@ mod tests {
         let specs = demo_specs(1000);
         let mut categories: std::collections::HashSet<_> =
             specs.iter().map(|s| s.rule.category()).collect();
-        let series = demo_series_spec("http://127.0.0.1:8000/api/v2/resolvers/ntu-bus");
-        categories.insert(series.rule.category());
+        let series = demo_series_specs("http://127.0.0.1:8000/api/v2/resolvers/ntu-bus");
+        assert_eq!(series.len(), 4, "the four scheduled campus lines");
+        for series in &series {
+            categories.insert(series.rule.category());
+            series.validate(1000).unwrap();
+            let observation = series.rule.simulated("fixed-id", 0, 120000);
+            assert!(
+                series
+                    .rule
+                    .evaluate(&observation, 0, 120000)
+                    .unwrap()
+                    .is_some()
+            );
+        }
         assert_eq!(categories.len(), 5);
         for spec in specs {
             spec.validate(1000, true).unwrap();
@@ -915,15 +972,16 @@ mod tests {
                     .is_some()
             );
         }
-        series.validate(1000).unwrap();
-        let observation = series.rule.simulated("fixed-id", 0, 120000);
-        assert!(
-            series
-                .rule
-                .evaluate(&observation, 0, 120000)
-                .unwrap()
-                .is_some()
-        );
+    }
+
+    #[test]
+    fn sgt_iso_day_matches_the_calendar() {
+        // 1970-01-01 was a Thursday; midnight SGT boundaries roll the day.
+        assert_eq!(sgt_iso_day(0), 4);
+        assert_eq!(sgt_iso_day(16 * 3_600_000 - 1), 4, "still Thursday SGT");
+        assert_eq!(sgt_iso_day(16 * 3_600_000), 5, "Friday from midnight SGT");
+        assert_eq!(sgt_iso_day(3 * 86_400_000), 7, "Sunday");
+        assert_eq!(sgt_iso_day(4 * 86_400_000), 1, "Monday");
     }
     #[test]
     fn active_window_is_interpreted_in_singapore_time() {

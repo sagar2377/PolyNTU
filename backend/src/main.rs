@@ -30,7 +30,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if demo_mode && !address.ip().is_loopback() {
         return Err("Demo mode must bind to a loopback address".into());
     }
-    let store = Store::connect(&database_url, demo_mode).await?;
+    let mut store = Store::connect(&database_url, demo_mode).await?;
+    // The NTU Bus API provider the bus adapter prefers over the simulated
+    // feed; an empty value disables the live path.
+    if let Ok(provider) = std::env::var("POLYNTU_NTUBUS_PROVIDER") {
+        store.ntubus_provider = Some(provider);
+    }
     let bus = events::EventBus::default();
     let mut state = AppState::new(store.clone(), quote_secret, admin_token)?;
     state.events = bus.clone();

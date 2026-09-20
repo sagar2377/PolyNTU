@@ -3,7 +3,7 @@ use crate::{
     cache::{AuthAccount, Cache},
     error::{Error, Result, conflict, invalid},
     events,
-    market::{Instance, NewInstance, NewSeries, Series, inside_active_window},
+    market::{Instance, NewInstance, NewSeries, Series, inside_active_window, sgt_iso_day},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -16,6 +16,15 @@ pub struct Store {
     pub pool: PgPool,
     pub demo_mode: bool,
     pub cache: Cache,
+    /// The NTU Bus API provider the bus adapter asks before falling back to
+    /// the simulated feed; the entry point sets it from
+    /// POLYNTU_NTUBUS_PROVIDER (empty disables the live path).
+    pub ntubus_provider: Option<String>,
+    /// Serializes settlement passes: the worker loop and the on-demand
+    /// `/admin/clock/advance` and `/admin/worker/tick` endpoints all run
+    /// `worker::tick`, and concurrent passes would select the same due
+    /// instances.
+    pub tick_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -174,6 +183,8 @@ impl Store {
             pool,
             demo_mode,
             cache: Cache::new(0),
+            ntubus_provider: None,
+            tick_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
         let clock_offset = store.initialize().await?;
         store.cache.set_clock_offset(clock_offset);
@@ -233,6 +244,26 @@ impl Store {
             .bind(auth::hash_password("admin")?)
             .execute(&mut *tx)
             .await?;
+            // The seeded administrator trades in the demo too, so it gets
+            // the same treasury-funded welcome gift, exactly once.
+            let granted: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM ledger_transfers WHERE reference='grant:demo-admin')",
+            )
+            .fetch_one(&mut *tx)
+            .await?;
+            if !granted {
+                lock_accounts(&mut tx, &["demo-admin".into(), "treasury".into()]).await?;
+                transfer(
+                    &mut *tx,
+                    "treasury",
+                    "demo-admin",
+                    WELCOME_GIFT_UNITS * amm::CREDIT_SCALE,
+                    "grant",
+                    "grant:demo-admin",
+                    now,
+                )
+                .await?;
+            }
         }
         tx.commit().await?;
         Ok(offset)
@@ -688,9 +719,17 @@ impl Store {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Value>> {
-        let rows: Vec<Instance> = sqlx::query_as("SELECT * FROM instances WHERE ($1::TEXT IS NULL OR template_id=$1) ORDER BY close_ms DESC,id LIMIT $2 OFFSET $3")
-            .bind(template).bind(limit.clamp(1,100)).bind(offset.clamp(0,100000)).fetch_all(&self.pool).await?;
+        // Markets that have not closed yet come first, soonest close first
+        // (the resolve-soonest order the browse grid wants), followed by
+        // closed history, most recently closed first, so settled one-time
+        // markets can never bury the live ones on the first page.
         let now = self.now().await?;
+        let rows: Vec<Instance> = sqlx::query_as(
+            "SELECT * FROM instances WHERE ($1::TEXT IS NULL OR template_id=$1) \
+             ORDER BY (close_ms < $4), CASE WHEN close_ms < $4 THEN -close_ms ELSE close_ms END, id \
+             LIMIT $2 OFFSET $3",
+        )
+        .bind(template).bind(limit.clamp(1,100)).bind(offset.clamp(0,100000)).bind(now).fetch_all(&self.pool).await?;
         rows.iter().map(|i| instance_view(i, now)).collect()
     }
 
@@ -831,23 +870,33 @@ impl Store {
         .bind(&spec.title)
         .execute(&mut *tx)
         .await?;
-        let (recurrence, interval, start_minute, end_minute, concurrency, end) =
+        let (recurrence, interval, start_minute, end_minute, days, concurrency, end) =
             match &spec.schedule {
-                crate::market::Schedule::Once { .. } => ("once", None, None, None, 1, None),
+                crate::market::Schedule::Once { .. } => {
+                    ("once", None, None, None, vec![1, 2, 3, 4, 5, 6, 7], 1, None)
+                }
                 crate::market::Schedule::Recurring {
                     interval_ms,
                     active_start_minute,
                     active_end_minute,
+                    active_days,
                     max_concurrency,
                     end_ms,
-                } => (
-                    "recurring",
-                    Some(*interval_ms),
-                    Some(*active_start_minute),
-                    Some(*active_end_minute),
-                    *max_concurrency,
-                    *end_ms,
-                ),
+                } => {
+                    // Canonical stored form: sorted, deduplicated.
+                    let mut days = active_days.clone();
+                    days.sort_unstable();
+                    days.dedup();
+                    (
+                        "recurring",
+                        Some(*interval_ms),
+                        Some(*active_start_minute),
+                        Some(*active_end_minute),
+                        days,
+                        *max_concurrency,
+                        *end_ms,
+                    )
+                }
             };
         let (authority, public_key, endpoint) = match &spec.resolution {
             None => ("admin", None, None),
@@ -859,7 +908,7 @@ impl Store {
             }
         };
         sqlx::query(
-            "INSERT INTO market_series(id,creator_account_id,title,resolution_criterion,rule,source_id,data_mode,liquidity_units,fee_charged,recurrence,interval_ms,active_start_minute,active_end_minute,max_concurrency,end_ms,anchor_ms,resolution_authority,resolution_public_key,resolver_endpoint,state,created_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'active',$20)",
+            "INSERT INTO market_series(id,creator_account_id,title,resolution_criterion,rule,source_id,data_mode,liquidity_units,fee_charged,recurrence,interval_ms,active_start_minute,active_end_minute,active_days,max_concurrency,end_ms,anchor_ms,resolution_authority,resolution_public_key,resolver_endpoint,state,created_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'active',$21)",
         )
         .bind(&id)
         .bind(creator)
@@ -874,6 +923,7 @@ impl Store {
         .bind(interval)
         .bind(start_minute)
         .bind(end_minute)
+        .bind(Json(&days))
         .bind(concurrency)
         .bind(end)
         .bind(now)
@@ -967,6 +1017,7 @@ impl Store {
             "schedule": {
                 "kind": series.recurrence, "interval_ms": series.interval_ms,
                 "active_start_minute": series.active_start_minute, "active_end_minute": series.active_end_minute,
+                "active_days": series.active_days,
                 "max_concurrency": series.max_concurrency, "end_ms": series.end_ms,
             },
             "instances": instances,
@@ -1039,6 +1090,11 @@ impl Store {
                 continue;
             }
             if !inside_active_window(slot, start_minute, end_minute) {
+                continue;
+            }
+            // Slots only spawn on the series' operating days (ISO 1 = Monday
+            // to 7 = Sunday, Singapore time).
+            if !series.active_days.0.contains(&sgt_iso_day(slot)) {
                 continue;
             }
             let exists: bool = sqlx::query_scalar(

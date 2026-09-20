@@ -52,6 +52,8 @@ impl AppState {
     }
     /// Admin access: the configured shared token, or the bearer session of
     /// an account holding the admin role (the seeded administrator).
+    /// Missing or bad credentials are Forbidden; a database failure during
+    /// the check surfaces as itself instead of masquerading as Forbidden.
     async fn require_admin(&self, headers: &HeaderMap) -> Result<()> {
         if headers
             .get("x-admin-token")
@@ -60,10 +62,14 @@ impl AppState {
         {
             return Ok(());
         }
-        if let Ok(account) = self.account(headers).await
-            && self.store.account_is_admin(&account.id).await?
-        {
-            return Ok(());
+        match self.account(headers).await {
+            Ok(account) => {
+                if self.store.account_is_admin(&account.id).await? {
+                    return Ok(());
+                }
+            }
+            Err(Error::Unauthorized) => {}
+            Err(e) => return Err(e),
         }
         Err(Error::Forbidden)
     }

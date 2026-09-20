@@ -54,6 +54,7 @@ The source is `docs/diagrams/use-case.puml`; re-render it with `scripts/render-d
 | Admin and ops | UC-22 | Suspend an instance | Platform Admin | exists |
 | Admin and ops | UC-23 | Grant units from the treasury | Platform Admin | exists |
 | Admin and ops | UC-24 | Run reconciliation | Platform Admin | exists |
+| Account and access | UC-25 | Sign out | Trader | exists |
 
 Notes:
 
@@ -95,7 +96,7 @@ Notes:
 
 ## Detailed descriptions
 
-Full descriptions of all twenty-four use cases, in ID order.
+Full descriptions of all twenty-five use cases, in ID order.
 
 ### UC-1: Create an account with an NTU email
 
@@ -172,7 +173,7 @@ Full descriptions of all twenty-four use cases, in ID order.
 **Flow of events:**
 
 1. The trader opens the markets page; the browser loads up to 100 instances and refreshes them every ten seconds.
-2. A strip of chips above the grid lists every active series with its rolling cadence and live count (or One-time) plus a no-fee marker; a chip opens one of the series' brackets, whose market page carries the whole series view.
+2. The grid lists every market bracket directly, markets that have not closed yet first and soonest to close first; each card opens the bracket's market page, which carries the whole series view.
 3. Category buttons narrow the search to one category; the filter applies client-side to the current page and also filters the series strip.
 4. Each card shows the category, effective state, up to three outcomes with their current probabilities, the data-mode label, and the Singapore close time; a card opens the market page.
 
@@ -238,7 +239,7 @@ Full descriptions of all twenty-four use cases, in ID order.
 
 **Flow of events:**
 
-1. The creator submits what UC-8 requires plus a recurrence rule: an interval (1 minute to 1 day), an active period (a daily operating window in Singapore time), a maximum concurrency (1 to 50), and an optional end date whose absence means perpetual. The fee choice applies to every bracket, and every spawned bracket's title carries its time window (business rule 6).
+1. The creator submits what UC-8 requires plus a recurrence rule: an interval (1 minute to 1 day), an active period (a daily operating window in Singapore time), operating days (every day, weekdays, or weekends), a maximum concurrency (1 to 50), and an optional end date whose absence means perpetual. The fee choice applies to every bracket, and every spawned bracket's title carries its time window (business rule 6).
 2. The server validates the submission.
 3. The series is published immutably.
 4. The scheduler begins rolling spawn (UC-12), and every bracket's market page shows the schedule and its sibling brackets.
@@ -321,7 +322,7 @@ Worked example: a bus series with a 2-minute interval and maximum concurrency 5 
 - Nothing valid by the deadline: the instance voids per the published policy.
 - A demo clock jump skips the whole ask window: for simulated instances the deterministic answer is recorded as a replay instead of voiding; manual instances keep the hard deadline.
 
-The demo bus series is the built-in example: the platform serves its own adapter at `POST /api/v2/resolvers/ntu-bus`, the NTU Bus API integration point, which answers simulated bus brackets from the deterministic feed once their observation window has ended; the live NTU Bus API feed is deferred work. Resolver-authority instances never fall back to simulated evidence, so a broken resolver is visible instead of masked.
+The demo bus series is the built-in example: the platform serves its own adapter at `POST /api/v2/resolvers/ntu-bus`, which asks the live NTU Bus API provider (`provider/ntubus`, watching the Omnibus feed) first and falls back to the deterministic simulated feed only when the provider stays without a definitive answer; the recorded evidence names the path that answered. Resolver-authority instances never fall back to the platform's automatic simulated evidence, so a broken resolver is visible instead of masked.
 
 ### UC-14: Submit a signed human resolution
 
@@ -504,3 +505,17 @@ The demo bus series is the built-in example: the platform serves its own adapter
 **Alternative flows:**
 
 - Any count is nonzero or the net total differs from zero: ok is false and the counts name the area; reconciliation detects divergence but repairs nothing.
+
+### UC-25: Sign out
+
+**Precondition:** a signed-in browser session.
+
+**Flow of events:**
+
+1. The participant presses Sign out in the header's account chip.
+2. The browser drops the stored session token and the cached signing key; signing in again re-derives the key from the password.
+3. The interface returns to the guest state with the account entry dialog available.
+
+**Alternative flows:**
+
+- The server session token itself stays valid until the next login of that account rotates it; signing out in one browser does not revoke a token stolen elsewhere.

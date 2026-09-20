@@ -1,40 +1,64 @@
 use crate::{
     error::{Error, Result},
-    market::{EvidenceInput, Instance, Series, demo_series_spec, demo_specs},
+    market::{EvidenceInput, Instance, NewSeries, Rule, Series, demo_series_specs, demo_specs},
     resolver,
     store::Store,
 };
 use serde_json::{Value, json};
+
+/// The (route, stop) pair a bus series spec covers, for seed matching.
+fn bus_route_stop(spec: &NewSeries) -> (&str, &str) {
+    match &spec.rule {
+        Rule::Bus {
+            route_id, stop_id, ..
+        } => (route_id, stop_id),
+        _ => unreachable!("bus specs carry bus rules"),
+    }
+}
 
 pub async fn seed_demo(store: &Store) -> Result<()> {
     if !store.demo_mode {
         return Ok(());
     }
     let now = store.now().await?;
-    // The bus demo is a rolling, fee-free welfare series (ADR 0006) whose
-    // brackets resolve through the external-resolver contract (ADR 0007):
-    // the settlement worker asks the platform's own NTU Bus API adapter,
-    // served by this process, over HTTP like any other resolver. The URL
-    // points back at the loopback address demo mode binds.
+    // The bus demos are rolling, fee-free welfare series (ADR 0006) covering
+    // the campus shuttle lines, each on its published operating days and
+    // hours; brackets resolve through the external-resolver contract (ADR
+    // 0007): the settlement worker asks the platform's own NTU Bus API
+    // adapter, served by this process, over HTTP like any other resolver.
+    // The URL points back at the loopback address demo mode binds.
     let bind = std::env::var("POLYNTU_BIND").unwrap_or_else(|_| "127.0.0.1:8000".into());
     let endpoint = format!("http://{bind}/api/v2/resolvers/ntu-bus");
-    // Definitions are immutable, so a database seeded before the bus moved to
-    // resolver authority keeps its old series but ended; a fresh
-    // resolver-authority series takes over the same route.
-    sqlx::query(
-        "UPDATE market_series SET state='ended' WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue' AND resolution_authority<>'resolver'",
+    let specs = demo_series_specs(&endpoint);
+    let active: Vec<(String, String)> = sqlx::query_as(
+        "SELECT rule->>'route_id', rule->>'stop_id' FROM market_series WHERE data_mode='simulated' AND rule->>'kind'='bus' AND state='active'",
     )
-    .execute(&store.pool)
+    .fetch_all(&store.pool)
     .await?;
-    let seeded: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM market_series WHERE data_mode='simulated' AND rule->>'route_id'='NTU-blue' AND resolution_authority='resolver')",
-    )
-    .fetch_one(&store.pool)
-    .await?;
-    if !seeded {
-        store
-            .create_series(None, &demo_series_spec(&endpoint), "simulated")
+    // Definitions are immutable, so a database seeded with different stops or
+    // routes keeps its old bus series but ended; the current specs take over
+    // the same lines.
+    for (route, stop) in &active {
+        if !specs
+            .iter()
+            .any(|spec| bus_route_stop(spec) == (route.as_str(), stop.as_str()))
+        {
+            sqlx::query(
+                "UPDATE market_series SET state='ended' WHERE data_mode='simulated' AND rule->>'kind'='bus' AND state='active' AND rule->>'route_id'=$1 AND rule->>'stop_id'=$2",
+            )
+            .bind(route)
+            .bind(stop)
+            .execute(&store.pool)
             .await?;
+        }
+    }
+    for spec in &specs {
+        if !active
+            .iter()
+            .any(|(route, stop)| (route.as_str(), stop.as_str()) == bus_route_stop(spec))
+        {
+            store.create_series(None, spec, "simulated").await?;
+        }
     }
     for spec in demo_specs(now) {
         // One upcoming occurrence per template; elections are a single demo event.
@@ -54,6 +78,11 @@ pub async fn seed_demo(store: &Store) -> Result<()> {
 }
 
 pub async fn tick(store: &Store) -> Result<usize> {
+    // One settlement pass at a time. The admin clock-advance and worker-tick
+    // endpoints run this pass on demand; a concurrent pass would select the
+    // same due instances, so each resolver answer would be recorded twice and
+    // the losing record rejected as already final.
+    let _pass = store.tick_lock.lock().await;
     store.close_due().await?;
     store.spawn_due_brackets().await?;
     let now = store.now().await?;
@@ -102,10 +131,12 @@ async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
     // voids the instance. The simulated-evidence fallback never applies to
     // them, so a broken resolver is visible instead of masked.
     let series: Option<Series> = match &instance.series_id {
-        Some(series_id) => sqlx::query_as("SELECT * FROM market_series WHERE id=$1")
-            .bind(series_id)
-            .fetch_optional(&store.pool)
-            .await?,
+        Some(series_id) => {
+            sqlx::query_as("SELECT * FROM market_series WHERE id=$1")
+                .bind(series_id)
+                .fetch_optional(&store.pool)
+                .await?
+        }
         None => None,
     };
     if store.demo_mode
@@ -140,9 +171,8 @@ async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
         let request = resolver::ResolverRequest::of(instance);
         match resolver::call(&endpoint, &request).await {
             Ok((body, request_value)) => {
-                let response = serde_json::from_slice::<Value>(&body).unwrap_or_else(
-                    |_| json!({"raw": String::from_utf8_lossy(&body).to_string()}),
-                );
+                let response = serde_json::from_slice::<Value>(&body)
+                    .unwrap_or_else(|_| json!({"raw": String::from_utf8_lossy(&body).to_string()}));
                 match resolver::parse_response(&body, instance) {
                     resolver::ResolverAnswer::Outcome(outcome_id) => {
                         // A deterministic simulated answer recorded after a
