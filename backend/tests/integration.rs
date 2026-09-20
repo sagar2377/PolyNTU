@@ -646,6 +646,143 @@ async fn series_end_stops_spawning_and_settled_brackets_end_the_series() {
     db.finish().await;
 }
 
+// Bracket retention: terminal recurring brackets purge with their whole
+// subtree once past the retention window; one-time markets stay indefinitely.
+#[tokio::test]
+async fn old_recurring_brackets_purge_but_one_time_markets_stay() {
+    let db = TestDb::new().await;
+    let (creator, _) = db.creator().await;
+    let now = db.store.now().await.unwrap();
+    // A recurring series with one bracket and a one-time series, both manual
+    // rain markets resolved by administrator evidence.
+    let mut recurring = rain_series(Schedule::Recurring {
+        interval_ms: 60000,
+        active_start_minute: 0,
+        active_end_minute: 1439,
+        max_concurrency: 1,
+        end_ms: Some(now + 120000),
+    });
+    recurring.title = "Retention recurring series".into();
+    let recurring_id = db
+        .store
+        .create_series(Some(&creator.id), &recurring, "manual")
+        .await
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut one_time = rain_series(Schedule::Once {
+        close_ms: now + 60000,
+        observation_start_ms: now + 60000,
+        observation_end_ms: now + 120000,
+        finalize_after_ms: now + 240000,
+        evidence_deadline_ms: now + 360000,
+    });
+    one_time.title = "Retention one-time series".into();
+    let once_id = db
+        .store
+        .create_series(Some(&creator.id), &one_time, "manual")
+        .await
+        .unwrap()["instances"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    worker::tick(&db.store).await.unwrap();
+    let view = db.store.series_view(&recurring_id).await.unwrap();
+    let bracket_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
+    let bracket = db.store.instance(&bracket_id).await.unwrap();
+    // Spawned bracket titles carry their time window.
+    assert!(bracket.title.starts_with("Retention recurring series · "));
+    assert!(bracket.title.contains(" to "));
+    let once = db.store.instance(&once_id).await.unwrap();
+    let (trader, _) = db.account().await;
+    buy(&db, &trader, &bracket, 1000).await;
+    buy(&db, &trader, &once, 1000).await;
+    // Two minutes cover both observation windows while both deadlines hold:
+    // record evidence for both, then advance past both finalize points.
+    db.store.advance_demo_clock(2).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    db.store
+        .ingest_evidence(&bracket_id, &rain(&bracket, 1, 250))
+        .await
+        .unwrap();
+    db.store
+        .ingest_evidence(&once_id, &rain(&once, 1, 250))
+        .await
+        .unwrap();
+    db.store.advance_demo_clock(2).await.unwrap();
+    for _ in 0..2 {
+        worker::tick(&db.store).await.unwrap();
+    }
+    assert_eq!(
+        db.store.instance(&bracket_id).await.unwrap().state,
+        "resolved"
+    );
+    assert_eq!(db.store.instance(&once_id).await.unwrap().state, "resolved");
+    // Two days past every deadline, the purge removes the recurring bracket
+    // and its whole subtree, including the drained reserve account.
+    db.store.advance_demo_clock(2880).await.unwrap();
+    worker::tick(&db.store).await.unwrap();
+    let gone: i64 = sqlx::query_scalar("SELECT count(*) FROM instances WHERE id=$1")
+        .bind(&bracket_id)
+        .fetch_one(&db.store.pool)
+        .await
+        .unwrap();
+    assert_eq!(gone, 0);
+    for table in [
+        "trades",
+        "positions",
+        "settlement_claims",
+        "evidence",
+        "outbox",
+    ] {
+        let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT count(*) FROM {table} WHERE instance_id=$1"
+        )))
+        .bind(&bracket_id)
+        .fetch_one(&db.store.pool)
+        .await
+        .unwrap();
+        assert_eq!(count, 0, "{table} rows survived the purge");
+    }
+    // The drained reserve account and its ledger trail remain, because every
+    // ledger transfer is shared between two accounts.
+    let reserve_kept: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM accounts WHERE id=$1 AND balance_micros=0")
+            .bind(&bracket.reserve_account_id)
+            .fetch_one(&db.store.pool)
+            .await
+            .unwrap();
+    assert_eq!(reserve_kept, 1, "the drained reserve account must remain");
+    let ledger_trail: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ledger_transfers WHERE from_account=$1 OR to_account=$1",
+    )
+    .bind(&bracket.reserve_account_id)
+    .fetch_one(&db.store.pool)
+    .await
+    .unwrap();
+    assert!(ledger_trail > 0, "the append-only ledger trail must remain");
+    // The one-time market is kept indefinitely, with its history intact.
+    let kept = db.store.instance(&once_id).await.unwrap();
+    assert_eq!(kept.state, "resolved");
+    let kept_trades = db.store.trades(&trader.id, 10, 0).await.unwrap();
+    assert_eq!(kept_trades.len(), 1);
+    assert_eq!(kept_trades[0]["instance_id"], once_id.as_str());
+    // The ended recurring series itself remains with an empty bracket list.
+    let view = db.store.series_view(&recurring_id).await.unwrap();
+    assert_eq!(view["instances"].as_array().unwrap().len(), 0);
+    // The append-only guard still rejects deletes outside the purge path.
+    let rejected = sqlx::query("DELETE FROM evidence WHERE instance_id=$1")
+        .bind(&once_id)
+        .execute(&db.store.pool)
+        .await;
+    assert!(rejected.is_err(), "append-only guard was bypassed");
+    // Accounting stays balanced after the purge.
+    let report = db.store.reconcile().await.unwrap();
+    assert_eq!(report["ok"], true);
+    db.finish().await;
+}
+
 #[tokio::test]
 async fn fee_free_markets_charge_no_fee_and_pay_no_creator_share() {
     let db = TestDb::new().await;

@@ -68,6 +68,12 @@ pub async fn tick(store: &Store) -> Result<usize> {
             }
         }
     }
+    // Terminal recurring brackets past the retention window are purged in
+    // small batches; one-time markets stay forever. A purge failure must not
+    // stall settlement, so it is logged and retried on the next tick.
+    if let Err(e) = store.purge_expired_brackets().await {
+        tracing::error!(error = %e, "bracket purge failed");
+    }
     seed_demo(store).await?;
     Ok(count)
 }

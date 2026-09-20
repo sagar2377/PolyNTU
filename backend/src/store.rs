@@ -34,6 +34,10 @@ pub struct Account {
 /// database.
 pub const INITIAL_ISSUANCE_UNITS: i64 = 1_000_000;
 pub const TOTAL_ISSUANCE_UNITS: i64 = 1_000_000_000;
+
+/// Terminal recurring-series brackets are purged once their evidence
+/// deadline is this far in the past; one-time markets are kept indefinitely.
+pub const BRACKET_RETENTION_MS: i64 = 86_400_000;
 /// The treasury-funded welcome gift for a registered account.
 pub const WELCOME_GIFT_UNITS: i64 = 10_000;
 /// The one-click demo account keeps its smaller development grant.
@@ -1095,6 +1099,73 @@ impl Store {
                 "outcome_label":outcomes[r.get::<i32,_>("outcome_index") as usize].label,"side":r.get::<String,_>("side"),
                 "quantity_millis":r.get::<i64,_>("quantity_millis"),"amount_micros":r.get::<String,_>("amount_micros"),"created_ms":r.get::<i64,_>("created_ms")})
         }).collect())
+    }
+
+    /// Terminal recurring-series brackets whose evidence deadline passed more
+    /// than 24 hours ago are purged with their market rows: outbox entries,
+    /// positions, trades, claims, evidence, and the instance. One-time
+    /// markets are kept indefinitely. The append-only accounting history
+    /// stays untouched: every ledger transfer is shared between two accounts,
+    /// so the drained reserve account and its ledger trail remain, as do
+    /// admin audit and idempotency rows. A reserve that still holds units
+    /// blocks the purge, so a settlement anomaly surfaces instead of
+    /// vanishing.
+    pub async fn purge_expired_brackets(&self) -> Result<u64> {
+        let now = self.now().await?;
+        let mut tx = self.pool.begin().await?;
+        // The session-local flag opens the guarded delete path of the
+        // append-only triggers, and deferring the circular
+        // instances/evidence constraint lets both tables go in one
+        // transaction. Both revert at commit.
+        sqlx::query("SET LOCAL polyntu.purge = 'on'")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("SET CONSTRAINTS ALL DEFERRED")
+            .execute(&mut *tx)
+            .await?;
+        let rows = sqlx::query(
+            "SELECT i.id, i.reserve_account_id FROM instances i \
+             JOIN market_series s ON s.id = i.series_id \
+             JOIN accounts r ON r.id = i.reserve_account_id \
+             WHERE s.recurrence = 'recurring' AND i.state IN ('resolved','voided') \
+             AND i.evidence_deadline_ms <= $1 AND r.balance_micros = 0 LIMIT 20",
+        )
+        .bind(now - BRACKET_RETENTION_MS)
+        .fetch_all(&mut *tx)
+        .await?;
+        for row in &rows {
+            let id: &str = row.get("id");
+            sqlx::query("DELETE FROM outbox WHERE instance_id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM positions WHERE instance_id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM trades WHERE instance_id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM settlement_claims WHERE instance_id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM evidence WHERE instance_id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM instances WHERE id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        let purged = rows.len() as u64;
+        tx.commit().await?;
+        for row in &rows {
+            self.cache.invalidate(row.get("id"));
+        }
+        Ok(purged)
     }
 
     pub async fn reconcile(&self) -> Result<Value> {
