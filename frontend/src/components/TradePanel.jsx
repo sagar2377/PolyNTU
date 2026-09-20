@@ -44,7 +44,7 @@ export default function TradePanel({ instance, account, onTrade }) {
   const otherPending = pendingTrade();
   const blocked = otherPending && !pending;
   return <section className="panel trade-panel"><h2>{pending ? "Retrieve your trade receipt" : "Trade outcome shares"}</h2>
-    {!account ? <p className="muted">Sign in above to preview and place a trade.</p> : <>
+    {!account ? <p className="muted">Sign in from the top right to preview and place a trade.</p> : <>
       <p className="muted small">Available: <strong>{units(account.balance_micros)} units</strong></p>
       {error && <p className="inline-error" role="alert">{error}</p>}
       {blocked && <p className="inline-error">Resolve the pending trade before starting another one. Use “Resume trade” above.</p>}

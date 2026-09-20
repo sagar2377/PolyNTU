@@ -16,7 +16,7 @@ export default function App() {
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
   const [name, setName] = useState("");
-  const [token, setToken] = useState("");
+  const [entryView, setEntryView] = useState(null);
   const [admin, setAdmin] = useState("");
   const [busy, setBusy] = useState(false);
   const [regName, setRegName] = useState("");
@@ -48,6 +48,7 @@ export default function App() {
     localStorage.setItem(TOKEN_KEY, session.token);
     setAccount(session.account);
     setVerification(null);
+    setEntryView(null);
     // Cache the resolution signing key derived from the password (ADR 0007
     // amendment) so publishing and resolving never need to re-prompt while
     // this browser stays signed in. Best effort: a failure just means the
@@ -63,9 +64,7 @@ export default function App() {
     try {
       if (mode === "register") openSession(await api.register({ display_name: regName, email: regEmail, password: regPassword }), regPassword);
       else if (mode === "login") openSession(await api.login({ email: loginEmail, password: loginPassword }), loginPassword);
-      else if (mode === "demo") openSession(await api.createAccount(name));
-      else { const owner = await api.me(token.trim()); localStorage.setItem(TOKEN_KEY, token.trim()); setAccount(owner); setVerification(null); }
-      setToken("");
+      else openSession(await api.createAccount(name));
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const signInDemoAdmin = async () => {
@@ -88,40 +87,49 @@ export default function App() {
     setAccount(null);
     setVerification(null);
   };
-  const copyToken = async () => {
-    try { await navigator.clipboard.writeText(localStorage.getItem(TOKEN_KEY)); } catch { setError("Clipboard unavailable. Your token remains stored in this browser."); }
-  };
   const pending = pendingTrade();
   return <div className="app">
     <header className="topbar"><button className="wordmark" onClick={() => setView("browse")}>Poly<span>NTU</span></button>
       <nav aria-label="Main navigation"><button className={view !== "portfolio" && view !== "create" ? "active" : ""} onClick={() => setView("browse")}>Markets</button><button className={view === "portfolio" ? "active" : ""} onClick={() => setView("portfolio")}>Portfolio</button>{account?.role === "creator" && <button className={view === "create" ? "active" : ""} onClick={() => setView("create")}>Create market</button>}</nav>
-      {account && <div className="account-chip"><span>{account.display_name}{account.role ? ` · ${account.role}` : ""}</span><strong>{units(account.balance_micros)} units</strong></div>}
+      {account
+        ? <div className="account-chip"><span>{account.display_name}{account.role ? ` · ${account.role}` : ""}</span><strong>{units(account.balance_micros)} units</strong></div>
+        : <div className="signin-toggle" aria-label="Account access">
+            <button className={entryView === "register" ? "active" : ""} onClick={() => setEntryView(entryView === "register" ? null : "register")}>Create account</button>
+            <button className={entryView === "login" ? "active" : ""} onClick={() => setEntryView(entryView === "login" ? null : "login")}>Log in</button>
+          </div>}
     </header>
     <div className="notice">Academic campus markets · simulated units only{config?.demo_mode ? " · Demo observations" : ""}</div>
     {error && <div className="error-banner" role="alert"><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError("")}>×</button></div>}
     {pending && pending.account_id === account?.id && <div className="notice pending">A trade is awaiting a receipt. <button onClick={() => { setSelected(pending.instance_id); setView("market"); }}>Resume trade</button></div>}
     {pending && pending.account_id !== account?.id && <div className="notice pending">A saved trade belongs to another account. Sign in with that account to retrieve its receipt.</div>}
-    {!account && <section className="panel account-entry" aria-label="Account access">
-      <div><h2>Make your forecast count</h2><p className="muted">Sign in to buy and sell outcome shares. Each winning share resolves to one unit. New NTU accounts start with 10,000 units.</p></div>
-      <form onSubmit={(e) => signIn(e, "register")} className="stacked-form">
-        <label htmlFor="reg-name">Display name</label>
-        <input id="reg-name" value={regName} minLength={2} maxLength={60} required onChange={(e) => setRegName(e.target.value)} placeholder="Your name" />
-        <label htmlFor="reg-email">NTU email</label>
-        <input id="reg-email" type="email" value={regEmail} required onChange={(e) => setRegEmail(e.target.value)} placeholder="name@ntu.edu.sg" />
-        <label htmlFor="reg-password">Password</label>
-        <input id="reg-password" type="password" value={regPassword} minLength={12} required autoComplete="new-password" onChange={(e) => setRegPassword(e.target.value)} placeholder="At least 12 characters" />
-        <button className="primary" disabled={busy}>Create account</button>
-      </form>
-      <details><summary>Log in with email and password</summary><form onSubmit={(e) => signIn(e, "login")} className="stacked-form">
-        <label htmlFor="login-email">NTU email</label>
-        <input id="login-email" type="email" value={loginEmail} required autoComplete="username" onChange={(e) => setLoginEmail(e.target.value)} />
-        <label htmlFor="login-password">Password</label>
-        <input id="login-password" type="password" value={loginPassword} required autoComplete="current-password" onChange={(e) => setLoginPassword(e.target.value)} />
-        <button disabled={busy}>Log in</button>
-      </form></details>
-      {config?.demo_mode && <details><summary>Demo: one-click participant</summary><form onSubmit={(e) => signIn(e, "demo")}><label htmlFor="display-name">Demo display name</label><div className="inline-form"><input id="display-name" value={name} minLength={2} maxLength={60} required onChange={(e) => setName(e.target.value)} placeholder="Your name" /><button disabled={busy}>Start with 1,000 units</button></div></form></details>}
-      {config?.demo_mode && <details><summary>Demo: administrator</summary><p>Sign in as the seeded administrator account.</p><button disabled={busy} onClick={signInDemoAdmin}>Sign in as admin@ntu.edu.sg</button></details>}
-      <details><summary>Use an existing access token</summary><form onSubmit={(e) => signIn(e, "token")}><label htmlFor="access-token">Account token</label><div className="inline-form"><input id="access-token" type="password" autoComplete="off" value={token} required onChange={(e) => setToken(e.target.value)} /><button disabled={busy}>Sign in</button></div></form></details>
+    {!account && entryView && <section className="panel signin-panel" aria-label="Account access">
+      {entryView === "register" ? <>
+        <h2>Create your account</h2>
+        <p className="muted small">An NTU email is required. Each winning share resolves to one unit; new accounts start with 10,000 units.</p>
+        <form onSubmit={(e) => signIn(e, "register")} className="stacked-form">
+          <label htmlFor="reg-name">Display name</label>
+          <input id="reg-name" value={regName} minLength={2} maxLength={60} required onChange={(e) => setRegName(e.target.value)} placeholder="Your name" />
+          <label htmlFor="reg-email">NTU email</label>
+          <input id="reg-email" type="email" value={regEmail} required onChange={(e) => setRegEmail(e.target.value)} placeholder="name@ntu.edu.sg" />
+          <label htmlFor="reg-password">Password</label>
+          <input id="reg-password" type="password" value={regPassword} minLength={12} required autoComplete="new-password" onChange={(e) => setRegPassword(e.target.value)} placeholder="At least 12 characters" />
+          <button className="primary" disabled={busy}>Create account</button>
+        </form>
+      </> : <>
+        <h2>Log in</h2>
+        <form onSubmit={(e) => signIn(e, "login")} className="stacked-form">
+          <label htmlFor="login-email">NTU email</label>
+          <input id="login-email" type="email" value={loginEmail} required autoComplete="username" onChange={(e) => setLoginEmail(e.target.value)} />
+          <label htmlFor="login-password">Password</label>
+          <input id="login-password" type="password" value={loginPassword} required autoComplete="current-password" onChange={(e) => setLoginPassword(e.target.value)} />
+          <button disabled={busy}>Log in</button>
+        </form>
+      </>}
+      {config?.demo_mode && <details><summary>Demo accounts</summary>
+        <p className="muted small">A one-click participant with 1,000 units, or the seeded administrator.</p>
+        <form onSubmit={(e) => signIn(e, "demo")}><label htmlFor="display-name">Demo display name</label><div className="inline-form"><input id="display-name" value={name} minLength={2} maxLength={60} required onChange={(e) => setName(e.target.value)} placeholder="Your name" /><button disabled={busy}>Start with 1,000 units</button></div></form>
+        <div className="button-row"><button disabled={busy} onClick={signInDemoAdmin}>Sign in as admin@ntu.edu.sg</button></div>
+      </details>}
     </section>}
     {account?.role === "member" && <section className="panel" aria-label="Creator verification">
       <h3>Become a market creator</h3>
@@ -135,7 +143,7 @@ export default function App() {
     {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setSelectedSeries(id); setView("series"); setRefresh((n) => n + 1); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} />}
     <footer><span>PolyNTU · Outcome markets</span>{account && <button className="link-button" onClick={signOut}>Sign out</button>}</footer>
-    {account && <details className="account-settings"><summary>Account access</summary><p>Logging in again invalidates every other session. Demo accounts restore only through their token; registered accounts simply log in again.</p><button onClick={copyToken}>Copy account token</button></details>}
+    {account && <details className="account-settings"><summary>Account access</summary><p>Logging in again invalidates every other session. Registered accounts simply log in again; a demo account cannot sign back in after signing out, so create a new one instead.</p></details>}
     {config?.demo_mode && <details className="demo-controls"><summary>Demo clock controls</summary><p>Advance simulated time to observe closing and settlement. Administrator access is required.</p><label htmlFor="admin-token">Administrator token</label><input id="admin-token" type="password" value={admin} autoComplete="off" onChange={(e) => setAdmin(e.target.value)} /><div className="button-row"><button disabled={busy || !admin} onClick={() => advance(60)}>Advance 1 hour</button><button disabled={busy || !admin} onClick={() => advance(1440)}>Advance 1 day</button></div></details>}
   </div>;
 }

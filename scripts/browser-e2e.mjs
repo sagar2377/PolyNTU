@@ -132,6 +132,7 @@ const traderEmail = `e2e.trader${stamp}@ntu.edu.sg`;
 const titles = [`E2E signed rain market ${stamp}`, `E2E second signed market ${stamp}`];
 
 async function register(cdp, name, email, password) {
+  await evaluate(cdp, `__clickText('.signin-toggle button', 'Create account')`);
   await waitFor(cdp, "register form", `__has('#reg-email')`);
   await evaluate(cdp, `__set('#reg-name', ${JSON.stringify(name)})`);
   await evaluate(cdp, `__set('#reg-email', ${JSON.stringify(email)})`);
@@ -141,8 +142,7 @@ async function register(cdp, name, email, password) {
 }
 
 async function signIn(cdp, email, password) {
-  await waitFor(cdp, "login details", `[...document.querySelectorAll('summary')].some((s) => s.textContent.includes('Log in with email and password'))`);
-  await evaluate(cdp, `__clickText('summary', 'Log in with email and password')`);
+  await evaluate(cdp, `__clickText('.signin-toggle button', 'Log in')`);
   await waitFor(cdp, "login form", `__has('#login-email')`);
   await evaluate(cdp, `__set('#login-email', ${JSON.stringify(email)})`);
   await evaluate(cdp, `__set('#login-password', ${JSON.stringify(password)})`);
