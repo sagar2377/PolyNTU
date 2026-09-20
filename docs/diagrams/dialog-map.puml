@@ -1,0 +1,132 @@
+@startuml
+hide empty description
+left to right direction
+skinparam nodesep 45
+skinparam ranksep 80
+skinparam shadowing false
+skinparam defaultFontSize 13
+skinparam ArrowFontSize 12
+skinparam NoteFontSize 12
+skinparam state {
+  BackgroundColor #C8E6C9
+  BorderColor #7A7A7A
+  ArrowColor #555555
+}
+title PolyNTU dialog map (initial)
+
+state "Main window" as Main #F5F5F5 {
+  state "Markets" as Markets
+  state "Market page" as MarketPage
+  state "Portfolio" as Portfolio
+  state "Publish a market" as Create
+
+  Markets : **UC-5**\nhero, category filter, live market cards\nhistory tabs: Closed / Voided / Resolved\nfilter, tab and page changes stay on this screen
+  MarketPage : **UC-18, UC-19, UC-20, UC-21, UC-14, UC-17**\nprobabilities and market facts, trade panel\nprice and volume chart, day probability view\nseries facts, live brackets, bracket history\ncreator resolve control [authority = creator]
+  Portfolio : **UC-4, UC-15**\noutcome shares, settlement credits, trade history\nsigned out: "Sign in to view your positions"
+  Create : **UC-8, UC-9, UC-10, UC-11**\none-time or recurring form\nresolution authority, fee, schedule
+
+  ' --- in-screen actions ---
+  Markets --> MarketPage : select a market card
+  Portfolio --> MarketPage : select a market title
+  MarketPage --> MarketPage : select another bracket\n(Trade / View)
+  MarketPage --> Markets : "← All markets"\n[opened from Markets]
+  MarketPage --> Portfolio : "← All markets"\n[opened from Portfolio]
+  Create --> MarketPage : publish succeeds\n[a bracket already spawned]
+  Create --> Markets : publish succeeds\n[no bracket yet], or "← All markets"
+
+  ' --- header navigation, available on every screen ---
+  Markets -[#1565C0]-> Portfolio : Portfolio tab
+  Markets -[#1565C0]-> Create : Create market tab\n[role = creator]
+  Portfolio -[#1565C0]-> Markets : Markets tab / wordmark
+  Portfolio -[#1565C0]-> Create : Create market tab\n[role = creator]
+  Create -[#1565C0]-> Markets : Markets tab / wordmark
+  Create -[#1565C0]-> Portfolio : Portfolio tab
+  MarketPage -[#1565C0]-> Markets : Markets tab / wordmark
+  MarketPage -[#1565C0]-> Portfolio : Portfolio tab
+  MarketPage -[#1565C0]-> Create : Create market tab\n[role = creator]
+
+  Create -[#E65100]-> Markets : Sign out\n(proposed fix)
+}
+
+[*] --> Markets : open the app\n(Visitor, not signed in)
+
+state "Account access dialog" as Access #F5F5F5 {
+  state "Register" as Register
+  state "Log in" as Login
+  state "Demo accounts" as Demo #FFF9C4
+
+  Register : **UC-1, UC-3**\ndisplay name, NTU email,\npassword (12 characters or more)\nsuccess: the account opens with the\n10,000-unit welcome gift
+  Login : **UC-2**\nNTU email, password
+  Demo : disclosure inside the dialog:\none-click participant, bus creator, administrator
+
+  Register --> Login : "Log in"
+  Login --> Register : "Create account"
+  Register --> Demo : expand "Demo accounts"\n[demo mode]
+  Login --> Demo : expand "Demo accounts"\n[demo mode]
+  Register --> Register : rejected: non-NTU email, duplicate,\nshort password (error banner)
+  Login --> Login : wrong credentials\n(error banner)
+}
+
+state "Demo clock dialog" as Clock #FFF9C4
+Clock : administrator token\nAdvance 1 hour / Advance 1 day
+
+Main --> Register : "Create account"\n[not signed in]
+Main --> Login : "Log in"\n[not signed in]
+Access --> Main : sign-in succeeds (session opens)\nor close: x, Esc, backdrop, same header\nbutton again (still signed out)\nthe screen underneath is unchanged
+
+Main --> Clock : footer "Demo clock"\n[demo mode]
+Clock --> Main : close: x, Esc, backdrop
+Clock --> Clock : Advance 1 hour / 1 day\n[administrator token entered]
+
+note top of Main
+  **Present on every screen**
+  Header: wordmark, Markets, Portfolio,
+  Create market [role = creator], and either
+  Create account / Log in or the account chip
+  with Sign out. Sign out ends the session and
+  keeps the current screen.
+
+  Error banner: any failed request, dismissible.
+
+  Pending-trade banner: "Resume trade" opens the
+  saved trade's Market page from any screen.
+
+  Creator verification panel [role = member]
+  (**UC-6**): Request verification -> pending ->
+  approved (the Create market tab appears) or
+  rejected -> Apply again.
+
+  Sign out (**UC-25**) ends the session from the
+  account chip.
+end note
+
+note bottom of Clock
+  **Use cases with no screen**
+  UC-7 (approve or reject a creator request),
+  UC-22 (suspend an instance), UC-23 (grant units)
+  and UC-24 (run reconciliation) are administrator
+  work and run through the API only; an admin
+  console is a candidate for the next iteration.
+
+  UC-12, UC-13, UC-15, UC-16 and UC-17 belong to
+  the Scheduler and Settlement Worker. They have no
+  screen by design; their results surface on the
+  Market page and in the portfolio.
+end note
+
+note bottom of Markets
+  **UC-5 is named "Browse and search markets"**
+  but this screen offers category filters and
+  paging only; there is no search control.
+  Either add one or rename the use case.
+end note
+
+legend right
+  Green: screen or dialog in the current build
+  Yellow: demo-mode fixture, not a requirement
+  Blue arrow: header navigation, available on every screen
+  Grey arrow: action inside the current screen
+  Orange arrow: proposed change (Sign out on Publish
+  leaves an empty screen in the current build)
+end legend
+@enduml
