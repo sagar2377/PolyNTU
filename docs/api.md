@@ -65,7 +65,7 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `POST /api/v2/auth/login` | None | Verifies email and password, rotates the session token, and returns it once. |
 | `GET /api/v2/me` | Account | Current account identity, email/role, and available balance. |
 | `GET /api/v2/markets` | None | Up to 100 templates ordered by category and ID. |
-| `GET /api/v2/instances` | None | Paginated instances across templates. |
+| `GET /api/v2/instances` | None | Paginated instances across templates, optionally filtered by browse class (`state=open|closed|voided|resolved`). |
 | `GET /api/v2/markets/{id}/instances` | None | Paginated instances for one template ID. |
 | `GET /api/v2/series` | None | Up to 100 published series, active series first. |
 | `GET /api/v2/series/{id}` | None | One series definition plus up to 100 of its brackets and the computed day view. |
@@ -362,10 +362,13 @@ Semantics:
 
 ```http
 GET /api/v2/instances?limit=100&offset=0
+GET /api/v2/instances?limit=100&offset=0&state=open
 GET /api/v2/markets/bus-blue/instances?limit=100&offset=0
 ```
 
 The server does not return a total count or next-page token. A client infers that it reached the last page when fewer than `limit` rows are returned. Rows are ordered so markets that have not closed yet come first, soonest close first, followed by closed markets, most recently closed first; settled one-time markets can never bury the live ones on the first page.
+
+`GET /api/v2/instances` also accepts an optional `state` filter matching the browse classes: `open` lists the live grid, while `closed` (which includes the transient `resolving` payout state), `voided`, and `resolved` list the history tabs, each paging on its own in that order. An unknown state is rejected with 400 instead of silently returning everything.
 
 ## Quotes
 

@@ -1597,6 +1597,83 @@ async fn instance_history_buckets_prices_and_volume() {
 }
 
 #[tokio::test]
+async fn instance_lists_filter_by_browse_class() {
+    let db = TestDb::new().await;
+    let app = db.app();
+    // One market resolves, one closes and waits for evidence, and one created
+    // afterwards stays open: the three classes the browse grid and its
+    // history tabs page through independently.
+    let resolved = db.market(None).await;
+    let closed = db.market(None).await;
+    db.store.advance_demo_clock(4).await.unwrap();
+    db.store.close_due().await.unwrap();
+    db.store
+        .ingest_evidence(&resolved.id, &rain(&resolved, 1, 500))
+        .await
+        .unwrap();
+    db.store.settle_batch(&resolved.id).await.unwrap();
+    let open = db.market(None).await;
+    let list = |state: &str| {
+        let app = app.clone();
+        let url = format!("/api/v2/instances?state={state}");
+        async move {
+            http(&app, "GET", &url, Value::Null, None, false, None)
+                .await
+                .1
+        }
+    };
+    let open_rows = list("open").await;
+    let open_rows = open_rows.as_array().unwrap();
+    assert_eq!(open_rows.len(), 1);
+    assert_eq!(open_rows[0]["id"], json!(open.id));
+    let resolved_rows = list("resolved").await;
+    let resolved_rows = resolved_rows.as_array().unwrap();
+    assert_eq!(resolved_rows.len(), 1);
+    assert_eq!(resolved_rows[0]["id"], json!(resolved.id));
+    let closed_rows = list("closed").await;
+    let closed_rows = closed_rows.as_array().unwrap();
+    assert!(closed_rows.iter().all(|i| i["state"] == json!("closed")));
+    assert_eq!(
+        closed_rows
+            .iter()
+            .filter(|i| i["id"] == json!(closed.id))
+            .count(),
+        1
+    );
+    assert_eq!(list("voided").await.as_array().unwrap().len(), 0);
+    // The unfiltered list still leads with the open markets.
+    let (_, all) = http(
+        &app,
+        "GET",
+        "/api/v2/instances",
+        Value::Null,
+        None,
+        false,
+        None,
+    )
+    .await;
+    let all = all.as_array().unwrap();
+    assert_eq!(all[0]["id"], json!(open.id));
+    assert!(
+        all.iter()
+            .all(|i| (i["state"] == json!("open")) == (i["id"] == json!(open.id)))
+    );
+    // Unknown states are rejected instead of silently returning everything.
+    let (status, _) = http(
+        &app,
+        "GET",
+        "/api/v2/instances?state=banana",
+        Value::Null,
+        None,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    db.finish().await;
+}
+
+#[tokio::test]
 async fn series_day_view_weights_live_brackets_by_units_bet() {
     let db = TestDb::new().await;
     let (creator, _) = db.creator().await;

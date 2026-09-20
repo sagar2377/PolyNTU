@@ -735,20 +735,31 @@ impl Store {
     pub async fn instances(
         &self,
         template: Option<&str>,
+        state: Option<&str>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Value>> {
         // Markets that have not closed yet come first, soonest close first
         // (the resolve-soonest order the browse grid wants), followed by
         // closed history, most recently closed first, so settled one-time
-        // markets can never bury the live ones on the first page.
+        // markets can never bury the live ones on the first page. A state
+        // filter narrows the list to one browse class; "closed" covers the
+        // resolving payout state too, matching the browse history tab.
+        let states: Option<Vec<String>> = match state {
+            None => None,
+            Some("open") => Some(vec!["open".into()]),
+            Some("closed") => Some(vec!["closed".into(), "resolving".into()]),
+            Some("voided") => Some(vec!["voided".into()]),
+            Some("resolved") => Some(vec!["resolved".into()]),
+            Some(_) => return Err(invalid("State must be open, closed, voided, or resolved")),
+        };
         let now = self.now().await?;
         let rows: Vec<Instance> = sqlx::query_as(
-            "SELECT * FROM instances WHERE ($1::TEXT IS NULL OR template_id=$1) \
+            "SELECT * FROM instances WHERE ($1::TEXT IS NULL OR template_id=$1) AND ($5::TEXT[] IS NULL OR state = ANY($5)) \
              ORDER BY (close_ms < $4), CASE WHEN close_ms < $4 THEN -close_ms ELSE close_ms END, id \
              LIMIT $2 OFFSET $3",
         )
-        .bind(template).bind(limit.clamp(1,100)).bind(offset.clamp(0,100000)).bind(now).fetch_all(&self.pool).await?;
+        .bind(template).bind(limit.clamp(1,100)).bind(offset.clamp(0,100000)).bind(now).bind(&states).fetch_all(&self.pool).await?;
         rows.iter().map(|i| instance_view(i, now)).collect()
     }
 

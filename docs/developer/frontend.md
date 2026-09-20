@@ -101,14 +101,15 @@ This control is local-demo convenience, not an administrator console.
 
 ## Market discovery: `pages/MarketBrowse.jsx`
 
-State contains the current page of instances, selected category, loading flag, offset, and the active history tab. The page loads instances immediately and every ten seconds. Category filtering is client-side over only the current 100-row page.
+State contains the current page of live instances, the three history-class pages with their offsets, selected category, loading flag, and the active history tab. The page loads the live list (`state=open`) and all three history classes immediately and every ten seconds, so the tab counts are always present. Category filtering is client-side over only the current 100-row page of each list.
 
-Each card shows category, effective state, up to three outcomes, marginal percentages, data-mode label, and Singapore close time, and opens the bracket's market page, which carries the whole series view; there is no separate series strip or series page. The grid lists live markets only (state `open`, soonest to close first); closed, resolving, voided, and resolved markets are collapsed into a Market history panel with Closed, Voided, and Resolved tabs that default to hidden, mirroring the market page's bracket history. Rows arrive with markets that have not closed yet first, then closed history most recently closed first, so the live grid leads with what resolves soonest and the tabs hold the newest history first.
+Each card shows category, effective state, up to three outcomes, marginal percentages, data-mode label, and Singapore close time, and opens the bracket's market page, which carries the whole series view; there is no separate series strip or series page. The grid lists live markets only (state `open`, soonest to close first); closed, resolving, voided, and resolved markets are collapsed into a Market history panel with Closed, Voided, and Resolved tabs that default to hidden, mirroring the market page's bracket history. Paging follows the collapse: with every tab hidden there is no pager (the live grid fits a page), and each open tab pages its own class through the `state` filter, newest history first; the live grid pages only in the unlikely case it fills a whole page.
 
 Consequences:
 
 - “open on this page” is not a platform-wide count;
-- category filtering does not fetch all pages for that category; and
+- category filtering does not fetch all pages for that category;
+- the tab counts cap at the page size, shown as 100+; and
 - templates are not displayed separately.
 
 ## Market page: `pages/MarketPage.jsx`

@@ -50,7 +50,7 @@ PolyNTU separates arithmetic tests, database/HTTP integration tests, frontend st
 |---|---:|---|
 | Rust library tests | 14 passed | `backend/src`, catalogued below |
 | Independent numerical test | 1 passed | `backend/tests/numerical.rs` and the committed fixture JSON |
-| PostgreSQL integration tests | 39 passed | `backend/tests/integration.rs`, catalogued below |
+| PostgreSQL integration tests | 40 passed | `backend/tests/integration.rs`, catalogued below |
 | Rust formatting | Passed | `cargo fmt --check` |
 | Rust clippy | Passed with warnings denied | `cargo clippy --all-targets -- -D warnings` |
 | React lint/build | Passed | `npm run lint`, `npm run build` |
@@ -181,6 +181,7 @@ Grouped by area.
 | Test | Behaviour demonstrated |
 |---|---|
 | `instance_history_buckets_prices_and_volume` | Trade replay reconstructs post-fill prices and volume per bucket. |
+| `instance_lists_filter_by_browse_class` | The `state` filter returns exactly the open, closed (plus resolving), and resolved browse classes, the unfiltered list still leads with live markets, and unknown states are rejected. |
 | `series_day_view_weights_live_brackets_by_units_bet` | The day view reports volume-weighted probability and per-slot state, result, and volume. |
 
 ### Engine, concurrency, and settlement

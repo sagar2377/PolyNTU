@@ -33,7 +33,7 @@ export const api = {
   login: (body) => request("/auth/login", { method: "POST", body }),
   requestVerification: () => request("/verification-requests", { method: "POST" }),
   verificationRequest: () => request("/verification-requests"),
-  instances: (offset = 0) => request(`/instances?limit=100&offset=${offset}`),
+  instances: (offset = 0, state) => request(`/instances?limit=100&offset=${offset}${state ? `&state=${state}` : ""}`),
   instance: (id) => request(`/instances/${encodeURIComponent(id)}`),
   history: (id, bucketMs) => request(`/instances/${encodeURIComponent(id)}/history?bucket_ms=${bucketMs}`),
   seriesList: () => request("/series"),

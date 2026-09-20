@@ -266,19 +266,33 @@ async fn template_instances(
         s.store
             .instances(
                 Some(&id),
+                None,
                 page.limit.unwrap_or(100),
                 page.offset.unwrap_or(0),
             )
             .await?,
     ))
 }
+/// The browse grid's class filter: open lists the live grid, closed, voided,
+/// and resolved list the history tabs, each with its own paging.
+#[derive(Deserialize, Default)]
+struct InstancePage {
+    limit: Option<i64>,
+    offset: Option<i64>,
+    state: Option<String>,
+}
 async fn instances(
     State(s): State<AppState>,
-    Query(page): Query<Page>,
+    Query(page): Query<InstancePage>,
 ) -> Result<Json<Vec<Value>>> {
     Ok(Json(
         s.store
-            .instances(None, page.limit.unwrap_or(100), page.offset.unwrap_or(0))
+            .instances(
+                None,
+                page.state.as_deref(),
+                page.limit.unwrap_or(100),
+                page.offset.unwrap_or(0),
+            )
             .await?,
     ))
 }
