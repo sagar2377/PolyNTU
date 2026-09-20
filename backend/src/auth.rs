@@ -150,6 +150,29 @@ pub fn verify_ed25519(public_key_b64: &str, message: &str, signature_b64: &str) 
         .unwrap_or(false)
 }
 
+/// PBKDF2 iterations for deriving a creator's resolution signing key from the
+/// account password (ADR 0007 amendment).
+pub const RESOLUTION_KEY_ITERATIONS: u32 = 600_000;
+
+/// The ed25519 seed of a creator's resolution signing key, derived from the
+/// account password so that holding the password is holding the key:
+/// PBKDF2-HMAC-SHA256 over the password with the email-bound salt
+/// `polyntu.resolution.v1:{email}`. The creator's browser derives the same
+/// seed and publishes only the resulting public key; any browser where the
+/// creator signs in can re-derive it, so a lost profile no longer voids the
+/// market.
+pub fn resolution_key_seed(email: &str, password: &str) -> [u8; 32] {
+    let salt = format!("polyntu.resolution.v1:{email}");
+    let mut seed = [0u8; 32];
+    pbkdf2::pbkdf2_hmac::<Sha256>(
+        password.as_bytes(),
+        salt.as_bytes(),
+        RESOLUTION_KEY_ITERATIONS,
+        &mut seed,
+    );
+    seed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +209,30 @@ mod tests {
         assert!(verify_password(&hash, "correct horse battery"));
         assert!(!verify_password(&hash, "a different password"));
         assert!(!verify_password("not-a-phc-hash", "correct horse battery"));
+    }
+
+    #[test]
+    fn resolution_key_seed_matches_the_browser_derivation() {
+        // Vector produced with the browser's WebCrypto (PBKDF2-HMAC-SHA256,
+        // then the ed25519 public key of the seed); the frontend derives the
+        // identical keypair, and a wrong password yields a different seed.
+        let seed = resolution_key_seed("billy@ntu.edu.sg", "correct horse battery");
+        assert_eq!(
+            seed.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            "5a95d8a2f1494cd9a0d96e89f381c4bd8908cb95a635f74365d34ed868ea7e03"
+        );
+        let signing = ed25519_dalek::SigningKey::from_bytes(&seed);
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD.encode(signing.verifying_key().as_bytes()),
+            "1qpCGijHNjhfbZlvnZ4UQvlsPpvhhuhbvon+1dWrre8="
+        );
+        assert_ne!(
+            resolution_key_seed("billy@ntu.edu.sg", "wrong password"),
+            seed
+        );
+        assert_ne!(
+            resolution_key_seed("other@ntu.edu.sg", "correct horse battery"),
+            seed
+        );
     }
 }

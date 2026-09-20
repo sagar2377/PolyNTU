@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, categories, generateResolutionKeyPair, storeSeriesKey } from "../api";
+import { api, categories, deriveResolutionKeyPair, signingKey, storeSigningKey } from "../api";
 
 const localToMs = (value) => value ? new Date(value).getTime() : null;
 const minutesOfDay = (value) => {
@@ -7,7 +7,7 @@ const minutesOfDay = (value) => {
   return hours * 60 + minutes;
 };
 
-export default function CreateMarket({ onCreated, onError, onBack }) {
+export default function CreateMarket({ account, onCreated, onError, onBack }) {
   const [title, setTitle] = useState("");
   const [criterion, setCriterion] = useState("");
   const [category, setCategory] = useState("weather");
@@ -26,6 +26,7 @@ export default function CreateMarket({ onCreated, onError, onBack }) {
   const [resolutionKind, setResolutionKind] = useState("admin");
   const [resolverEndpoint, setResolverEndpoint] = useState("");
   const [keyPair, setKeyPair] = useState(null);
+  const [keyPassword, setKeyPassword] = useState("");
   const [closeAt, setCloseAt] = useState("");
   const [observationMinutes, setObservationMinutes] = useState("10");
   const [intervalMinutes, setIntervalMinutes] = useState("2");
@@ -34,12 +35,11 @@ export default function CreateMarket({ onCreated, onError, onBack }) {
   const [concurrency, setConcurrency] = useState("5");
   const [endAt, setEndAt] = useState("");
   const [busy, setBusy] = useState(false);
-  const chooseResolution = async (kind) => {
+  const chooseResolution = (kind) => {
     setResolutionKind(kind);
-    if (kind === "creator" && !keyPair) {
-      try { setKeyPair(await generateResolutionKeyPair()); }
-      catch { onError("This browser cannot generate ed25519 keys"); setResolutionKind("admin"); }
-    }
+    // The signing key is derived from the account password (ADR 0007
+    // amendment); the cache is filled at sign-in or by the password field.
+    if (kind === "creator") setKeyPair(signingKey(account));
   };
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); onError("");
@@ -56,13 +56,19 @@ export default function CreateMarket({ onCreated, onError, onBack }) {
       } else {
         schedule = { kind: "recurring", interval_ms: Number(intervalMinutes) * 60000, active_start_minute: minutesOfDay(windowStart), active_end_minute: minutesOfDay(windowEnd), max_concurrency: Number(concurrency), end_ms: localToMs(endAt) };
       }
+      let pair = keyPair;
+      if (resolutionKind === "creator" && !pair) {
+        if (!account?.email) throw new Error("Sign in with your email account to publish a signed market");
+        if (!keyPassword) throw new Error("Enter your password to derive the signing key");
+        pair = await deriveResolutionKeyPair(account.email, keyPassword);
+      }
       const resolution = resolutionKind === "creator"
-        ? { kind: "creator", public_key: keyPair?.public_key }
+        ? { kind: "creator", public_key: pair?.public_key }
         : resolutionKind === "resolver"
           ? { kind: "resolver", endpoint: resolverEndpoint.trim() }
           : undefined;
       const created = await api.createSeries({ title: title.trim(), resolution_criterion: criterion.trim(), rule, source_id: sourceId.trim(), liquidity_units: Number(liquidity), fee_charged: feeCharged, resolution, schedule });
-      if (resolutionKind === "creator" && keyPair) storeSeriesKey(created.id, keyPair);
+      if (resolutionKind === "creator" && pair) storeSigningKey(account.email, pair);
       onCreated(created.id);
     } catch (e) { onError(e.message); } finally { setBusy(false); }
   };
@@ -122,10 +128,16 @@ export default function CreateMarket({ onCreated, onError, onBack }) {
       <label htmlFor="market-resolution">Resolution authority</label>
       <select id="market-resolution" value={resolutionKind} onChange={(e) => chooseResolution(e.target.value)}>
         <option value="admin">Platform administrator records evidence</option>
-        <option value="creator">I sign each resolution with a key from this browser</option>
+        <option value="creator">I sign each resolution with my account password</option>
         <option value="resolver">An external API answers automatically</option>
       </select>
-      {resolutionKind === "creator" && <p className="muted small">{keyPair ? "An ed25519 keypair was generated in this browser. The private key never leaves it and is saved locally for this series; losing it voids the market at its deadline." : "Generating the browser keypair…"}</p>}
+      {resolutionKind === "creator" && <>
+        <p className="muted small">{keyPair
+          ? "Resolutions are signed with the key derived from your account password, so you can resolve from any browser where you sign in. The password itself never leaves this browser; only the public key is published."
+          : "Enter your password to derive the signing key in this browser. The key is derived from the password, so any browser where you sign in can resolve; the password never leaves this browser."}</p>
+        {!keyPair && <><label htmlFor="market-key-password">Password (derives the signing key)</label>
+        <input id="market-key-password" type="password" value={keyPassword} required autoComplete="current-password" onChange={(e) => setKeyPassword(e.target.value)} /></>}
+      </>}
       {resolutionKind === "resolver" && <>
         <label htmlFor="market-resolver-endpoint">Resolver endpoint (https URL)</label>
         <input id="market-resolver-endpoint" value={resolverEndpoint} maxLength={500} required onChange={(e) => setResolverEndpoint(e.target.value)} placeholder="https://example.com/polyntu-resolver" />

@@ -943,8 +943,11 @@ async fn creators_resolve_their_markets_with_signed_statements() {
     let db = TestDb::new().await;
     let (creator, token) = db.creator().await;
     let now = db.store.now().await.unwrap();
-    // A real ed25519 keypair, as the creator's browser would hold it.
-    let signing = SigningKey::from_bytes(&[7u8; 32]);
+    // The signing keypair is derived from the creator's account password
+    // (ADR 0007 amendment), exactly as the creator's browser derives it, so
+    // holding the password is holding the key.
+    let seed = auth::resolution_key_seed("creator@ntu.edu.sg", "correct horse battery");
+    let signing = SigningKey::from_bytes(&seed);
     let public_key =
         base64::engine::general_purpose::STANDARD.encode(signing.verifying_key().as_bytes());
     let mut spec = rain_series(Schedule::Once {

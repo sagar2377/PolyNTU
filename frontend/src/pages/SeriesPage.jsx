@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, categories, seriesKey, signResolution, timestamp } from "../api";
+import { api, categories, deriveResolutionKeyPair, signResolution, signingKey as accountSigningKey, storeSigningKey, timestamp } from "../api";
 import DayProbabilityChart from "../components/DayProbabilityChart";
 
 const categoryOf = (rule) =>
@@ -15,6 +15,9 @@ export default function SeriesPage({ id, account, refresh, onError, onBack, onSe
   const [series, setSeries] = useState(null);
   const [busy, setBusy] = useState(false);
   const [choices, setChoices] = useState({});
+  const [keyPassword, setKeyPassword] = useState("");
+  const [deriving, setDeriving] = useState(false);
+  const [localKey, setLocalKey] = useState(null);
   useEffect(() => {
     let cancelled = false;
     const load = () => api.series(id).then((value) => { if (!cancelled) setSeries(value); }).catch((e) => { if (!cancelled) onError(e.message); });
@@ -30,16 +33,33 @@ export default function SeriesPage({ id, account, refresh, onError, onBack, onSe
   const settled = series.instances.filter((i) => i.state === "resolved" || i.state === "voided");
   const isCreator = account && series.creator_account_id === account.id;
   const canSign = isCreator && series.resolution?.authority === "creator";
-  const signingKey = canSign ? seriesKey(series.id) : null;
-  const resolve = async (bracket, outcomeId) => {
+  const key = localKey || (canSign ? accountSigningKey(account) : null);
+  const keyMatches = key?.public_key === series.resolution?.public_key;
+  const resolve = async (bracket, outcomeId, pair) => {
     setBusy(true); onError("");
     try {
       const nonce = crypto.randomUUID();
-      const signature = await signResolution(signingKey.private_key, bracket.id, outcomeId, nonce);
+      const signature = await signResolution(pair.private_key, bracket.id, outcomeId, nonce);
       await api.resolveMarket(bracket.id, { outcome_id: outcomeId, nonce, signature });
       const fresh = await api.series(id);
       setSeries(fresh);
     } catch (e) { onError(e.message); } finally { setBusy(false); }
+  };
+  // The signing key is derived from the account password (ADR 0007
+  // amendment); this prompt covers a browser that signed in through a saved
+  // token or logged in before the key was cached.
+  const deriveKey = async () => {
+    setDeriving(true); onError("");
+    try {
+      if (!account?.email) throw new Error("Sign in with your email account to resolve");
+      const pair = await deriveResolutionKeyPair(account.email, keyPassword);
+      if (pair.public_key !== series.resolution?.public_key) {
+        throw new Error("That password does not match the key published for this series");
+      }
+      storeSigningKey(account.email, pair);
+      setLocalKey(pair);
+      setKeyPassword("");
+    } catch (e) { onError(e.message); } finally { setDeriving(false); }
   };
   return <>
     <button className="link-button" onClick={onBack}>← All markets</button>
@@ -72,17 +92,23 @@ export default function SeriesPage({ id, account, refresh, onError, onBack, onSe
       </ul>}
     </section>
     {awaiting.length > 0 && <section className="panel"><h2>Awaiting resolution</h2>
-      {canSign && <p className="muted small">{signingKey ? "Pick the outcome for each closed bracket; this browser signs the statement with the series key." : "This browser does not hold the signing key for this series."}</p>}
+      {canSign && (keyMatches
+        ? <p className="muted small">Pick the outcome for each closed bracket; this browser signs with the key derived from your password.</p>
+        : <div className="resolve-control"><label className="sr-only" htmlFor="series-key-password">Password</label>
+            <input id="series-key-password" type="password" placeholder="Account password" value={keyPassword} autoComplete="current-password" onChange={(e) => setKeyPassword(e.target.value)} />
+            <button disabled={deriving || !keyPassword} onClick={deriveKey}>Derive signing key</button></div>)}
       <ul className="bracket-list">{awaiting.map((bracket) => <li key={bracket.id}>
         <span>Closed {timestamp(bracket.close_ms)} SGT</span>
         <span>{bracket.outcomes.map((o) => `${o.label} ${(o.probability * 100).toFixed(1)}%`).join(" · ")}</span>
-        {canSign && signingKey
+        {canSign && keyMatches
           ? <span className="resolve-control"><label className="sr-only" htmlFor={`resolve-${bracket.id}`}>Outcome</label>
               <select id={`resolve-${bracket.id}`} value={choices[bracket.id] ?? bracket.outcomes[0].id} onChange={(e) => setChoices({ ...choices, [bracket.id]: e.target.value })}>
                 {bracket.outcomes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
-              <button disabled={busy} onClick={() => resolve(bracket, choices[bracket.id] ?? bracket.outcomes[0].id)}>Resolve</button></span>
-          : <span className="muted small">{series.resolution?.authority === "resolver" ? "Asking the external resolver" : "Awaiting the resolution authority"}</span>}
+              <button disabled={busy} onClick={() => resolve(bracket, choices[bracket.id] ?? bracket.outcomes[0].id, key)}>Resolve</button></span>
+          : canSign
+            ? <span className="muted small">Derive the signing key above to resolve these brackets.</span>
+            : <span className="muted small">{series.resolution?.authority === "resolver" ? "Asking the external resolver" : "Awaiting the resolution authority"}</span>}
       </li>)}
       </ul>
     </section>}

@@ -16,6 +16,7 @@ uuid = { version = "1", features = ["v4"] }
 rand = { version = "0.10", features = ["sys_rng"] }
 hmac = "0.13"
 sha2 = "0.11"
+pbkdf2 = "0.13"
 base64 = "0.23"
 argon2 = "0.6"
 ed25519-dalek = "3.0"

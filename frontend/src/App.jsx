@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, TOKEN_KEY, units, pendingTrade } from "./api";
+import { api, TOKEN_KEY, deriveResolutionKeyPair, pendingTrade, storeSigningKey, units } from "./api";
 import MarketBrowse from "./pages/MarketBrowse";
 import MarketPage from "./pages/MarketPage";
 import Portfolio from "./pages/Portfolio";
@@ -44,16 +44,25 @@ export default function App() {
     if (!account?.id) return;
     api.verificationRequest().then((request) => { setVerification(request && request.id ? request : null); }).catch(() => setVerification(null));
   }, [account?.id, account?.role, refresh]);
-  const openSession = (session) => {
+  const openSession = (session, password) => {
     localStorage.setItem(TOKEN_KEY, session.token);
     setAccount(session.account);
     setVerification(null);
+    // Cache the resolution signing key derived from the password (ADR 0007
+    // amendment) so publishing and resolving never need to re-prompt while
+    // this browser stays signed in. Best effort: a failure just means the
+    // password is asked for where the key is needed.
+    if (session.account?.email && password) {
+      deriveResolutionKeyPair(session.account.email, password)
+        .then((keys) => storeSigningKey(session.account.email, keys))
+        .catch(() => {});
+    }
   };
   const signIn = async (event, mode) => {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      if (mode === "register") openSession(await api.register({ display_name: regName, email: regEmail, password: regPassword }));
-      else if (mode === "login") openSession(await api.login({ email: loginEmail, password: loginPassword }));
+      if (mode === "register") openSession(await api.register({ display_name: regName, email: regEmail, password: regPassword }), regPassword);
+      else if (mode === "login") openSession(await api.login({ email: loginEmail, password: loginPassword }), loginPassword);
       else if (mode === "demo") openSession(await api.createAccount(name));
       else { const owner = await api.me(token.trim()); localStorage.setItem(TOKEN_KEY, token.trim()); setAccount(owner); setVerification(null); }
       setToken("");
@@ -123,7 +132,7 @@ export default function App() {
     {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} onOpenSeries={(id) => { setSelectedSeries(id); setView("series"); }} />}
     {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView("browse")} onOpenSeries={(id) => { setSelectedSeries(id); setView("series"); }} />}
     {view === "series" && selectedSeries && <SeriesPage key={selectedSeries} id={selectedSeries} account={account} refresh={refresh} onError={setError} onBack={() => setView("browse")} onSelect={(id) => { setSelected(id); setView("market"); }} />}
-    {view === "create" && account?.role === "creator" && <CreateMarket onCreated={(id) => { setSelectedSeries(id); setView("series"); setRefresh((n) => n + 1); }} onError={setError} onBack={() => setView("browse")} />}
+    {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setSelectedSeries(id); setView("series"); setRefresh((n) => n + 1); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => { setSelected(id); setView("market"); }} />}
     <footer><span>PolyNTU · Outcome markets</span>{account && <button className="link-button" onClick={signOut}>Sign out</button>}</footer>
     {account && <details className="account-settings"><summary>Account access</summary><p>Logging in again invalidates every other session. Demo accounts restore only through their token; registered accounts simply log in again.</p><button onClick={copyToken}>Copy account token</button></details>}

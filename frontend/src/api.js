@@ -1,7 +1,7 @@
 const BASE = import.meta.env.VITE_API_URL || "";
 export const TOKEN_KEY = "polyntu.v2.token";
 export const PENDING_KEY = "polyntu.v2.pending-trade";
-export const SERIES_KEYS_KEY = "polyntu.v2.series-keys";
+export const SIGNING_KEY_KEY = "polyntu.v2.signing-key";
 export class ApiError extends Error {
   constructor(message, status = 0) { super(message); this.status = status; }
 }
@@ -75,14 +75,33 @@ function toBase64(buffer) {
   return btoa(binary);
 }
 
-/// Generate an ed25519 keypair for creator resolution (ADR 0007). The
-/// private key never leaves the browser; only the public key is published.
-export async function generateResolutionKeyPair() {
-  const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
-  return {
-    public_key: toBase64(await crypto.subtle.exportKey("raw", pair.publicKey)),
-    private_key: toBase64(await crypto.subtle.exportKey("pkcs8", pair.privateKey)),
-  };
+/// PBKDF2 iterations for the resolution key derivation; must match the
+/// backend constant and the published contract (ADR 0007 amendment).
+export const RESOLUTION_KEY_ITERATIONS = 600000;
+// The fixed RFC 5958 PKCS8 prefix of an ed25519 seed, identical to what
+// exportKey("pkcs8") produces for a generated key.
+const ED25519_PKCS8_PREFIX = [0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20];
+
+/// Derive the creator's resolution keypair from the account password (ADR
+/// 0007 amendment): PBKDF2-HMAC-SHA256 over the password with the
+/// email-bound salt yields the ed25519 seed, so holding the password is
+/// holding the key and any browser where the creator signs in can resolve.
+/// The password and seed never leave the browser; only the public key is
+/// published.
+export async function deriveResolutionKeyPair(email, password) {
+  const enc = new TextEncoder();
+  const material = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const seed = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: enc.encode(`polyntu.resolution.v1:${email}`), iterations: RESOLUTION_KEY_ITERATIONS, hash: "SHA-256" },
+    material,
+    256,
+  );
+  const pkcs8 = new Uint8Array([...ED25519_PKCS8_PREFIX, ...new Uint8Array(seed)]);
+  const pair = await crypto.subtle.importKey("pkcs8", pkcs8, { name: "Ed25519" }, true, ["sign"]);
+  const jwk = await crypto.subtle.exportKey("jwk", pair);
+  let publicKey = jwk.x.replace(/-/g, "+").replace(/_/g, "/");
+  while (publicKey.length % 4) publicKey += "=";
+  return { public_key: publicKey, private_key: toBase64(pkcs8) };
 }
 
 export async function signResolution(privateKeyB64, instanceId, outcomeId, nonce) {
@@ -92,14 +111,13 @@ export async function signResolution(privateKeyB64, instanceId, outcomeId, nonce
   return toBase64(await crypto.subtle.sign({ name: "Ed25519" }, key, message));
 }
 
-export function loadSeriesKeys() {
-  try { return JSON.parse(localStorage.getItem(SERIES_KEYS_KEY) || "{}"); } catch { return {}; }
+export function loadSigningKey() {
+  try { return JSON.parse(localStorage.getItem(SIGNING_KEY_KEY) || "null"); } catch { return null; }
 }
-export function storeSeriesKey(seriesId, keys) {
-  const all = loadSeriesKeys();
-  all[seriesId] = keys;
-  localStorage.setItem(SERIES_KEYS_KEY, JSON.stringify(all));
+export function storeSigningKey(email, keys) {
+  localStorage.setItem(SIGNING_KEY_KEY, JSON.stringify({ email, ...keys }));
 }
-export function seriesKey(seriesId) {
-  return loadSeriesKeys()[seriesId] || null;
+export function signingKey(account) {
+  const entry = loadSigningKey();
+  return account?.email && entry?.email === account.email ? entry : null;
 }
