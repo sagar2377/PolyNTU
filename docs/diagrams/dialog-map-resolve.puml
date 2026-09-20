@@ -1,0 +1,62 @@
+@startuml
+hide empty description
+left to right direction
+skinparam shadowing false
+skinparam defaultFontSize 13
+skinparam ArrowFontSize 12
+skinparam NoteFontSize 12
+skinparam nodesep 40
+skinparam ranksep 70
+skinparam state {
+  BackgroundColor #C8E6C9
+  BorderColor #7A7A7A
+  ArrowColor #555555
+}
+title PolyNTU dialog map: bracket history and creator resolution on the Market page (UC-14)
+
+state "Bracket history\ncollapsed" as Collapsed
+state "Closed tab" as ClosedTab
+state "Voided tab" as VoidedTab
+state "Resolved tab" as ResolvedTab
+state "Derive signing key" as Derive
+state "Resolve control" as Control
+state "Awaiting the authority\n(read-only notice)" as Waiting
+
+Collapsed : tab bar with counts:\nClosed (n), Voided (n), Resolved (n)
+ClosedTab : brackets awaiting resolution
+VoidedTab : voided brackets, "View" opens one
+ResolvedTab : resolved brackets and results,\n"View" opens one
+Derive : account password field,\n"Derive signing key"
+Control : outcome selector and "Resolve"\nper closed bracket
+Waiting : "The automatic resolver is answering"\nor "Awaiting the resolution authority"
+
+[*] --> Collapsed : the series has closed,\nvoided or resolved brackets
+
+Collapsed --> ClosedTab : open the Closed tab
+Collapsed --> VoidedTab : open the Voided tab
+Collapsed --> ResolvedTab : open the Resolved tab
+ClosedTab --> Collapsed : click the open tab again
+VoidedTab --> Collapsed : click the open tab again
+ResolvedTab --> Collapsed : click the open tab again
+
+state closedChoice <<choice>>
+ClosedTab --> closedChoice
+closedChoice --> Waiting : [not the creator,\nor authority is not the creator]
+closedChoice --> Control : [creator and the cached key\nmatches the published key]
+closedChoice --> Derive : [creator but no matching key\nin this browser]
+
+Derive --> Control : password derives the\npublished public key
+Derive --> Derive : wrong password\n(error banner)
+Control --> ClosedTab : "Resolve" signs and submits;\nthe bracket moves to Resolved
+Control --> Control : submission rejected\n(error banner)
+
+note bottom of Derive
+  The signing key is derived from the account
+  password (ADR 0007) and cached in this browser at
+  sign-in, surviving reloads. This state appears
+  when the cache is empty or holds another account's
+  key: a browser that never signed in with the
+  password, or one where the series was published
+  elsewhere.
+end note
+@enduml
