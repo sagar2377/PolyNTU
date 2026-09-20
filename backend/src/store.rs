@@ -254,7 +254,7 @@ impl Store {
             if !granted {
                 lock_accounts(&mut tx, &["demo-admin".into(), "treasury".into()]).await?;
                 transfer(
-                    &mut *tx,
+                    &mut tx,
                     "treasury",
                     "demo-admin",
                     WELCOME_GIFT_UNITS * amm::CREDIT_SCALE,
