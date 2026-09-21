@@ -1,0 +1,260 @@
+@startuml
+!pragma layout smetana
+left to right direction
+hide circle
+hide empty fields
+hide empty methods
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBorderColor #40546A
+skinparam classBackgroundColor<<boundary>> #E5F4EB
+skinparam classBackgroundColor<<control>> #FFF1D6
+skinparam classBackgroundColor<<entity>> #EAF2FC
+skinparam packageStyle rectangle
+skinparam packageBackgroundColor #FAFBFD
+skinparam packageBorderColor #CBD5E1
+skinparam ArrowColor #526579
+skinparam ArrowFontSize 12
+skinparam nodesep 60
+skinparam ranksep 85
+skinparam titleFontSize 22
+skinparam legendBackgroundColor #F7F9FC
+skinparam legendBorderColor #CBD5E1
+
+title PolyNTU class diagram\nBoundary, control and entity classes
+caption Class responsibilities and use-case mappings: docs/developer/class-diagram.md
+
+package "User and administrator boundaries" {
+  class AccountPanel <<boundary>> {
+    + registerAccount()
+    + logIn()
+    + requestCreatorVerification()
+    + signOutLocally()
+  }
+  class MarketBrowsePage <<boundary>> {
+    + selectCategory()
+    + browseHistory()
+    + openMarket()
+  }
+  class CreateMarketPage <<boundary>> {
+    + enterDefinition()
+    + prepareResolutionAuthority()
+    + publishMarket()
+  }
+  class MarketPage <<boundary>> {
+    + showMarketAndCharts()
+    + previewAndConfirmTrade()
+    + resumePendingTrade()
+    + signAndSubmitResolution()
+  }
+  class PortfolioPage <<boundary>> {
+    + showPositionsAndCredits()
+    + showTradeHistory()
+  }
+  class AdminApi <<boundary>> {
+    + receiveAdminRequest()
+    + returnResult()
+  }
+}
+
+package "Use-case controls" {
+  class AccountControl <<control>> {
+    + registerAndGrantWelcomeGift()
+    + authenticate()
+    + requestCreatorVerification()
+  }
+  class MarketQueryControl <<control>> {
+    + listMarkets()
+    + getMarketAndSeries()
+    + getHistoryAndDayProbabilities()
+  }
+  class MarketCreationControl <<control>> {
+    + validateDefinitionAndAuthority()
+    + publishSeries()
+    + fundOneTimeInstance()
+  }
+  class TradingControl <<control>> {
+    + issueQuote()
+    + executeTrade()
+    + recoverReceipt()
+  }
+  class PortfolioControl <<control>> {
+    + getPositionsAndCredits()
+    + getTradeHistory()
+  }
+  class MarketLifecycleControl <<control>> {
+    + spawnDueBrackets()
+    + closeDueInstances()
+    + acceptSignedResolution()
+    + resolveAutomatically()
+    + settleAndSplitFees()
+    + voidAtDeadline()
+  }
+  class AdminControl <<control>> {
+    + reviewCreatorRequest()
+    + setSuspension()
+    + provisionAccountWithGrant()
+    + reconcile()
+  }
+}
+
+package "Entity model" {
+' Entity classes and their associations.
+
+class Account <<entity>> {
+  accountId: Identifier
+  displayName: String
+  kind: AccountKind
+  email: String [0..1]
+  role: AccountRole [0..1]
+  passwordHash: String [0..1]
+  tokenHash: String [0..1]
+  balance: Money
+}
+
+class VerificationRequest <<entity>> {
+  requestId: Identifier
+  status: VerificationStatus
+  reason: String [0..1]
+  requestedAt: Timestamp
+  decidedAt: Timestamp [0..1]
+}
+
+class MarketSeries <<entity>> {
+  seriesId: Identifier
+  title: String
+  resolutionCriterion: String
+  rule: MarketRule
+  sourceId: String
+  dataMode: DataMode
+  liquidityUnits: Integer
+  feeCharged: Boolean
+  recurrence: RecurrenceKind
+  schedule: RecurrencePolicy [0..1]
+  resolutionAuthority: AuthorityKind
+  resolverConfig: ResolverConfig [0..1]
+  resolutionKey: ResolutionKey [0..1]
+  state: SeriesState
+}
+
+class MarketInstance <<entity>> {
+  instanceId: Identifier
+  title: String
+  resolutionCriterion: String
+  rule: MarketRule
+  sourceId: String
+  dataMode: DataMode
+  state: InstanceState
+  suspended: Boolean
+  window: MarketWindow
+  bracketStart: Timestamp [0..1]
+  liquidityUnits: Integer
+  feeCharged: Boolean
+  creatorId: Identifier [0..1]
+  version: Integer
+  result: Resolution [0..1]
+  selectedEvidence: Evidence [0..1]
+}
+
+class Outcome <<entity>> {
+  outcomeId: String
+  index: Integer
+  label: String
+  outstandingShares: Quantity
+  /probability: Decimal
+}
+
+class Position <<entity>> {
+  quantity: Quantity
+}
+
+class Trade <<entity>> {
+  tradeId: Identifier
+  side: TradeSide
+  quantity: Quantity
+  allInAmount: Money
+  feeAmount: Money
+  instanceVersion: Integer
+  executedAt: Timestamp
+}
+
+class Evidence <<entity>> {
+  evidenceId: Identifier
+  sourceId: String
+  eventId: String
+  sourceRevision: Integer
+  receivedAt: Timestamp
+  payload: EvidencePayload
+  evaluatedResult: Resolution [0..1]
+}
+
+class SettlementClaim <<entity>> {
+  creditedAmount: Money
+  settledAt: Timestamp
+}
+
+class LedgerTransfer <<entity>> {
+  transferId: Identifier
+  amount: Money
+  kind: TransferKind
+  reference: String
+  createdAt: Timestamp
+}
+
+Account "1" -up- "0..*" VerificationRequest : requester
+Account "0..1" -up- "0..*" MarketSeries : creator
+MarketSeries "0..1" -right- "0..*" MarketInstance : groups
+Account "1" -right- "0..1" MarketInstance : reserve
+MarketInstance "1" *-down- "2..8" Outcome : options
+MarketInstance "1" -right- "0..*" Evidence : revisions
+MarketInstance "1" -down- "0..*" SettlementClaim : pays
+Account "1" -right- "0..*" SettlementClaim : recipient
+Account "1" -down- "0..*" Position : holder
+Account "1" -down- "0..*" Trade : trader
+Outcome "1" -- "0..*" Position : held outcome
+Outcome "1" -- "0..*" Trade : traded outcome
+Account "1" -left- "0..*" LedgerTransfer : from
+Account "1" -left- "0..*" LedgerTransfer : to
+}
+
+class ResolverGateway <<boundary>> {
+  + requestExternalResolution()
+  + parseResolverResponse()
+}
+
+AccountPanel ..> AccountControl
+MarketBrowsePage ..> MarketQueryControl
+CreateMarketPage ..> MarketCreationControl
+MarketPage ..> MarketQueryControl
+MarketPage ..> TradingControl
+MarketPage ..> MarketLifecycleControl
+PortfolioPage ..> PortfolioControl
+AdminApi ..> AdminControl
+MarketLifecycleControl ..> ResolverGateway : calls external API
+
+' Principal entity dependencies only; the companion matrix lists all participating entities.
+AccountControl ..> Account
+AccountControl ..> VerificationRequest
+MarketQueryControl ..> MarketInstance
+MarketCreationControl ..> MarketSeries
+TradingControl ..> Trade
+TradingControl ..> Position
+PortfolioControl ..> Position
+MarketLifecycleControl ..> Evidence
+MarketLifecycleControl ..> SettlementClaim
+AdminControl ..> VerificationRequest
+AdminControl ..> LedgerTransfer
+
+legend bottom left
+  Green <<boundary>>: UI or external interface. AdminApi is an API, not an admin screen.
+  Amber <<control>>: proposed grouping of use-case coordination responsibilities.
+  Blue <<entity>>: domain information with attributes and association multiplicities.
+  Dashed arrow: uses / depends on; not a stored association and has no multiplicity.
+  Solid line: entity association with multiplicities. Filled diamond: composition.
+  Only principal control-to-entity dependencies are drawn; see the responsibility matrix.
+endlegend
+@enduml
