@@ -12,7 +12,7 @@ skinparam state {
   BorderColor #7A7A7A
   ArrowColor #555555
 }
-title PolyNTU dialog map (initial)
+title PolyNTU dialog map (detailed)
 
 state "Main window" as Main #F5F5F5 {
   state "Markets" as Markets
@@ -45,7 +45,9 @@ state "Main window" as Main #F5F5F5 {
   MarketPage -[#1565C0]-> Portfolio : Portfolio tab
   MarketPage -[#1565C0]-> Create : Create market tab\n[role = creator]
 
-  Create -[#E65100]-> Markets : Sign out\n(proposed fix)
+  Create -[#E65100]-> Markets : Sign out or expired session\n(proposed fix)
+
+  Markets --> Markets : filter by category, open or close a\nhistory tab, page Previous / Next\n(stay on this screen)
 }
 
 [*] --> Markets : open the app\n(Visitor, not signed in)
@@ -67,6 +69,54 @@ state "Account access dialog" as Access #F5F5F5 {
   Login --> Login : wrong credentials\n(error banner)
 }
 
+state "Session" as Session #F5F5F5 {
+  state "Signed out" as SOut
+  state "Signed in" as SIn
+  SOut : header shows Create account / Log in
+  SIn : header shows the account chip,\nbalance and Sign out
+  [*] --> SOut : open the app\n[no stored token]
+  [*] --> SIn : open the app\n[stored token accepted]
+  SOut --> SIn : register or log in succeeds\n(token stored, signing key cached)
+  SIn --> SOut : "Sign out" (UC-25)\nclears token and signing key
+  SIn --> SOut : /me answers 401 on the\n5-second refresh (another login\nrotated the token)
+}
+
+state "Creator verification panel\n[role = member, shown on every screen]" as Verify #F5F5F5 {
+  state "Offer" as VOffer
+  state "Pending" as VPending
+  state "Rejected" as VRejected
+  state "Approved" as VApproved
+  state vchoice <<choice>>
+  VOffer : **UC-6**\n"Request creator verification"
+  VPending : "Your creator verification is pending\nadministrator review."
+  VRejected : "Your last request was rejected: reason"\n"Apply again"
+  VApproved : role becomes creator on the next\n5-second refresh; the panel disappears\nand the Create market tab appears
+  [*] --> vchoice : a member is signed in
+  vchoice --> VOffer : [no request on record]
+  vchoice --> VPending : [request pending]
+  vchoice --> VRejected : [last request rejected]
+  VOffer --> VPending : "Request creator verification"
+  VPending --> VApproved : administrator approves\n(UC-7, API only)
+  VPending --> VRejected : administrator rejects\n(UC-7, API only)
+  VRejected --> VPending : "Apply again"
+  VApproved --> [*]
+}
+
+state "Global banners" as Banners #F5F5F5 {
+  state "Error banner" as ErrBanner
+  state "Own pending trade" as PendOwn
+  state "Other account's pending trade" as PendOther
+  ErrBanner : message text and a dismiss button
+  PendOwn : "A trade is awaiting a receipt."\n"Resume trade"
+  PendOther : "A saved trade belongs to another account.\nSign in with that account to retrieve its receipt."
+  [*] --> ErrBanner : any failed request
+  ErrBanner --> [*] : dismiss (x) or the next form submit
+  [*] --> PendOwn : saved trade exists\n[same account]
+  [*] --> PendOther : saved trade exists\n[different account]
+}
+
+PendOwn --> MarketPage : "Resume trade"\n(opens the saved trade's Market page)
+
 state "Demo clock dialog" as Clock #FFF9C4
 Clock : administrator token\nAdvance 1 hour / Advance 1 day
 
@@ -80,24 +130,15 @@ Clock --> Clock : Advance 1 hour / 1 day\n[administrator token entered]
 
 note top of Main
   **Present on every screen**
-  Header: wordmark, Markets, Portfolio,
-  Create market [role = creator], and either
-  Create account / Log in or the account chip
-  with Sign out. Sign out ends the session and
-  keeps the current screen.
+  Header: wordmark, Markets, Portfolio, Create market
+  [role = creator], and either Create account / Log in
+  or the account chip with Sign out (see Session).
 
-  Error banner: any failed request, dismissible.
+  Global banners: the dismissible error banner and the
+  pending-trade notice (see Global banners).
 
-  Pending-trade banner: "Resume trade" opens the
-  saved trade's Market page from any screen.
-
-  Creator verification panel [role = member]
-  (**UC-6**): Request verification -> pending ->
-  approved (the Create market tab appears) or
-  rejected -> Apply again.
-
-  Sign out (**UC-25**) ends the session from the
-  account chip.
+  Creator verification panel [role = member]: see
+  Creator verification panel (UC-6, UC-7).
 end note
 
 note bottom of Clock
@@ -126,7 +167,8 @@ legend right
   Yellow: demo-mode fixture, not a requirement
   Blue arrow: header navigation, available on every screen
   Grey arrow: action inside the current screen
-  Orange arrow: proposed change (Sign out on Publish
-  leaves an empty screen in the current build)
+  Orange arrow: proposed change (Sign out or an expired
+  session on Publish leaves an empty screen in the
+  current build)
 end legend
 @enduml

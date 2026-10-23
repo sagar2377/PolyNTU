@@ -1,0 +1,65 @@
+@startuml
+hide empty description
+skinparam shadowing false
+skinparam defaultFontSize 13
+skinparam ArrowFontSize 12
+skinparam NoteFontSize 12
+skinparam nodesep 45
+skinparam ranksep 55
+skinparam state {
+  BackgroundColor #C8E6C9
+  BorderColor #7A7A7A
+  ArrowColor #555555
+}
+title PolyNTU dialog map: trade panel on the Market page (UC-20, includes UC-20a fee)
+
+state "Sign-in prompt" as Guest
+state "Form disabled" as Closed
+state "Blocked" as Blocked
+state "Trade form" as Form
+state "Calculating" as Calculating
+state "Quote preview" as Quote
+state "Quote expired" as Expired
+state "Confirming" as Confirming
+state "Retrieve receipt" as Pending
+state "Receipt" as Receipt
+
+Guest : "Sign in from the top right\nto preview and place a trade"
+Closed : the form renders but every control is\ndisabled: "Trading is closed" or "suspended"
+Blocked : the form renders disabled with\n"Resolve the pending trade before starting\nanother one. Use Resume trade above."
+Form : side (Buy / Sell owned shares)\noutcome, shares (0.001 to 100)
+Quote : total cost or proceeds, average price,\n0.25% fee, probability after trade,\nexpiry countdown
+Pending : original request and idempotency key\nare saved; "Retry / retrieve receipt"
+Receipt : "Trade confirmed", shares, units,\nnew balance, receipt id\nshown above a usable trade form
+
+state choose <<choice>>
+[*] --> choose : Market page opens
+choose --> Guest : [not signed in]
+choose --> Pending : [a saved trade for\nthis market exists]
+choose --> Closed : [market not tradable]
+choose --> Blocked : [a saved trade for\nanother market exists]
+choose --> Form : [otherwise]
+
+Guest --> Form : sign in succeeds
+Blocked --> Form : the other trade is settled\non its own Market page ("Resume trade")
+
+Form --> Calculating : "Preview trade"
+Calculating --> Quote : quote returned
+Calculating --> Form : error shown inline
+Quote --> Form : change side, outcome\nor shares (quote discarded)
+Quote --> Expired : countdown reaches 0
+Quote --> Form : another trader moves the market\n(the held quote is discarded)
+Expired --> Calculating : "Preview trade" again
+Expired --> Form : change side, outcome or shares
+Quote --> Confirming : "Confirm buy / sell"
+
+Confirming --> Receipt : trade committed
+Confirming --> Form : rejected (400, 404, 409, 422)\nsaved request cleared,\nre-preview needed
+Confirming --> Pending : network or server failure\nrequest kept for retry
+Pending --> Confirming : "Retry / retrieve receipt"\n(same key: runs once or\nreturns the existing receipt)
+Receipt --> Calculating : "Preview trade"\n(the receipt clears)
+
+legend right
+  Green: state in the current build
+end legend
+@enduml

@@ -68,4 +68,4 @@ Initialization errors propagate through Result values. Some validation occurs af
 
 ## Submission scope
 
-This is the architecture contribution only. The class diagram is an intermediate steps-1-4 snapshot. Teammates still need to assess collection containers and patterns, refine the dialog map and signatures, address detailed persistence/access-control design, and prepare the AI report/skeleton artifacts and final submission. See the [handoff](steps-1-4-handoff.md) for ownership boundaries and refresh instructions.
+This is the architecture contribution only. The class diagram is a draft snapshot covering checklist steps 1-8: containers, patterns, the dialog maps and detailed operations are included. Teammates still need to address detailed persistence/access-control design, and prepare the AI report/skeleton artifacts and final submission. See the [handoff](steps-1-4-handoff.md) for ownership boundaries and refresh instructions.

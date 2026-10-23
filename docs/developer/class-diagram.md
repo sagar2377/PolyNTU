@@ -1,10 +1,10 @@
 # Lab 3 draft design class model
 
-Status: **intermediate draft - original checklist steps 1-4 only**, reviewed against source on **23 October 2026**.
+Status: **draft covering original checklist steps 1-8**, reviewed against source on **23 October 2026**. Persistence and access-control design (manual 3.2.1), the AI exercises (3.3) and the implementation audit (3.4) are still open.
 
-This draft refines the existing conceptual/design diagram using the [use cases](use-cases.md) and active implementation. It covers manual 3.1.1, 3.1.2, and the startup/control bullets of 3.1.3. It retains the existing entity attributes and associations, adds startup wiring, and makes coordination ownership explicit. It does not establish the provenance of an untouched Lab 2 diagram or complete the later container, pattern, dialog-map, and detailed-signature work. See the [team handoff](../../lab3/steps-1-4-handoff.md).
+This draft refines the existing conceptual/design diagram using the [use cases](use-cases.md) and active implementation. It covers manual 3.1.1 to 3.1.4: the design model, architecture, startup and control classes, collection containers, patterns, the dialog maps and the detailed attributes and operations. It retains the existing entity attributes and associations, adds startup wiring, and makes coordination ownership explicit. It does not establish the provenance of an untouched Lab 2 diagram. See the [steps 1-4 handoff](../../lab3/steps-1-4-handoff.md).
 
-The diagram has **31 classes: 10 entities, 8 boundaries, 8 controls, 4 infrastructure classes, and 1 active runtime abstraction**. The controls comprise the original **seven use-case controls plus StartupControl**; ApiRouter is the eighth boundary. These are design abstractions, not a claim that all 31 names exist as literal Rust/React classes. One self-contained PlantUML file defines the diagram.
+The diagram has **39 classes: 10 entities, 9 boundaries, 8 controls, 4 infrastructure classes, 1 active runtime abstraction, 3 containers and 4 strategy classes**. The controls comprise the original **seven use-case controls plus StartupControl**; ApiRouter and NtuBusAdapter are the eighth and ninth boundaries. The strategy classes are one interface and three implementations. These are design abstractions, not a claim that all 39 names exist as literal Rust/React classes. One self-contained PlantUML file defines the diagram.
 
 ## Diagram
 
@@ -12,7 +12,7 @@ The diagram has **31 classes: 10 entities, 8 boundaries, 8 controls, 4 infrastru
 
 [Open image](../diagrams/class-diagram.png) | [Editable PlantUML source](../diagrams/class-diagram.puml)
 
-Green `<<boundary>>` classes handle interaction with people or external systems. Amber `<<control>>` classes coordinate use cases or startup. Blue `<<entity>>` classes represent domain information with identity. Grey `<<infrastructure>>` classes represent shared runtime/storage support; the purple `<<active>>` box abstracts a background task/module. Dashed arrows are dependencies; solid lines are entity associations. The diagram shows principal control-to-entity dependencies; the responsibility matrix below lists the other participating entities. Browser-to-control arrows summarize HTTP interactions; ApiRouter shows router construction in the startup view.
+Green `<<boundary>>` classes handle interaction with people or external systems. Amber `<<control>>` classes coordinate use cases or startup. Blue `<<entity>>` classes represent domain information with identity. Light-green `<<container>>` classes own the rules of a collection of entities, and pink `<<strategy>>` classes are interchangeable resolution behaviours. Grey `<<infrastructure>>` classes represent shared runtime/storage support; the purple `<<active>>` box abstracts a background task/module. Dashed arrows are dependencies; solid lines are entity associations. The diagram shows principal control-to-entity dependencies; the responsibility matrix below lists the other participating entities. Browser-to-control arrows summarize HTTP interactions; ApiRouter shows router construction in the startup view.
 
 ## Mapping the analysis concepts to the implementation
 
@@ -25,6 +25,8 @@ The ten existing entity definitions and their association multiplicities are pre
 | Account | The API/read-model `Account` struct in [store.rs](../../backend/src/store.rs) exposes a subset of the persisted account fields shown in the domain model. |
 | VerificationRequest, Position, Trade, Evidence, SettlementClaim, LedgerTransfer | Persisted records accessed through SQL and returned through read models/JSON; no new Rust entity struct is implied for each box. |
 | User boundaries | React function components and supporting browser functions, as listed below. |
+| OutcomeSet, PositionBook, TradeHistory | Design-level collections. `OutcomeSet` groups the `Vec<Outcome>` and inventory array of an `Instance` with `amm::prices`; `PositionBook` and `TradeHistory` group the rows of the `positions` and `trades` tables for one account. No new Rust struct is implied. See [container classes](#container-classes). |
+| ResolutionAuthority and its three implementations | The `AuthorityKind` value plus `match` dispatch over `ingest_evidence`, `record_creator_resolution` and `record_resolver_evidence`. See [design patterns](#design-patterns). |
 | Seven use-case controls | Logical groups of handlers, `Store` methods, and helper functions. They allocate design responsibilities without extracting new controller structs. |
 | Startup/runtime boxes | Existing structs or named functions/modules, as listed in the startup table. |
 
@@ -52,7 +54,7 @@ Stored password/token hashes in the domain model are not an instruction to expos
 - A series can group many instances. A successfully published one-time series has exactly one; a recurring series can have none before spawning or after retention cleanup. An instance can have no series when created directly by the administrator.
 - Each instance has exactly one reserve account. An account is reserve for at most one retained instance. Reserve accounts survive instance purging, so this association is not composition.
 - `MarketInstance.creatorId` is an optional reference to an Account, separate from its reserve. It copies the series creator for spawned brackets and can be supplied for direct creation. It is represented as an attribute to avoid a second Account/MarketInstance line. Creators cannot trade their own instances.
-- An instance owns 2 to 8 outcomes, each belonging to exactly one instance. This is composition. Positions and trades each connect one account to one outcome; that outcome identifies their instance.
+- An instance owns one `OutcomeSet`, which owns 2 to 8 outcomes, each belonging to exactly one instance. Both links are composition. An account owns one `PositionBook` and one `TradeHistory`, each an aggregation of the account's positions or trades. Positions and trades each connect one account to one outcome; that outcome identifies their instance.
 - An instance can receive many evidence revisions. `selectedEvidence`, when present, must belong to that instance. Creator authority requires a valid signature under the fixed public key; resolver authority uses the fixed endpoint. Neither can be overridden by an administrator.
 - A claim connects one account to one instance. The pair is unique, preventing duplicate payout credits. One winning share pays one unit; a void pays `1 / numberOfOutcomes` per share, aggregated per account and rounded down to the microcredit.
 - Every ledger transfer has one source and one destination account, which must differ. Account balances reconcile to transfers; market reserves must cover remaining liabilities.
@@ -95,6 +97,7 @@ Registered accounts have email, password hash, and role together; user accounts 
 | PortfolioPage | Displays holdings, settlement credits, and private trade history. | [Portfolio.jsx](../../frontend/src/pages/Portfolio.jsx). |
 | AdminApi | Receives authorized administrator requests and returns results. This is an API boundary, not an invented administrator screen. | Administrator routes in [api.rs](../../backend/src/api.rs). |
 | ResolverGateway | Sends a resolution request to the configured external endpoint and parses its response. The external resolver itself is outside the system. | [resolver.rs](../../backend/src/resolver.rs). |
+| NtuBusAdapter | Serves the fixed resolver contract for NTU bus markets and converts the Python provider's data into one published outcome id. | `ntu_bus_answer` in [resolver.rs](../../backend/src/resolver.rs), served at `POST /api/v2/resolvers/ntu-bus`. |
 | ApiRouter | Builds the inbound HTTP API and its layers using shared application state; shown in the startup package. | Free `router` function in [api.rs](../../backend/src/api.rs), with static fallback/serving configured in [main.rs](../../backend/src/main.rs). |
 
 `MarketPage.signAndSubmitResolution()` creates the signature in the browser. The control validates the submitted signature and authority; it does not receive the private signing key. `AccountPanel.signOutLocally()` clears the stored browser session and signing key; the current system does not expose a server logout/revocation operation.
@@ -156,6 +159,50 @@ Startup dependencies mean creates/configures/launches; they are not persistent d
 3. **Resolve automatically:** MarketLifecycleControl asks ResolverGateway for evidence, validates the result against the published outcomes, then coordinates Evidence, SettlementClaim, Account, and LedgerTransfer changes. Pending or invalid answers retry until the deadline; unresolved instances then void.
 4. **Approve a creator:** AdminApi receives an authorized decision; AdminControl updates VerificationRequest and Account; the account panel displays the resulting status on refresh.
 
+## Container classes
+
+A container class represents a group of entities and owns the rules that apply to the whole group. A container is added only when the collection has behaviour of its own, and it is a design class, not a database table.
+
+| Collection | Container | Reason | Code evidence |
+|---|---|---|---|
+| Outcomes of an instance | `OutcomeSet` | Owns the 2 to 8 bound, id lookup and the price vector computed from inventory and liquidity. | `Instance::outcome_index` in [market.rs](../../backend/src/market.rs); `amm::validate`, `amm::prices` in [amm.rs](../../backend/src/amm.rs) |
+| Positions of an account | `PositionBook` | Holdings are read, changed and paged per instance and outcome. | `portfolio` in [store.rs](../../backend/src/store.rs); `positions` upsert in [execution.rs](../../backend/src/execution.rs) |
+| Trades of an account | `TradeHistory` | Append-only and read newest first in pages. | `trades` in [store.rs](../../backend/src/store.rs) |
+
+Evidence, settlement claims, ledger transfers and a series' instances were assessed and left as plain associations: they have no collection-level rule of their own.
+
+In the diagram, `MarketInstance` owns one `OutcomeSet`, which owns 2 to 8 `Outcome` objects. `Account` owns one `PositionBook` and one `TradeHistory`. `TradingControl` and `PortfolioControl` depend on the containers.
+
+## Design patterns
+
+"In code" means the structure exists in the source; "design level" means the diagram expresses it but Rust implements it with an idiom such as an enum and `match`.
+
+| Pattern | Problem and roles | Status |
+|---|---|---|
+| Strategy | Three resolution authorities (administrator, creator signature, external resolver) accept evidence differently but share one lifecycle. `ResolutionAuthority` is implemented by `AdminAuthority`, `CreatorSignedAuthority` and `ExternalResolverAuthority`; `MarketLifecycleControl` delegates by the series' `AuthorityKind`. | Design level (`AuthorityKind` and `match`) |
+| Adapter | The bus provider's data differs from the fixed resolver contract. `NtuBusAdapter` converts it to one published outcome id. | In code (`ntu_bus_answer`) |
+| Observer | Browsers learn of changes without polling. `EventBus` keeps a channel per instance and SSE clients subscribe. | In code (`EventBus::subscribe`) |
+| Factory Method | A recurring series creates a correctly timed instance per slot. `MarketSeries.bracketSpec` builds the definition and `createFundedInstance` creates it. | In code (`Series::bracket_spec`) |
+
+State, Singleton and Repository were considered and not applied: instance states are enforced by database constraints, `AppState` and `Store` are cloned handles passed explicitly, and `Store` mixes service logic with SQL.
+
+## Attributes and operations
+
+Boundary operations come from the dialog maps. Control operations follow the `Store`, `execution.rs` and `resolution.rs` methods listed in the control table above. Entity attributes are retained from the earlier draft; the entity and container operations added in this step are:
+
+| Class | Operation | Code anchor |
+|---|---|---|
+| Account | `verifyPassword`, `hasRole`, `canAfford` | `auth::verify_password`; role checks; balance check in `execute` |
+| VerificationRequest | `isPending`, `approve`, `reject` | `decide_verification_request` |
+| MarketSeries | `isActiveAt`, `bracketSpec` | `inside_active_window`; `Series::bracket_spec` |
+| MarketInstance | `isTradable`, `isCreatedBy`, `isObservationOver`, `isPastEvidenceDeadline` | `Instance::tradable`; creator check in `quote` and `execute`; deadline fields |
+| Position | `isOpen` | `quantity_millis > 0` |
+| OutcomeSet | `indexOf`, `prices`, `validate` | `Instance::outcome_index`, `amm::prices`, `amm::validate` |
+| PositionBook | `quantityOf`, `openHoldings`, `adjust` | `positions` queries and upsert |
+| TradeHistory | `append`, `page` | `execute` insert; `trades` |
+
+Entity operations perform no input or output; database access, time and network calls stay in the controls and infrastructure.
+
 ## Use-case coverage
 
 | Use cases | Boundary and control path |
@@ -185,7 +232,7 @@ Outcome is stored in the instance's outcome JSON and corresponding inventory arr
 
 Startup/shared runtime support is now included. Operational records such as idempotency, audit, SSE outbox, and cache entries remain outside the entity boxes. Receipt recovery uses idempotency records, while creator decisions and suspensions append audit records. Existing retention is preserved: eligible recurring instances and their associated trading/settlement records are purged, while ledger transfers and reserve accounts survive.
 
-Operation names communicate responsibilities only. Container classes, pattern assessment, dialog-map changes, detailed signatures/entity operations, persistence/access-control design, AI exercises, and implementation audits remain for later owners. Existing entity attributes are retained rather than newly completing those tasks. This draft does not propose an administrator screen, text search, server logout, or application refactor. Use the team's completed later design, rather than this intermediate snapshot, for Lab 3.3.
+Operation names communicate responsibilities only, and the model remains a design view: it does not rename Rust functions or move logic between modules. This draft does not propose an administrator screen, text search, server logout or application refactor. Still open: persistent data and access-control design (manual 3.2.1), the AI exercises (3.3) and the implementation audit (3.4).
 
 ## Re-rendering
 
@@ -195,7 +242,7 @@ Edit `docs/diagrams/class-diagram.puml`, then regenerate its PNG from the reposi
 .\scripts\render-diagrams.ps1 -Diagram 'docs\diagrams\class-diagram.puml'
 ```
 
-All class definitions are in that source file. Update this explanation when responsibilities or relationships change. The submission source/image in `lab3/` are snapshots of the canonical files; after a successful render, refresh them together:
+The dialog maps in `docs/diagrams` render the same way. All class definitions are in that source file. Update this explanation when responsibilities or relationships change. The submission source/image in `lab3/` are snapshots of the canonical files; after a successful render, refresh them together:
 
 ```powershell
 Copy-Item -LiteralPath 'docs\diagrams\class-diagram.puml' -Destination 'lab3\class-diagram.puml'
