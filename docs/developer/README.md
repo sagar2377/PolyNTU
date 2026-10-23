@@ -16,6 +16,7 @@ Start with the repository-level [developer guide](../developer-guide.md), then u
 | [Operations](operations.md) | Process model, scheduler, observability, reconciliation, backup, and incident checks |
 | [Verification and traceability](../verification.md) | Repository-level test inventory, workloads, evidence record, reproduction commands, and the requirements-to-code matrix |
 | [Use case model](use-cases.md) | Actors, use case register, business rules, and detailed flows for every registered use case |
+| [Class diagram](class-diagram.md) | Entity, boundary, and control classes, relationships, and use-case mappings; includes the diagram and editable source |
 | [Glossary](glossary.md) | Domain, pricing, accounting, evidence, and lifecycle terms |
 
 These documents describe the working tree audited on 9 September 2026. The [documentation register](../README.md) explains authority, maintenance, and the uncommitted-baseline caveat. The [use case model](use-cases.md) describes the implemented platform: every registered use case is marked existing and carries a detailed flow.

@@ -14,6 +14,8 @@ skinparam classBorderColor #40546A
 skinparam classBackgroundColor<<boundary>> #E5F4EB
 skinparam classBackgroundColor<<control>> #FFF1D6
 skinparam classBackgroundColor<<entity>> #EAF2FC
+skinparam classBackgroundColor<<infrastructure>> #F0F2F5
+skinparam classBackgroundColor<<active>> #EEE8FA
 skinparam packageStyle rectangle
 skinparam packageBackgroundColor #FAFBFD
 skinparam packageBorderColor #CBD5E1
@@ -25,7 +27,7 @@ skinparam titleFontSize 22
 skinparam legendBackgroundColor #F7F9FC
 skinparam legendBorderColor #CBD5E1
 
-title PolyNTU class diagram\nBoundary, control and entity classes
+title PolyNTU Lab 3 design class model\nDraft: checklist steps 1-4 only
 caption Class responsibilities and use-case mappings: docs/developer/class-diagram.md
 
 package "User and administrator boundaries" {
@@ -65,7 +67,9 @@ package "Use-case controls" {
   class AccountControl <<control>> {
     + registerAndGrantWelcomeGift()
     + authenticate()
+    + getCurrentAccount()
     + requestCreatorVerification()
+    + getVerificationStatus()
   }
   class MarketQueryControl <<control>> {
     + listMarkets()
@@ -75,7 +79,7 @@ package "Use-case controls" {
   class MarketCreationControl <<control>> {
     + validateDefinitionAndAuthority()
     + publishSeries()
-    + fundOneTimeInstance()
+    + createFundedInstance()
   }
   class TradingControl <<control>> {
     + issueQuote()
@@ -89,17 +93,58 @@ package "Use-case controls" {
   class MarketLifecycleControl <<control>> {
     + spawnDueBrackets()
     + closeDueInstances()
+    + acceptAdminEvidence()
     + acceptSignedResolution()
     + resolveAutomatically()
+    + setSuspension()
     + settleAndSplitFees()
     + voidAtDeadline()
+    + purgeExpiredBrackets()
   }
   class AdminControl <<control>> {
     + reviewCreatorRequest()
-    + setSuspension()
+    + createDirectInstance()
+    + submitAdminEvidence()
+    + requestSuspension()
     + provisionAccountWithGrant()
     + reconcile()
   }
+}
+
+package "Startup and runtime" {
+  class StartupControl <<control>> {
+    + {static} main()
+  }
+  class Store <<infrastructure>> {
+    + connect()
+    - initialize()
+  }
+  class AppState <<infrastructure>> {
+    + new()
+  }
+  class ApiRouter <<boundary>> {
+    + router()
+  }
+  class BackgroundWorker <<active>> {
+    + run()
+    + seed_demo()
+  }
+  class EventBus <<infrastructure>> {
+    + subscribe()
+  }
+  class EventRuntime <<infrastructure>> {
+    + run_listener()
+    + run_clock_refresher()
+  }
+
+  StartupControl ..> Store : connect / initialize
+  StartupControl ..> AppState : construct
+  StartupControl ..> ApiRouter : configure / serve
+  StartupControl ..> BackgroundWorker : seed / start / stop
+  StartupControl ..> EventBus : create
+  StartupControl ..> EventRuntime : start / stop
+  AppState ..> Store : shares pool and cache
+  AppState ..> EventBus : shares event channels
 }
 
 package "Entity model" {
@@ -217,8 +262,9 @@ Account "1" -down- "0..*" Position : holder
 Account "1" -down- "0..*" Trade : trader
 Outcome "1" -- "0..*" Position : held outcome
 Outcome "1" -- "0..*" Trade : traded outcome
-Account "1" -left- "0..*" LedgerTransfer : from
-Account "1" -left- "0..*" LedgerTransfer : to
+' Presentation-only line breaks separate the parallel transfer roles and multiplicities.
+Account "1\n" -left- "0..*\n" LedgerTransfer : from\n
+Account "\n1" -left- "\n0..*" LedgerTransfer : \nto
 }
 
 class ResolverGateway <<boundary>> {
@@ -234,6 +280,10 @@ MarketPage ..> TradingControl
 MarketPage ..> MarketLifecycleControl
 PortfolioPage ..> PortfolioControl
 AdminApi ..> AdminControl
+AdminControl ..> MarketCreationControl : direct creation
+AdminControl ..> MarketLifecycleControl : evidence / suspension
+MarketLifecycleControl ..> MarketCreationControl : funded bracket creation
+BackgroundWorker ..> MarketLifecycleControl : scheduled processing
 MarketLifecycleControl ..> ResolverGateway : calls external API
 
 ' Principal entity dependencies only; the companion matrix lists all participating entities.
@@ -251,10 +301,14 @@ AdminControl ..> LedgerTransfer
 
 legend bottom left
   Green <<boundary>>: UI or external interface. AdminApi is an API, not an admin screen.
-  Amber <<control>>: proposed grouping of use-case coordination responsibilities.
+  Amber <<control>>: seven logical use-case controls and one startup control.
   Blue <<entity>>: domain information with attributes and association multiplicities.
+  Grey <<infrastructure>>: existing shared runtime and storage support.
+  Purple <<active>>: background task/module abstraction.
   Dashed arrow: uses / depends on; not a stored association and has no multiplicity.
   Solid line: entity association with multiplicities. Filled diamond: composition.
   Only principal control-to-entity dependencies are drawn; see the responsibility matrix.
+  Logical collaboration arrows group existing functions; they do not imply a code refactor.
+  Browser-to-control arrows summarize HTTP paths. ApiRouter shows startup wiring.
 endlegend
 @enduml

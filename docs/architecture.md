@@ -2,7 +2,29 @@
 
 Status: **current**  
 Application version: **0.2**  
-Last reviewed against the working tree: **20 September 2026**
+Startup, architecture style, and provider boundary reviewed: **23 October 2026**.
+
+Other detailed runtime sections retain the **20 September 2026** review baseline.
+
+## Architectural style and rationale
+
+PolyNTU uses a **layered client-server architecture with a monolithic Rust backend**. React supplies the browser presentation, Axum and application functions coordinate requests and domain behaviour, and PostgreSQL provides durable storage. The Rust executable serves the built frontend, HTTP API, and SSE streams and runs the lifecycle worker and event tasks in the same process. External resolvers, including the optional Python NTU bus provider, are separate integrations.
+
+| Logical responsibility | Current implementation | Design-model mapping |
+|---|---|---|
+| Presentation and interaction | React pages/components and `frontend/src/api.js` | User boundary classes. |
+| HTTP boundary | Axum routes/handlers in `backend/src/api.rs` | `ApiRouter`, `AdminApi`, and the HTTP paths summarized by browser-to-control dependencies. |
+| Application coordination | Functions in `api.rs`, `store.rs`, `execution.rs`, `resolution.rs`, and `worker.rs` | Seven logical use-case controls. |
+| Domain rules and calculations | `market.rs`, `amm.rs`, `fee.rs`; authentication/signature helpers in `auth.rs` | Domain values and helpers used by controls. |
+| Persistence | SQLx/PostgreSQL access through `Store` and its methods | `Store` infrastructure and persisted entities. |
+| Startup and background work | `main.rs`, `worker.rs`, and `events.rs` | `StartupControl`, `BackgroundWorker`, `EventRuntime`, and `EventBus`. |
+| Outbound integration | `resolver.rs` and optional `provider/ntubus` service | `ResolverGateway`; the provider remains outside the core application process. |
+
+These are logical layers: `Store` combines application behaviour and data access, and some worker/API code executes SQL directly. The design model records responsibility ownership without claiming a strict service/repository split or separate controller instances.
+
+The monolithic backend keeps the academic application's deployment and shared transaction coordination simple. Rust/Axum supports concurrent HTTP and background work in one runtime; React provides reusable interactive boundaries; PostgreSQL supplies the transactions, constraints, and locking used by trading and settlement. Pure pricing and fee calculations keep those rules independent of HTTP, storage, and external-provider availability. The resolver contract gives provider-specific acquisition a separate integration boundary. These choices justify the existing design; they do not introduce a new stack or replace the separate Lab 3.3 AI exercise.
+
+For the draft class model and use-case mapping, see [class diagram](developer/class-diagram.md). The scoped Lab 3 handoff is [steps 1-4](../lab3/steps-1-4-handoff.md).
 
 ## System context
 
@@ -38,14 +60,16 @@ Market categories provide typed rules and evidence evaluation only. They do not 
 `backend/src/main.rs` performs startup in this order:
 
 1. Configure tracing from `RUST_LOG` or the default filter.
-2. read and validate the database URL, quote secret, administrator token, demo mode, and bind address;
-3. reject a non-loopback bind when demo mode is enabled;
-4. connect to PostgreSQL, apply embedded SQLx migrations, and initialize fixed accounts/settings;
-5. construct `AppState`, which rejects short or identical secrets;
-6. seed demo instances when demo mode is enabled;
-7. build the API router, CORS layer, request-size limit, tracing layer, and static-file fallback;
-8. spawn the background worker; and
-9. serve until Ctrl+C, then abort the worker task after Axum shuts down.
+2. Read the required database URL, quote secret, and administrator token; read demo mode and parse the bind address.
+3. Reject a non-loopback bind when demo mode is enabled.
+4. Call `Store::connect` to connect to PostgreSQL, apply embedded SQLx migrations, initialize fixed accounts/settings, and initialize the cached clock offset.
+5. Apply `POLYNTU_NTUBUS_PROVIDER` when supplied; create `EventBus`; construct `AppState`, which rejects short or identical secrets; and install the shared event bus.
+6. Seed demo markets when demo mode is enabled.
+7. Parse CORS origins, configure the frontend directory, build the API/router layers and static-file fallback, and bind the TCP listener.
+8. Spawn `worker::run`, `events::run_listener`, and `events::run_clock_refresher`. The clock refresher returns immediately outside demo mode.
+9. Serve until Ctrl+C requests graceful HTTP shutdown; after a normal server return, abort all three task handles.
+
+`StartupControl` models this existing free `main` function; its diagram dependencies identify the components initialized, not seven newly instantiated controller objects. Database bootstrap is delegated to `Store::connect`/`initialize`, and secret validation to `AppState::new`. Startup errors propagate through `Result`; this description does not claim that all configuration is validated before database initialization or that every error path performs the normal shutdown sequence.
 
 The executable contains the backend only. The Docker build compiles React separately and copies `frontend/dist` into the final image.
 
@@ -54,17 +78,18 @@ The executable contains the backend only. The Docker build compiles React separa
 | File | Responsibility and boundaries |
 |---|---|
 | `backend/src/lib.rs` | Exposes active modules and forbids `unsafe` code in the application crate. |
-| `backend/src/main.rs` | Process configuration, database connection, router construction, worker startup, static delivery, and graceful HTTP shutdown. |
+| `backend/src/main.rs` | Process configuration, database connection, optional provider configuration, shared event/state setup, router construction, three background task launches, static delivery, and normal graceful HTTP shutdown. |
 | `backend/src/error.rs` | Shared error categories and conversion to the API error envelope. Internal/database details are logged but hidden from clients. |
 | `backend/src/auth.rs` | Random bearer tokens, SHA-256 hashing, HMAC-SHA256 signed values, token verification, minimum secret validation, constant-time administrator-token comparison, and ed25519 resolution-signature verification (ADR 0007). |
 | `backend/src/amm.rs` | Pure LMSR arithmetic, input bounds, funding calculation, prices, and rounded trade amounts. It has no database, clock, network, account, or RNG access. |
+| `backend/src/fee.rs` | Pure trading-fee, all-in amount, and creator-share calculations used by execution and settlement. |
 | `backend/src/market.rs` | Outcomes, typed rules and observations, validation, evaluation, instance and series types, schedules, the resolution authority spec, and demo specifications. |
 | `backend/src/execution.rs` | Quote structures, signing claims, amount parsing, idempotency, transaction locking, execution checks, ledger movement, positions, trades, receipts, and trade outbox events. |
 | `backend/src/store.rs` | Pool setup, migrations, bootstrap, database time, account provisioning, instance and series creation/read models, rolling bracket spawn, terminal-bracket retention purge, portfolio and trade history queries, bucketed instance history and the series day view, transfers, audit/events, and reconciliation. |
 | `backend/src/cache.rs` | Read-through instance and token caches with a local clock estimate; every mutation invalidates or writes through before returning. |
 | `backend/src/events.rs` | PostgreSQL notification listener, per-instance SSE broadcast channels, and demo clock refresh. |
 | `backend/src/resolution.rs` | Evidence validation/deduplication, creator-signed and resolver evidence recording, suspensions, due-market closing, finalization, bounded settlement, reserve release, and demo clock changes. |
-| `backend/src/resolver.rs` | The external resolver contract (ADR 0007): the fixed request, response parsing against the published options, and the bounded HTTPS call. |
+| `backend/src/resolver.rs` | External resolver contract (ADR 0007), bounded HTTP(S) calls, response validation against published outcomes, and the built-in bus adapter's optional live-provider path and simulated fallback. |
 | `backend/src/worker.rs` | One-second scheduling loop, rolling series bracket spawn, fair actionable-instance selection, private deterministic simulator evidence, external resolver calls, concurrent bounded settlement, terminal-bracket retention purge, and demo seeding (including the rolling bus series). |
 
 See [backend code reference](developer/backend.md) for important types and functions in each file.
@@ -85,7 +110,9 @@ PostgreSQL is the durable authority for time-adjusted cutoffs, accounts, ledger 
 
 ### External evidence adapters
 
-No live adapter is present. A future adapter either normalizes provider data into `EvidenceInput` and submits it through the administrator route, or, for a resolver-authority series, implements the external resolver contract and answers the worker's fixed request with a published outcome ID ([ADR 0007](decisions/0007-resolution-authority.md)). Provider access and reliability are acknowledged challenges, but the current design assumes a suitable data source can be obtained; the real bus timing adapter remains the deferred example.
+The repository includes a [Python NTU bus provider](../provider/ntubus/README.md) and the built-in `POST /api/v2/resolvers/ntu-bus` adapter. For eligible bus instances marked `simulated`, the adapter first asks the configured provider (default `http://127.0.0.1:8090/resolve`) after the observation window ends. An explicitly empty `POLYNTU_NTUBUS_PROVIDER` disables that path. If the provider does not return a valid outcome after bounded attempts, the adapter uses deterministic simulated evidence. Its response records `ntubus-live` or `simulated-fallback` as the source. This provider-specific fallback is distinct from the generic resolver retry/deadline policy.
+
+Other integrations can normalize provider data into `EvidenceInput` for the administrator route or implement the fixed resolver contract and return a published outcome ID ([ADR 0007](decisions/0007-resolution-authority.md)). The scoped Lab 3 review establishes that this integration code exists; it does not establish live feed availability, accuracy, or production readiness. Generic resolver failures continue to retry until the published deadline and then void, rather than silently using simulated evidence.
 
 ## Authoritative time
 
