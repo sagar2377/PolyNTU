@@ -102,7 +102,7 @@ pub async fn tick(store: &Store) -> Result<usize> {
     let mut count = 0;
     // Independent instances settle concurrently in bounded chunks; the
     // instance row lock keeps each instance internally serial.
-    for chunk in due.chunks(SETTLE_CONCURRENCY) {
+    for chunk in due.chunks(store.tuning.settle_concurrency) {
         let mut tasks = tokio::task::JoinSet::new();
         for instance in chunk {
             let store = store.clone();
@@ -126,8 +126,6 @@ pub async fn tick(store: &Store) -> Result<usize> {
     seed_demo(store).await?;
     Ok(count)
 }
-
-const SETTLE_CONCURRENCY: usize = 8;
 
 /// Simulated evidence for one closed demo instance, then one settlement batch.
 /// Logs and continues on failure; the next tick retries.

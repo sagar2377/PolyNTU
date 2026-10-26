@@ -5,16 +5,17 @@ This guide is the entry point for engineers who need to understand, review, modi
 ## Recommended reading order
 
 1. [Architecture](architecture.md) for service boundaries and transaction ownership.
-2. [Backend code reference](developer/backend.md) for every active Rust module.
-3. [Database reference](developer/database.md) for tables, triggers, indexes, and migrations.
-4. [Trading and accounting](developer/trading-and-accounting.md) for LMSR arithmetic, quotes, locking, ledger transfers, and idempotency.
-5. [Evidence and settlement](developer/evidence-and-settlement.md) for category evaluation and worker behaviour.
-6. [API contract](api.md) and [API implementation map](developer/api-reference.md).
-7. [Frontend reference](developer/frontend.md) for React state, browser storage, polling, and receipt recovery.
-8. [Security and privacy](developer/security-and-privacy.md).
-9. [Operations](developer/operations.md) and [development setup](development.md).
-10. [Verification and traceability](verification.md) for the test inventory, workloads, evidence record, and the requirements-to-code matrix.
-11. [Use case model](developer/use-cases.md): actors, the use case register, business rules, and detailed flows for every registered use case, all implemented in the current build.
+2. [Performance design](performance.md) for the concurrency model and what is deliberately not optimised.
+3. [Backend code reference](developer/backend.md) for every active Rust module.
+4. [Database reference](developer/database.md) for tables, triggers, indexes, and migrations.
+5. [Trading and accounting](developer/trading-and-accounting.md) for LMSR arithmetic, quotes, locking, ledger transfers, and idempotency.
+6. [Evidence and settlement](developer/evidence-and-settlement.md) for category evaluation and worker behaviour.
+7. [API contract](api.md) and [API implementation map](developer/api-reference.md).
+8. [Frontend reference](developer/frontend.md) for React state, browser storage, polling, and receipt recovery.
+9. [Security and privacy](developer/security-and-privacy.md).
+10. [Operations](developer/operations.md) and [development setup](development.md).
+11. [Verification and traceability](verification.md) for the test inventory, workloads, evidence record, and the requirements-to-code matrix.
+12. [Use case model](developer/use-cases.md): actors, the use case register, business rules, and detailed flows for every registered use case, all implemented in the current build.
 
 Use the [glossary](developer/glossary.md) when a domain or accounting term is unfamiliar.
 

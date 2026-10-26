@@ -176,17 +176,17 @@ The worker ticks every second and skips accumulated timer ticks. Each cycle:
 3. selects up to 100 actionable instances rather than simply the oldest closed rows;
 4. generates evidence for due simulated instances using a hash of a private database secret and instance ID;
 5. asks resolver-authority instances' configured endpoints from their finalize window (ADR 0007): a valid answer is recorded as resolver evidence, while pending, malformed, and unreachable sources retry on later ticks until the published deadline voids the instance;
-6. settles independent instances concurrently in bounded chunks of eight, logging an error without ending the worker;
+6. settles independent instances concurrently in bounded chunks (`POLYNTU_SETTLE_CONCURRENCY`, default 8), logging an error without ending the worker;
 7. purges terminal recurring brackets past the retention window in batches of 20, logging an error without ending the worker; and
 8. seeds the rolling demo bus series once and ensures one future demo occurrence exists for each recurring demo template and one election occurrence overall.
 
 The actionable query prevents many markets waiting for evidence from starving a later market that is ready to resolve; it also admits resolver-authority instances from their finalize window so the worker can ask their external source. Each instance still settles serially under its row lock; concurrency is across instances only.
 
-The chunk size of eight is a budget, not a measurement result. Each settlement task holds one pooled connection for the duration of its transaction, and the pool is 32, so eight leaves three quarters of the pool for HTTP requests while settlement runs. Raising it trades request capacity for settlement throughput; lowering it leaves the pool idle during a settlement burst. Nothing derives the value from a benchmark, and it is not tuned per deployment.
+The chunk size is a budget, not a measurement result. Each settlement task holds one pooled connection for the duration of its transaction, so settlement concurrency is a slice of the pool, never an independent limit. The defaults are a 32-connection pool and eight settlement tasks, leaving three quarters of the pool for HTTP requests; both are deployment settings (`POLYNTU_POOL_CONNECTIONS` and `POLYNTU_SETTLE_CONCURRENCY`), and startup clamps settlement to at most one below the pool size. Raising settlement trades request capacity for settlement throughput; lowering it leaves the pool idle during a settlement burst. Nothing derives the defaults from a benchmark.
 
 ## Concurrency and multicore use
 
-The server runs Tokio's multi-thread runtime, one worker thread per core, so independent requests — including cache-served quotes, trades on different markets, evidence, and settlement batches — execute in parallel. Two serialisation points remain by design: the instance row lock orders trades within one market, and the PostgreSQL commit provides the durability guarantee for acknowledged trades. Quotes are CPU-bound after caching and scale with cores; trade throughput across markets is bounded by the connection pool (32) and commit latency.
+The server runs Tokio's multi-thread runtime, one worker thread per core, so independent requests — including cache-served quotes, trades on different markets, evidence, and settlement batches — execute in parallel. Two serialisation points remain by design: the instance row lock orders trades within one market, and the PostgreSQL commit provides the durability guarantee for acknowledged trades. Quotes are CPU-bound after caching and scale with cores; trade throughput across markets is bounded by the connection pool and commit latency. The pool size and the settlement concurrency are configurable, not compiled in.
 
 ### Where serialisation comes from
 
@@ -205,12 +205,24 @@ Deadlocks that still occur — `40P01`, `40001`, `55P03` — are retried up to t
 
 The instance lock is the main limit: all trades in one market queue behind it. It is also load-bearing, because positions and inventory are only correct if those writes are ordered. The options, in order of how much they change:
 
-- **Shard by outcome.** A categorical market's outcomes have independent inventory in the LMSR sense only when the price vector is recomputed per outcome; the current engine treats the vector as one state, so this needs a pricing redesign, not a locking one.
+- **Shard by outcome.** A categorical market's outcomes have independent inventory in the LMSR sense only when the price vector is recomputed per outcome; the current engine treats the vector as one state, so this needs a pricing redesign, not a locking one. See below.
 - **Move the position write off the hot path.** Positions could be appended as an event and folded into a read model, which removes the position row from the transaction but adds eventual consistency to a balance-visible value. Not worth it for an academic deployment.
 - **Batch settlement claims more aggressively.** Settlement already takes 100 accounts per transaction; a larger batch reduces round trips at the cost of a longer-held lock, which would start blocking trades on that market for longer. The current size keeps the lock short.
-- **Raise the pool and the chunk size together.** The 32-connection pool and the eight-task chunk are both fixed constants. Making them configurable would let a larger machine use more connections, but trade throughput across markets is bounded by commit latency, not by the chunk size, so the gain is small.
+- **Raise the pool and the chunk size together.** Both are environment settings, so a larger machine can already use more connections. Trade throughput across markets is bounded by commit latency rather than by the chunk size, so raising them helps only up to the point where the pool stops being the constraint.
 
 None of these is implemented. The current design deliberately keeps one lock per market, because that is what makes the accounting provable with row-level reasoning rather than a distributed protocol.
+
+### Why the lock is per market and not per outcome
+
+LMSR prices every outcome from the whole inventory vector. `amm::weights` exponentiates each outcome's inventory relative to the maximum entry, then normalises across all outcomes, so the price of one outcome depends on every other outcome's inventory. Buying "yes" changes "no"'s price by construction: that is what keeps the prices summing to one. `amm::validate` also enforces a spread limit across the vector, and the funding bound is computed from the outcome count. The inventory is therefore one value, and a trade is one atomic move of that value.
+
+Splitting the lock per outcome would let two traders update two entries of the same vector concurrently, which is a lost update on the price: each would compute its amount from a vector that no longer exists by the time it commits. Making it correct needs one of:
+
+- **per-outcome independent pricing**, which stops being LMSR — the prices would no longer sum to one, and the funding and spread guarantees would need replacing;
+- **optimistic concurrency on the vector**, computing the trade against a read snapshot and retrying when the version moved. This removes the *blocking* but not the *serialisation*: two trades on the same market still cannot commit in parallel, and under contention the retries cost more than the lock. The code already does this for one case — the `UPDATE instances ... WHERE id=$1 AND version=$5-1` guard rejects a stale inventory — but only as a safety net behind the lock, never as the primary mechanism;
+- **partitioning markets so two traders rarely meet**, which is what the current design gets for free by running every market as its own lock.
+
+The compromise accepted at the start was: one lock per market, and parallelism across markets. It is the design that makes every accounting invariant checkable from a single row version, and it matches the workload — a campus market has a handful of concurrent traders per market and many markets, so cross-market concurrency is where the capacity is. Per-outcome locking would only pay off with a few large markets and many traders racing the same market, which is the opposite shape.
 
 ## Events and consistency
 

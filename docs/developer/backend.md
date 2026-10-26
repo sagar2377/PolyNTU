@@ -171,7 +171,7 @@ The position read is not explicitly `FOR UPDATE`; serialization is provided by t
 
 ### Initialization
 
-`Store::connect` creates a 32-connection pool with 5-second acquisition timeout, sets 2-second PostgreSQL lock timeout and 15-second statement timeout on each connection, applies migrations, and calls `initialize`.
+`Store::connect` creates a pool of `Tuning::pool_connections` (default 32, `POLYNTU_POOL_CONNECTIONS`) with a 5-second acquisition timeout, sets 2-second PostgreSQL lock timeout and 15-second statement timeout on each connection, applies migrations, and calls `initialize`.
 
 `initialize` serializes on the singleton settings row, enforces mode consistency, creates a private simulation secret once, creates issuance/treasury accounts, and appends two idempotent issuance transfers: `initial-issuance` of 1,000,000 units and `issuance-expansion` of the remaining 999,000,000, raising total issuance to 1,000,000,000 units (`INITIAL_ISSUANCE_UNITS`, `TOTAL_ISSUANCE_UNITS`). In demo mode it also seeds the administrator account `demo-admin` (`admin@ntu.edu.sg`, password `admin`, role `admin`); the seed token's plaintext is discarded, so the password is the only way in.
 
@@ -229,7 +229,7 @@ The external resolver contract (ADR 0007). `ResolverRequest` is the fixed reques
 
 `seed_demo` seeds the rolling demo bus series once (platform-owned, simulated, fee-free) and creates missing future occurrences for the six one-shot demo specs. A template/close uniqueness constraint handles competing schedulers; elections are deliberately not recurring.
 
-`tick` closes due instances, spawns due series brackets, selects actionable rows, produces due simulator evidence, asks resolver-authority instances' external endpoints from their finalize window (ADR 0007: a valid answer becomes resolver evidence; pending, malformed, and unreachable sources retry on every tick until the published deadline voids the instance), settles independent instances concurrently in chunks of eight, purges terminal recurring brackets past the retention window in batches of 20 (a failure is logged and retried on the next tick), and then seeds future demos. Per-series spawn failures and per-instance evidence/settlement errors are logged so one failure cannot stall the others.
+`tick` closes due instances, spawns due series brackets, selects actionable rows, produces due simulator evidence, asks resolver-authority instances' external endpoints from their finalize window (ADR 0007: a valid answer becomes resolver evidence; pending, malformed, and unreachable sources retry on every tick until the published deadline voids the instance), settles independent instances concurrently in chunks of `Tuning::settle_concurrency`, purges terminal recurring brackets past the retention window in batches of 20 (a failure is logged and retried on the next tick), and then seeds future demos. Per-series spawn failures and per-instance evidence/settlement errors are logged so one failure cannot stall the others.
 
 `run` invokes `tick` every second with missed ticks skipped. There is no shutdown channel; `main` aborts the spawned task after HTTP shutdown.
 
@@ -259,3 +259,21 @@ amm/auth/error/fee -> no database service dependencies
 
 Keeping `amm` pure and category accounting-free is the main extension boundary.
 
+
+## Concurrency model
+
+The process runs Tokio's multi-thread runtime (`#[tokio::main(flavor = "multi_thread")]` in `main.rs`), which starts one worker thread per core and multiplexes tasks onto them. Four task kinds run concurrently: HTTP request handling (one task per request, spawned by Axum), the settlement worker (`worker::run`, one task, a one-second interval loop), the PostgreSQL notification listener (`events::run_listener`, one task), and the demo clock refresher (`events::run_clock_refresher`, one task, idle outside demo mode). Every open SSE stream is its own task as well, driven by a per-instance broadcast receiver plus a 30-second outbox catch-up timer.
+
+The unit of parallel distribution differs per path:
+
+| Path | Distributed unit | Bound |
+|---|---|---|
+| Quotes | one request per task | none beyond core count; the path takes no locks and touches no rows |
+| Trades | one request per task, serialised per market by the instance row lock | one in-flight trade per market; different markets run concurrently |
+| Settlement | one market instance per task, up to `Tuning::settle_concurrency` (default 8) at a time | each task holds one pooled connection for its transaction |
+| Bracket spawn and purge | one worker tick, sequential within the tick | `spawn_due_brackets` per series, purge in batches of 20 |
+| SSE | one stream per task | bounded by the 1024-slot broadcast channel per instance |
+
+Settlement concurrency is a connection budget rather than a measured optimum: with the default 32-connection pool, eight settlement transactions leave twenty-four connections for request handling. Both limits come from `Tuning`, which the entry point fills from `POLYNTU_POOL_CONNECTIONS` and `POLYNTU_SETTLE_CONCURRENCY`; `Tuning::normalized` clamps settlement to at most one below the pool size. Settlement never splits one market across tasks, so a market's claims stay ordered under its row lock.
+
+Shared mutable state between tasks is limited to the `Cache` (an `Arc` map guarded by `RwLock`, with version-guarded write-through) and the `EventBus` (an `Arc<RwLock<HashMap>>` of broadcast senders). Everything else is either immutable (`AppState` secrets, the pool handle) or lives in PostgreSQL, where row locks and unique constraints do the coordination. `Store` is a cheap handle: every task clones it rather than sharing a mutable instance.

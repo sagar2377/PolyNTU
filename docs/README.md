@@ -18,6 +18,7 @@ This index separates concise project documentation from the detailed material in
 | [`developer-guide.md`](developer-guide.md) | Detailed documentation reading path | Developers | Current | Project maintainer |
 | [`documentation-audit.md`](documentation-audit.md) | Audit scope, corrections, coverage, and verification boundaries | Reviewers and maintainers | Completed baseline audit | Documentation maintainer |
 | [`architecture.md`](architecture.md) | Component boundaries and transaction model | Developers | Current | Backend maintainer |
+| [`performance.md`](performance.md) | How the design keeps throughput high, and what is deliberately not optimised | Developers and reviewers | Current | Backend maintainer |
 | [`api.md`](api.md) | External HTTP contract | Frontend/backend developers | Current | Backend maintainer |
 | [`development.md`](development.md) | Setup, configuration, and local commands | Contributors | Current | Project maintainer |
 | [`verification.md`](verification.md) | Test, performance, and traceability evidence | Reviewers and developers | Current evidence record | Verification owner |

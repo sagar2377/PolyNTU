@@ -26,11 +26,45 @@ pub struct Store {
     /// the simulated feed; the entry point sets it from
     /// POLYNTU_NTUBUS_PROVIDER (empty disables the live path).
     pub ntubus_provider: Option<String>,
+    /// Runtime concurrency limits, from the environment at startup.
+    pub tuning: Tuning,
     /// Serializes settlement passes: the worker loop and the on-demand
     /// `/admin/clock/advance` and `/admin/worker/tick` endpoints all run
     /// `worker::tick`, and concurrent passes would select the same due
     /// instances.
     pub tick_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+/// Concurrency limits. The defaults suit a small single-host deployment;
+/// POLYNTU_POOL_CONNECTIONS and POLYNTU_SETTLE_CONCURRENCY override them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tuning {
+    /// Maximum pooled PostgreSQL connections.
+    pub pool_connections: u32,
+    /// Market instances one worker tick settles concurrently. Each task
+    /// holds a pooled connection for its transaction, so this is a slice of
+    /// the pool, not an independent limit.
+    pub settle_concurrency: usize,
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self {
+            pool_connections: 32,
+            settle_concurrency: 8,
+        }
+    }
+}
+
+impl Tuning {
+    /// Clamp so settlement can never take the whole pool: at least one
+    /// connection stays free for request handling.
+    pub fn normalized(mut self) -> Self {
+        self.pool_connections = self.pool_connections.max(2);
+        let ceiling = (self.pool_connections - 1) as usize;
+        self.settle_concurrency = self.settle_concurrency.clamp(1, ceiling);
+        self
+    }
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -173,14 +207,20 @@ pub fn instance_view(instance: &Instance, now: i64) -> Result<Value> {
 
 impl Store {
     pub async fn connect(url: &str, demo_mode: bool) -> Result<Self> {
-        Self::connect_with(url, demo_mode, false).await
+        Self::connect_with(url, demo_mode, false, Tuning::default()).await
     }
 
-    /// Connect with an explicit live-demonstration flag. `connect` keeps the
-    /// two-argument shape every existing caller and test uses; the entry point
-    /// calls this one to enable live mode.
-    pub async fn connect_with(url: &str, demo_mode: bool, live_mode: bool) -> Result<Self> {
-        let pool = PgPoolOptions::new().max_connections(32)
+    /// Connect with explicit live-demonstration and concurrency settings.
+    /// `connect` keeps the two-argument shape every existing caller and test
+    /// uses; the entry point reads the environment and calls this one.
+    pub async fn connect_with(
+        url: &str,
+        demo_mode: bool,
+        live_mode: bool,
+        tuning: Tuning,
+    ) -> Result<Self> {
+        let tuning = tuning.normalized();
+        let pool = PgPoolOptions::new().max_connections(tuning.pool_connections)
             .acquire_timeout(std::time::Duration::from_secs(5))
             .after_connect(|conn, _| Box::pin(async move {
                 sqlx::query("SELECT set_config('lock_timeout','2s',false), set_config('statement_timeout','15s',false)")
@@ -197,6 +237,7 @@ impl Store {
             live_mode,
             cache: Cache::new(0),
             ntubus_provider: None,
+            tuning,
             tick_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
         let clock_offset = store.initialize().await?;
@@ -1351,5 +1392,45 @@ impl Store {
             json!({"ok":account_errors==0 && inventory_errors==0 && reserve_errors==0 && total=="0",
             "account_errors":account_errors,"inventory_errors":inventory_errors,"reserve_errors":reserve_errors,"net_units_micros":total}),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Tuning;
+
+    #[test]
+    fn settlement_never_takes_the_whole_pool() {
+        let tuning = Tuning {
+            pool_connections: 32,
+            settle_concurrency: 8,
+        }
+        .normalized();
+        assert_eq!(tuning.settle_concurrency, 8);
+
+        // More settlement tasks than connections would deadlock on the pool.
+        let over = Tuning {
+            pool_connections: 4,
+            settle_concurrency: 16,
+        }
+        .normalized();
+        assert_eq!(over.settle_concurrency, 3);
+
+        // A zero would stall settlement forever.
+        let zero = Tuning {
+            pool_connections: 8,
+            settle_concurrency: 0,
+        }
+        .normalized();
+        assert_eq!(zero.settle_concurrency, 1);
+
+        // A single connection cannot both settle and serve requests.
+        let tiny = Tuning {
+            pool_connections: 1,
+            settle_concurrency: 8,
+        }
+        .normalized();
+        assert_eq!(tiny.pool_connections, 2);
+        assert_eq!(tiny.settle_concurrency, 1);
     }
 }

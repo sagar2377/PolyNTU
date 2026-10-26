@@ -71,6 +71,8 @@ When started from `backend/`, the default frontend directory is `../frontend/dis
 | `POLYNTU_LIVE_MODE` | No | Exact string `true` switches the bus markets to live evidence: the provider must answer, and an unavailable provider voids the bracket instead of fabricating an outcome. Requires demo mode. The demo clock is refused in this mode because the provider runs on wall-clock time. Defaults off, which keeps the deterministic simulated path. |
 | `POLYNTU_NTUBUS_PROVIDER` | No | URL of the NTU bus provider the adapter asks first; defaults to `http://127.0.0.1:8090/resolve`. An empty string disables the live path. |
 | `POLYNTU_BIND` | No | Socket address; defaults to `127.0.0.1:8000`. Demo mode rejects non-loopback addresses. |
+| `POLYNTU_POOL_CONNECTIONS` | No | Maximum pooled PostgreSQL connections; defaults to `32`. Each in-flight request or settlement transaction holds one. |
+| `POLYNTU_SETTLE_CONCURRENCY` | No | Market instances one worker tick settles at once; defaults to `8`. Clamped to at most one below the pool size, so request handling always keeps a connection. |
 | `POLYNTU_CORS_ORIGINS` | No | Comma-separated allowed origins; defaults to localhost and loopback port 5173. |
 | `POLYNTU_FRONTEND_DIR` | No | Static build path; defaults to `../frontend/dist`. |
 | `RUST_LOG` | No | Tracing filter, for example `polyntu=info,tower_http=debug`. |

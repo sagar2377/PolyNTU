@@ -37,7 +37,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if demo_mode && !address.ip().is_loopback() {
         return Err("Demo mode must bind to a loopback address".into());
     }
-    let mut store = Store::connect_with(&database_url, demo_mode, live_mode).await?;
+    // Concurrency limits are deployment settings, not compiled constants: a
+    // larger machine can spend more pooled connections and settle more
+    // markets at once. Tuning::normalized keeps settlement below the pool.
+    let tuning = polyntu::store::Tuning {
+        pool_connections: env_number("POLYNTU_POOL_CONNECTIONS", 32)?,
+        settle_concurrency: env_number("POLYNTU_SETTLE_CONCURRENCY", 8)? as usize,
+    };
+    let mut store = Store::connect_with(&database_url, demo_mode, live_mode, tuning).await?;
     // The NTU Bus API provider the bus adapter prefers over the simulated
     // feed; an empty value disables the live path.
     if let Ok(provider) = std::env::var("POLYNTU_NTUBUS_PROVIDER") {
@@ -71,4 +78,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     events_task.abort();
     clock_task.abort();
     Ok(())
+}
+
+/// Read a positive integer from the environment, falling back to `default`.
+/// A malformed value is a startup error rather than a silent default, so a
+/// typo cannot quietly halve capacity.
+fn env_number<T: std::str::FromStr>(name: &str, default: T) -> Result<T, Box<dyn std::error::Error>>
+where
+    T::Err: std::fmt::Display,
+{
+    match std::env::var(name) {
+        Err(_) => Ok(default),
+        Ok(value) => value
+            .trim()
+            .parse()
+            .map_err(|e| format!("{name} must be a number: {e}").into()),
+    }
 }
