@@ -163,7 +163,7 @@ Grouped by area.
 |---|---|
 | `trading_fees_are_charged_and_split_with_the_creator` | The 25 bps fee is charged on trades and split evenly between creator and treasury. |
 | `fee_free_markets_charge_no_fee_and_pay_no_creator_share` | Fee-free markets charge the pure engine amount and pay no creator share. |
-| `creators_cannot_trade_in_their_own_markets` | The creator account is refused with a conflict; the fee share is their compensation. |
+| `creators_cannot_trade_in_their_own_markets` | The creator account is refused with a conflict. |
 
 ### Resolution authority
 

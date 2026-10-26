@@ -93,7 +93,7 @@ A quote reads current instance state and creates signed `QuoteClaims` containing
 
 The JSON body is base64url-encoded and authenticated with HMAC-SHA256. Clients must treat the token as opaque. A quote changes no database state and does not guarantee later execution.
 
-A quote for an instance the account created is rejected before calculation with the creator trading ban, the same conflict enforced again under locks at execution: creators cannot trade in their own markets, and the fee share is their compensation.
+A quote for an instance the account created is rejected before calculation with the creator trading ban, the same conflict enforced again under locks at execution: creators cannot trade in their own markets.
 
 ## User limits
 

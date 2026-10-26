@@ -959,7 +959,7 @@ async fn creators_cannot_trade_in_their_own_markets() {
         .unwrap_err();
     assert_eq!(
         denied.to_string(),
-        "Creators cannot trade in their own markets; the fee share is their compensation"
+        "Creators cannot trade in their own markets"
     );
     // Everyone else trades the same market normally.
     let (trader, _) = db.account().await;

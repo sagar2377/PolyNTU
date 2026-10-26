@@ -14,7 +14,7 @@ Statements about existing behavior are verified against the current build. Every
 |---|---|---|
 | Visitor | Primary | An unauthenticated person who registers. UC-1 turns a Visitor into a Trader. |
 | Trader | Primary | An account holder who browses markets, views quotes and probabilities, trades outcome shares, and tracks a portfolio. |
-| Market Creator | Primary | A verified trader who also defines markets: one-time markets and recurring series. The role generalizes Trader, with one restriction: a creator cannot trade in their own markets, and the fee share is their compensation. |
+| Market Creator | Primary | A verified trader who also defines markets: one-time markets and recurring series. The role generalizes Trader, with one restriction: a creator cannot trade in their own markets. |
 | Platform Admin | Primary | The operator, reached through the shared token or an admin-role account session (the seeded demo administrator in demo mode). Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. Today it still creates instances directly and records evidence for platform-authority markets; by design it cannot resolve markets whose authority is fixed to their creator or an external resolver. |
 | External Resolver | Secondary system | An automated external API the settlement worker calls at finalize time, for example a bus timing service or a queue counter. Secondary actor in UC-13. |
 | Scheduler | Internal system | The background process that spawns bracket instances for recurring series on a rolling schedule (UC-12). |
@@ -68,7 +68,7 @@ Notes:
 1. Accounts require an NTU email (existing; [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)). The address must match `^[^@\s]+@([a-z0-9-]+\.)*ntu\.edu\.sg$` (case-insensitive), so `billy@ntu.edu.sg` and `billy@scse.ntu.edu.sg` pass and anything else is rejected.
 2. Registered accounts receive a 10,000-unit welcome gift from the treasury; the demo account keeps its 1,000-unit grant (existing; ADR 0005). Total issuance rises from 1M to 1B units, applied as a second idempotent bootstrap transfer rather than a migration, so the gift budget is not exhausted after 100 users.
 3. Every trade on a fee-charging market pays a 25-basis-point fee on the LMSR amount, included in the quoted all-in amount, accumulated in the market reserve, and split 50/50 between the creator and the treasury at settlement (existing; [ADR 0004](../decisions/0004-trade-fees.md)). The fee is a market attribute fixed at creation (`fee_charged`, default true): the administrator sets it creating instances directly and creators set it publishing a series. A fee-free market charges nothing, collects no fee, and pays no creator share; bus timing is the welfare example.
-4. Creators cannot trade in their own markets; the fee share is their compensation.
+4. Creators cannot trade in their own markets.
 5. A perpetual market is a recurring market with no end date: it recurs forever with automatically refreshing resolution times.
 6. Rolling spawn: a new bracket instance is created every interval while the live count is below the maximum concurrency; the covered horizon is maximum concurrency × interval. Each spawned bracket's title carries its time window (`{series title} · HH:MM to HH:MM` in Singapore time), so brackets of one series stay distinguishable; a one-time market keeps the creator's title unchanged.
 7. Recurrence only spawns brackets inside the creator-set active period, a daily window interpreted in Singapore time. A bus series, for example, runs 06:00 to 23:59 because buses do not run at midnight.
@@ -444,7 +444,7 @@ The demo bus series is the built-in example: the platform serves its own adapter
 - Closed market: rejected.
 - Limit not met: rejected.
 - Duplicate delivery: the same receipt is returned.
-- The account is the creator of this instance: rejected; creators cannot trade their own markets, and the fee share is their compensation.
+- The account is the creator of this instance: rejected; creators cannot trade their own markets.
 
 ### UC-21: View the day-long probability visualization
 

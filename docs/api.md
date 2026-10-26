@@ -408,7 +408,7 @@ Example response:
 }
 ```
 
-`amount_micros` is the all-in debit (buy) or credit (sell): the LMSR amount plus a 25-basis-point trading fee, reported separately as `fee_micros` and rounded against the trader. Fee-free markets (`fee_charged:false`, fixed at creation) report `fee_micros` as 0 and an all-in amount equal to the pure LMSR amount. `average_price` divides the all-in amount by the quantity. The exact fields depend on inventory and liquidity. The token embeds the authoritative rounded amount and fee and expires after at most 15 seconds. A quote for an instance the account created is rejected with 409 `conflict`: creators cannot trade in their own markets, and the fee share is their compensation.
+`amount_micros` is the all-in debit (buy) or credit (sell): the LMSR amount plus a 25-basis-point trading fee, reported separately as `fee_micros` and rounded against the trader. Fee-free markets (`fee_charged:false`, fixed at creation) report `fee_micros` as 0 and an all-in amount equal to the pure LMSR amount. `average_price` divides the all-in amount by the quantity. The exact fields depend on inventory and liquidity. The token embeds the authoritative rounded amount and fee and expires after at most 15 seconds. A quote for an instance the account created is rejected with 409 `conflict`: creators cannot trade in their own markets.
 
 ## Trades and idempotency
 

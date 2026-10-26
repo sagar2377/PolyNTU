@@ -86,9 +86,7 @@ impl Store {
             return Err(conflict("This market is closed or suspended"));
         }
         if instance.creator_account_id.as_deref() == Some(account_id) {
-            return Err(conflict(
-                "Creators cannot trade in their own markets; the fee share is their compensation",
-            ));
+            return Err(conflict("Creators cannot trade in their own markets"));
         }
         let outcome = instance.outcome_index(&request.outcome_id)?;
         // A sell can only move shares the account holds. Checking here keeps
@@ -272,9 +270,7 @@ impl Store {
             return Err(conflict("This market is closed or suspended"));
         }
         if instance.creator_account_id.as_deref() == Some(account) {
-            return Err(conflict(
-                "Creators cannot trade in their own markets; the fee share is their compensation",
-            ));
+            return Err(conflict("Creators cannot trade in their own markets"));
         }
         if now >= claims.expires_ms {
             return Err(conflict("Quote expired. Request a new quote"));

@@ -21,9 +21,9 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
   const [locationId, setLocationId] = useState("");
   const [feeCharged, setFeeCharged] = useState(true);
   const [scheduleKind, setScheduleKind] = useState("once");
-  const [resolutionKind, setResolutionKind] = useState("admin");
+  const [resolutionKind, setResolutionKind] = useState("creator");
   const [resolverEndpoint, setResolverEndpoint] = useState("");
-  const [keyPair, setKeyPair] = useState(null);
+  const [keyPair, setKeyPair] = useState(() => signingKey(account));
   const [keyPassword, setKeyPassword] = useState("");
   const [closeAt, setCloseAt] = useState("");
   const [observationMinutes, setObservationMinutes] = useState("10");
