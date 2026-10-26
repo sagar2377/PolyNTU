@@ -116,17 +116,6 @@ A series fixes its resolution authority at creation ([ADR 0007](../docs/decision
 | `TradingControl` | Binds quotes to accounts and enforces the self-trading prohibition. | `quote` and `execute` in [execution.rs](../backend/src/execution.rs). |
 | `StartupControl` | Validates distinct quote and admin secrets of at least 32 characters and rejects a public demo-mode bind. | `AppState::new` in [api.rs](../backend/src/api.rs); startup in [main.rs](../backend/src/main.rs). |
 
-## Known limitations
-
-- Bearer tokens carry no expiry or scopes; possession grants full account access.
-- No server-side revocation or logout exists: sign-out clears browser storage only, a fresh login rotates the token, and unused tokens never expire.
-- The shared admin token carries no actor identity, expiry, rotation, or multi-party approval; audit rows cannot identify which human used it.
-- No rate limiting, lockout, or denial-of-service mitigation exists; the login timing equalization is not a rate limit.
-- The resolution key derives from the account password, so the published public key permits offline password guessing at one 600,000-iteration PBKDF2 run per guess, and the cached private key is readable by same-origin scripts.
-- Application processes use one database URL rather than separate least-privilege migration and runtime roles.
-- Browser local storage holds the bearer token, one pending trade, and the cached signing key; any script executing in the same origin can read them.
-- No campus SSO, MFA, or password recovery exists.
-
 ## References
 
 - [Security and privacy](../docs/developer/security-and-privacy.md): authoritative control description.
