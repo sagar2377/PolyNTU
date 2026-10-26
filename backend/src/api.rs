@@ -159,7 +159,7 @@ async fn health(State(s): State<AppState>) -> Result<Json<Value>> {
 }
 async fn config(State(s): State<AppState>) -> Result<Json<Value>> {
     Ok(Json(
-        json!({"demo_mode":s.store.demo_mode,"server_time_ms":s.store.now_cached(),"credit_scale":1000000,"share_scale":1000,"quote_ttl_ms":15000}),
+        json!({"demo_mode":s.store.demo_mode,"live_mode":s.store.live_mode,"server_time_ms":s.store.now_cached(),"credit_scale":1000000,"share_scale":1000,"quote_ttl_ms":15000}),
     ))
 }
 

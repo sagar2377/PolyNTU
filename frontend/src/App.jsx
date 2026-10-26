@@ -162,8 +162,8 @@ export default function App() {
         : verification?.status === "rejected" ? <div><p className="muted">Your last request was rejected: {verification.reason}</p><button disabled={busy} onClick={requestVerification}>Apply again</button></div>
         : <div><p className="muted">Verified creators publish their own markets and earn half of every trading fee. Request verification to get started.</p><button className="primary" disabled={busy} onClick={requestVerification}>Request creator verification</button></div>}
     </section>}
-    {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "browse")} />}
-    {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView(marketFrom)} onSelect={(id) => openMarket(id, marketFrom)} />}
+    {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} liveMode={config?.live_mode} onSelect={(id) => openMarket(id, "browse")} />}
+    {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} config={config} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView(marketFrom)} onSelect={(id) => openMarket(id, marketFrom)} />}
     {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setRefresh((n) => n + 1); openSeries(id); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "portfolio")} />}
     <footer><span>PolyNTU · Outcome markets</span><span className="footer-actions">{config?.demo_mode && <button className="link-button" onClick={() => setClockOpen(true)}>Demo clock</button>}<button className="link-button" onClick={() => setAdminOpen(true)}>Admin</button></span></footer>

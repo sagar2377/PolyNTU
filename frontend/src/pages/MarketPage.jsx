@@ -3,7 +3,18 @@ import { api, categories, deriveResolutionKeyPair, signResolution, signingKey as
 import TradePanel from "../components/TradePanel";
 import PriceHistoryChart from "../components/PriceHistoryChart";
 import DayProbabilityBars from "../components/DayProbabilityBars";
-export default function MarketPage({ id, account, refresh, onTrade, onError, onBack, onSelect }) {
+
+/// What kind of observations settle this market. The recorded evidence source
+/// is authoritative once a result exists; before that, live mode means the
+/// bracket will be answered from the external feed rather than the simulator,
+/// so an open bracket is not mislabelled as simulated.
+const observationLabel = (instance, config) => {
+  if (instance.evidence?.source === "ntubus-live") return "Live observations";
+  if (instance.evidence?.source === "simulated-fallback") return "Simulated observations";
+  if (config?.live_mode) return "Live observations";
+  return instance.data_mode === "simulated" ? "Simulated observations" : "Evidence from the published source";
+};
+export default function MarketPage({ id, account, config, refresh, onTrade, onError, onBack, onSelect }) {
   const [instance, setInstance] = useState(null);
   const [seriesData, setSeriesData] = useState(null);
   const [reloads, setReloads] = useState(0);
@@ -81,7 +92,7 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
   };
   return <>
     <button className="link-button" onClick={onBack}>← All markets</button>
-    <div className="market-heading"><span className={`category category-${instance.category}`}>{categories[instance.category]}</span><h1>{instance.title}</h1><p className="muted">{instance.evidence?.source === "ntubus-live" ? "Live observations" : instance.data_mode === "simulated" ? "Simulated observations" : "Evidence from the published source"} · Times in Singapore (SGT)</p></div>
+    <div className="market-heading"><span className={`category category-${instance.category}`}>{categories[instance.category]}</span><h1>{instance.title}</h1><p className="muted">{observationLabel(instance, config)} · Times in Singapore (SGT)</p></div>
     {instance.result && <div className="result-banner"><strong>{instance.state === "resolving" ? "Settlement in progress" : "Final result"}: {resultLabel}</strong><span>{instance.result.reason}</span></div>}
     <div className="layout"><section className="panel"><h2>Market probabilities</h2>
       {instance.outcomes.map((outcome) => <div className="outcome-row" key={outcome.id}><span>{outcome.label}</span><strong>{(outcome.probability * 100).toFixed(2)}%</strong><div className="probability-track"><span style={{ width: `${outcome.probability * 100}%` }} /></div></div>)}
@@ -96,7 +107,6 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
       {series.day?.weighted_probability !== null && series.day?.weighted_probability !== undefined
         ? <p className="muted">Volume-weighted {series.day.slots[0]?.outcome_label} probability across live brackets: <strong>{(series.day.weighted_probability * 100).toFixed(1)}%</strong>, each bracket weighted by units bet.</p>
         : <p className="muted">No live brackets have traded volume yet; the weighted probability appears with the first trade.</p>}
-      <p className="muted small">Each row is one bracket: its implied probability, then the units traded in it.</p>
       <DayProbabilityBars series={series} />
     </section>}
     {series && <section className="panel"><h2>How this series works</h2>
