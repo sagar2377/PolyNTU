@@ -659,6 +659,27 @@ impl Store {
             .ok_or(Error::NotFound)
     }
 
+    /// The series an instance belongs to, if any. Instances created directly
+    /// by an administrator have no series.
+    pub async fn series(&self, id: &str) -> Result<Option<Series>> {
+        Ok(sqlx::query_as("SELECT * FROM market_series WHERE id=$1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?)
+    }
+
+    /// Whether an instance resolves through an external resolver. A direct
+    /// (series-less) instance never does.
+    pub async fn resolves_externally(&self, instance: &Instance) -> Result<bool> {
+        Ok(match &instance.series_id {
+            Some(series_id) => self
+                .series(series_id)
+                .await?
+                .is_some_and(|series| series.resolution_authority == "resolver"),
+            None => false,
+        })
+    }
+
     pub async fn instance_detail(&self, id: &str) -> Result<Value> {
         let instance = self.instance(id).await?;
         let mut view = instance_view(&instance, self.now().await?)?;

@@ -1,13 +1,15 @@
 # Release local run: same pipeline as run-dev.ps1 with a locked, optimised backend build.
 # Also starts the NTU bus provider so the bus adapter can answer from the campus
 # Omnibus feed; without it the adapter falls back to the deterministic simulator.
-# Set POLYNTU_LIVE_MODE=true to refuse that fallback (see run-live.ps1).
-param([switch]$NoProvider)
+# -Live makes the provider authoritative: bus brackets resolve only from the real
+# feed and void at their deadline if it cannot answer.
+param([switch]$NoProvider, [switch]$Live)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'rust-env.ps1')
 . (Join-Path $PSScriptRoot 'configure-dev.ps1')
 & (Join-Path $PSScriptRoot 'start-local-db.ps1')
+if ($Live) { $env:POLYNTU_LIVE_MODE = 'true' }
 if (-not $env:POLYNTU_NTUBUS_PROVIDER) { $env:POLYNTU_NTUBUS_PROVIDER = 'http://127.0.0.1:8090/resolve' }
 $provider = $null
 try {
@@ -21,6 +23,8 @@ try {
         if ($ready) {
             $status = Invoke-RestMethod -Uri 'http://127.0.0.1:8090/' -TimeoutSec 2
             Write-Output "NTU bus provider ready: $($status.events) arrival events across $($status.routes.PSObject.Properties.Count) routes"
+        } elseif ($Live) {
+            Write-Warning 'The NTU bus provider did not become ready; live bus brackets will void at their evidence deadline.'
         } else {
             Write-Warning 'The NTU bus provider did not become ready; the adapter will fall back to simulated evidence.'
         }

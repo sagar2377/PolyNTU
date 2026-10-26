@@ -167,7 +167,7 @@ export default function App() {
     {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setRefresh((n) => n + 1); openSeries(id); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "portfolio")} />}
     <footer><span>PolyNTU · Outcome markets</span><span className="footer-actions">{config?.demo_mode && <button className="link-button" onClick={() => setClockOpen(true)}>Demo clock</button>}<button className="link-button" onClick={() => setAdminOpen(true)}>Admin</button></span></footer>
-    {adminOpen && <AdminPanel account={account} onClose={() => setAdminOpen(false)} onError={setError} onChanged={() => setRefresh((n) => n + 1)} />}
+    {adminOpen && <AdminPanel account={account} onClose={() => setAdminOpen(false)} onChanged={() => setRefresh((n) => n + 1)} />}
     {config?.demo_mode && clockOpen && <Modal label="Demo clock controls" onClose={() => setClockOpen(false)}>
       <h2>Demo clock controls</h2>
       <p className="muted small">Advance simulated time to observe closing and settlement. Administrator access is required.</p>

@@ -176,20 +176,7 @@ pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
     // simulator source is reserved for seeded demo series. Its resolver
     // authority is what makes it eligible for the live feed, so the adapter
     // answers it too instead of leaving it to void at its deadline.
-    let resolver_authority = match &instance.series_id {
-        Some(series_id) => {
-            sqlx::query_scalar::<_, String>(
-                "SELECT resolution_authority FROM market_series WHERE id=$1",
-            )
-            .bind(series_id)
-            .fetch_optional(&store.pool)
-            .await?
-            .as_deref()
-                == Some("resolver")
-        }
-        None => false,
-    };
-    if instance.data_mode == "manual" && !resolver_authority {
+    if instance.data_mode == "manual" && !store.resolves_externally(&instance).await? {
         return Ok(pending());
     }
     let provider = store
@@ -209,17 +196,13 @@ pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
             }
         }
     }
-    // Live mode never fabricates an outcome: with no definitive provider
-    // answer the bracket stays pending, so the published evidence deadline
-    // voids it instead of recording a result the live feed never produced.
-    if store.live_mode {
-        return Ok(pending());
-    }
-    // A configured provider that stays silent has usually lost poll coverage
-    // (a restart or a gap over 2.5 cycles), not observed "no bus". Falling
-    // back would turn a real No into a fabricated Yes, so a provider-backed
-    // market waits for the deadline instead.
-    if !provider.is_empty() {
+    // Never fabricate when the live feed was meant to answer. Live mode makes
+    // the provider authoritative outright; otherwise a configured provider
+    // that stays silent has usually lost poll coverage (a restart or a gap
+    // over 2.5 cycles), not observed "no bus", so falling back would turn a
+    // real No into a fabricated Yes. Either way the bracket stays pending and
+    // voids at its published deadline.
+    if store.live_mode || !provider.is_empty() {
         return Ok(pending());
     }
     let secret: String =

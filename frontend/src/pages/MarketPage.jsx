@@ -1,19 +1,9 @@
 import { useEffect, useState } from "react";
-import { api, categories, deriveResolutionKeyPair, signResolution, signingKey as accountSigningKey, storeSigningKey, timestamp } from "../api";
+import { api, categories, deriveResolutionKeyPair, observationLabel, signResolution, signingKey as accountSigningKey, storeSigningKey, timestamp } from "../api";
 import TradePanel from "../components/TradePanel";
 import PriceHistoryChart from "../components/PriceHistoryChart";
 import DayProbabilityBars from "../components/DayProbabilityBars";
 
-/// What kind of observations settle this market. The recorded evidence source
-/// is authoritative once a result exists; before that, live mode means the
-/// bracket will be answered from the external feed rather than the simulator,
-/// so an open bracket is not mislabelled as simulated.
-const observationLabel = (instance, config) => {
-  if (instance.evidence?.source === "ntubus-live") return "Live observations";
-  if (instance.evidence?.source === "simulated-fallback") return "Simulated observations";
-  if (config?.live_mode) return "Live observations";
-  return instance.data_mode === "simulated" ? "Simulated observations" : "Evidence from the published source";
-};
 export default function MarketPage({ id, account, config, refresh, onTrade, onError, onBack, onSelect }) {
   const [instance, setInstance] = useState(null);
   const [seriesData, setSeriesData] = useState(null);
@@ -92,7 +82,7 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
   };
   return <>
     <button className="link-button" onClick={onBack}>← All markets</button>
-    <div className="market-heading"><span className={`category category-${instance.category}`}>{categories[instance.category]}</span><h1>{instance.title}</h1><p className="muted">{observationLabel(instance, config)} · Times in Singapore (SGT)</p></div>
+    <div className="market-heading"><span className={`category category-${instance.category}`}>{categories[instance.category]}</span><h1>{instance.title}</h1><p className="muted">{observationLabel(instance, config?.live_mode)} · Times in Singapore (SGT)</p></div>
     {instance.result && <div className="result-banner"><strong>{instance.state === "resolving" ? "Settlement in progress" : "Final result"}: {resultLabel}</strong><span>{instance.result.reason}</span></div>}
     <div className="layout"><section className="panel"><h2>Market probabilities</h2>
       {instance.outcomes.map((outcome) => <div className="outcome-row" key={outcome.id}><span>{outcome.label}</span><strong>{(outcome.probability * 100).toFixed(2)}%</strong><div className="probability-track"><span style={{ width: `${outcome.probability * 100}%` }} /></div></div>)}

@@ -34,6 +34,13 @@ const ADMIN: &str = "test-admin-token-012345678901234567890";
 static CREATED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
+/// The only names this suite may interpolate into CREATE/DROP DATABASE: the
+/// fixed prefix plus alphanumerics and underscores. Both the sweep and the
+/// per-test drop guard on this, so the two cannot drift apart.
+fn safe_db_name(name: &str) -> bool {
+    name.starts_with("polyntu_test_") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 struct TestDb {
     store: Store,
     admin: PgPool,
@@ -59,9 +66,7 @@ impl TestDb {
         // DROP awaits below would block every other test's `new`.
         let live: std::collections::HashSet<String> = CREATED.lock().unwrap().clone();
         for name in stale {
-            let safe = name.starts_with("polyntu_test_")
-                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-            if !safe || live.contains(&name) {
+            if !safe_db_name(&name) || live.contains(&name) {
                 continue;
             }
             let _ = sqlx::query(AssertSqlSafe(format!("DROP DATABASE IF EXISTS {name}")))
@@ -150,13 +155,7 @@ impl TestDb {
     async fn finish(self) {
         assert_eq!(self.store.reconcile().await.unwrap()["ok"], true);
         self.store.pool.close().await;
-        assert!(
-            self.name.starts_with("polyntu_test_")
-                && self
-                    .name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        );
+        assert!(safe_db_name(&self.name));
         sqlx::query(AssertSqlSafe(format!(
             "DROP DATABASE {} WITH (FORCE)",
             self.name

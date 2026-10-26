@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, categories, timestamp } from "../api";
+import { api, categories, observationLabel, timestamp } from "../api";
 
 const HISTORY_CLASSES = ["closed", "voided", "resolved"];
 const emptyHistory = { closed: [], voided: [], resolved: [] };
@@ -35,7 +35,7 @@ export default function MarketBrowse({ refresh, onSelect, onError, liveMode }) {
   const card = (instance) => <button className="market-card" key={instance.id} onClick={() => onSelect(instance.id)}>
     <div className="card-meta"><span className={`category category-${instance.category}`}>{categories[instance.category]}</span><span className={`status ${instance.tradable ? "open" : ""}`}>{instance.tradable ? "Open" : instance.state}</span></div>
     <h3>{instance.title}</h3><div className="outcome-preview">{instance.outcomes.slice(0, 3).map((outcome) => <div key={outcome.id}><span>{outcome.label}</span><strong>{(outcome.probability * 100).toFixed(1)}%</strong><span className="probability-track"><span style={{ width: `${outcome.probability * 100}%` }} /></span></div>)}</div>
-    <div className="card-footer"><span>{instance.data_mode === "simulated" ? (liveMode ? "Live observations" : "Simulated observations") : "Published evidence source"}</span><span>Closes {timestamp(instance.close_ms)} SGT</span></div>
+    <div className="card-footer"><span>{observationLabel(instance, liveMode)}</span><span>Closes {timestamp(instance.close_ms)} SGT</span></div>
   </button>;
   const grid = (rows) => rows.length === 0 ? <div className="empty-state">No markets in this category on this page.</div> : <div className="market-grid">{rows.map(card)}</div>;
   const count = (rows) => rows.length >= 100 ? "100+" : String(rows.length);

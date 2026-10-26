@@ -48,9 +48,6 @@ export const api = {
   adminVerifications: (status, adminToken) => request(`/admin/verification-requests${status ? `?status=${encodeURIComponent(status)}` : ""}`, { adminToken }),
   adminDecide: (id, body, adminToken) => request(`/admin/verification-requests/${encodeURIComponent(id)}/decision`, { method: "POST", body, adminToken }),
   adminCreateAccount: (display_name, adminToken) => request("/admin/accounts", { method: "POST", body: { display_name }, adminToken }),
-  adminCreateInstance: (body, adminToken) => request("/admin/instances", { method: "POST", body, adminToken }),
-  adminEvidence: (id, body, adminToken) => request(`/admin/instances/${encodeURIComponent(id)}/evidence`, { method: "POST", body, adminToken }),
-  adminSuspend: (id, body, adminToken) => request(`/admin/instances/${encodeURIComponent(id)}/suspension`, { method: "POST", body, adminToken }),
   adminReconcile: (adminToken) => request("/admin/reconcile", { adminToken }),
   adminTick: (adminToken) => request("/admin/worker/tick", { method: "POST", adminToken }),
   eventsUrl: (id) => `${BASE}/api/v2/instances/${encodeURIComponent(id)}/events`,
@@ -72,6 +69,16 @@ export function quantityMillis(value) {
 }
 export function timestamp(ms) {
   return new Intl.DateTimeFormat("en-SG", { timeZone: "Asia/Singapore", year: "numeric", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
+}
+/// How a market's observations are described. Recorded evidence is
+/// authoritative once a result exists; before that, live mode means a bus
+/// bracket will be answered from the external feed rather than the simulator.
+/// List rows carry no evidence, so they fall back on the mode alone.
+export function observationLabel(instance, liveMode) {
+  if (instance?.evidence?.source === "ntubus-live") return "Live observations";
+  if (instance?.evidence?.source === "simulated-fallback") return "Simulated observations";
+  if (liveMode) return "Live observations";
+  return instance?.data_mode === "simulated" ? "Simulated observations" : "Published evidence source";
 }
 export function pendingTrade() {
   try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "null"); } catch { return null; }
