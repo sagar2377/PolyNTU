@@ -23,9 +23,9 @@ skinparam legendBorderColor #CBD5E1
 title PolyNTU architecture\nFunctional modules
 
 component "Participant browser\nReact interface" as Browser
-component "Market service\nquotes, trades, pricing,\nmarket lifecycle" as Service
-component "Settlement worker\nbracket scheduling, resolution,\nclaim settlement" as Worker
-database "PostgreSQL\naccounts, markets, trades,\nevidence, ledger" as Db
+component "Market service\nquotes, trades, pricing,\nmarket lifecycle\n\nparallel: requests are tasks on\nthe Tokio multi-thread runtime,\nwhich runs one worker thread\nper core" as Service
+component "Settlement worker\nbracket scheduling, resolution,\nclaim settlement\n\nparallel: up to 8 independent\nmarkets settle at once\n(instance row lock keeps each\nmarket internally serial)" as Worker
+database "PostgreSQL\naccounts, markets, trades,\nevidence, ledger\n\nparallel: 32-connection pool,\nrow locks order writes" as Db
 component "External data sources\nconfigured resolvers and\nthe NTU bus feed" as Sources
 
 Browser --> Service : trade, publish, resolve
@@ -37,5 +37,9 @@ Worker --> Sources : fetches the outcome
 legend bottom left
   One Rust process serves the browser and runs the settlement worker;
   both read and write the same database.
+  The process runs Tokio's multi-thread runtime: HTTP requests, the worker,
+  the event listener, and the clock refresher run as separate tasks, so
+  independent work uses multiple cores. Work inside one market stays serial
+  under its row lock.
 endlegend
 @enduml
