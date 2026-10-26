@@ -2372,6 +2372,101 @@ async fn concurrent_cross_market_spending_cannot_overdraw_account() {
     db.finish().await;
 }
 
+/// Equivalence classes for a sell: nothing held, part held, exactly held, more
+/// than held. The quote is the boundary the trader meets, so the rejection has
+/// to happen there and describe the holding rather than an engine range.
+#[tokio::test]
+async fn sell_quotes_are_bounded_by_the_holding() {
+    let db = TestDb::new().await;
+    let (account, _) = db.account().await;
+    let (other, _) = db.account().await;
+    let market = db.market(None).await;
+    let owned: i64 = 10_000; // 10 shares
+
+    // Nothing held: the sell direction is unavailable outright.
+    let error = db
+        .store
+        .quote(
+            &other.id,
+            &QuoteRequest {
+                instance_id: market.id.clone(),
+                outcome_id: market.outcomes[0].id.clone(),
+                side: Side::Sell,
+                quantity_millis: 1,
+            },
+            SECRET,
+        )
+        .await
+        .expect_err("a sell with no holding must be refused");
+    assert!(
+        matches!(&error, polyntu::error::Error::Conflict(message) if message == "You do not own shares in this outcome"),
+        "unexpected error: {error:?}"
+    );
+
+    buy(&db, &account, &market, owned).await;
+
+    // Below and exactly at the boundary are accepted.
+    for quantity in [1, owned / 2, owned] {
+        db.store
+            .quote(
+                &account.id,
+                &QuoteRequest {
+                    instance_id: market.id.clone(),
+                    outcome_id: market.outcomes[0].id.clone(),
+                    side: Side::Sell,
+                    quantity_millis: quantity,
+                },
+                SECRET,
+            )
+            .await
+            .unwrap_or_else(|e| {
+                panic!("a sell of {quantity} within the holding must quote: {e:?}")
+            });
+    }
+
+    // One millishare over the boundary is refused, and the message names the
+    // holding so the trader can correct it.
+    let error = db
+        .store
+        .quote(
+            &account.id,
+            &QuoteRequest {
+                instance_id: market.id.clone(),
+                outcome_id: market.outcomes[0].id.clone(),
+                side: Side::Sell,
+                quantity_millis: owned + 1,
+            },
+            SECRET,
+        )
+        .await
+        .expect_err("a sell above the holding must be refused");
+    assert!(
+        matches!(&error, polyntu::error::Error::Conflict(message) if message.contains("You own 10 shares")),
+        "unexpected error: {error:?}"
+    );
+
+    // The same boundary applies to an outcome the account never bought.
+    let error = db
+        .store
+        .quote(
+            &account.id,
+            &QuoteRequest {
+                instance_id: market.id.clone(),
+                outcome_id: market.outcomes[1].id.clone(),
+                side: Side::Sell,
+                quantity_millis: 1,
+            },
+            SECRET,
+        )
+        .await
+        .expect_err("selling an unheld outcome must be refused");
+    assert!(
+        matches!(&error, polyntu::error::Error::Conflict(message) if message == "You do not own shares in this outcome"),
+        "unexpected error: {error:?}"
+    );
+    db.finish().await;
+}
+
 #[tokio::test]
 async fn ownership_expiry_limits_and_pure_quotes_are_enforced() {
     let db = TestDb::new().await;
@@ -2401,20 +2496,47 @@ async fn ownership_expiry_limits_and_pure_quotes_are_enforced() {
             .is_err()
     );
     buy(&db, &account, &market, 10000).await;
-    let sell = quote(&db, &other, &market, Side::Sell, 10000).await;
+    // The account holds shares; the other does not. The quote already refuses
+    // the uncovered sell, and execution refuses a hand-crafted claim that
+    // skips the quote, so both layers guard the same invariant.
     assert!(
         db.store
-            .execute(&other.id, "oversell", &sell, SECRET)
+            .quote(
+                &other.id,
+                &QuoteRequest {
+                    instance_id: market.id.clone(),
+                    outcome_id: market.outcomes[0].id.clone(),
+                    side: Side::Sell,
+                    quantity_millis: 10000,
+                },
+                SECRET,
+            )
             .await
             .is_err()
     );
-    let mut claims: polyntu::execution::QuoteClaims =
-        auth::verify(&sell.quote_token, SECRET.as_bytes()).unwrap();
+    let mut claims: polyntu::execution::QuoteClaims = auth::verify(
+        &quote(&db, &account, &market, Side::Sell, 10000)
+            .await
+            .quote_token,
+        SECRET.as_bytes(),
+    )
+    .unwrap();
+    claims.account_id = other.id.clone();
+    let stolen_sell = TradeRequest {
+        quote_token: auth::sign(&claims, SECRET.as_bytes()).unwrap(),
+        limit_micros: claims.amount_micros.to_string(),
+    };
+    assert!(
+        db.store
+            .execute(&other.id, "oversell", &stolen_sell, SECRET)
+            .await
+            .is_err()
+    );
     claims.account_id = account.id.clone();
     claims.expires_ms = db.store.now().await.unwrap() - 1;
     let expired = TradeRequest {
         quote_token: auth::sign(&claims, SECRET.as_bytes()).unwrap(),
-        limit_micros: sell.limit_micros,
+        limit_micros: claims.amount_micros.to_string(),
     };
     assert!(
         db.store

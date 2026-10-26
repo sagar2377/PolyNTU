@@ -66,3 +66,4 @@ summary { cursor:pointer; font-size:.82rem; color:var(--muted); } details p { fo
 .admin-list .button-row { margin-top:0; }
 .modal-card section { margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
 .modal-card h3 { font-size:.95rem; margin:0 0 10px; }
+.publish-button { margin-top:22px; }

@@ -6,6 +6,7 @@ use crate::{
     market::Instance,
     store::{Store, db_now, transfer},
 };
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{FromRow, Row, types::Json};
@@ -51,6 +52,25 @@ pub fn parse_micros(value: &str) -> Result<i64> {
 }
 
 impl Store {
+    /// Shares the account holds in one outcome, in millishares. Zero when no
+    /// position row exists, which is the same as a fully sold position.
+    pub async fn position_millis(
+        &self,
+        account_id: &str,
+        instance_id: &str,
+        outcome_index: usize,
+    ) -> Result<i64> {
+        Ok(sqlx::query_scalar(
+            "SELECT quantity_millis FROM positions WHERE account_id=$1 AND instance_id=$2 AND outcome_index=$3",
+        )
+        .bind(account_id)
+        .bind(instance_id)
+        .bind(outcome_index as i32)
+        .fetch_optional(&self.pool)
+        .await?
+        .unwrap_or(0))
+    }
+
     pub async fn quote(
         &self,
         account_id: &str,
@@ -71,6 +91,24 @@ impl Store {
             ));
         }
         let outcome = instance.outcome_index(&request.outcome_id)?;
+        // A sell can only move shares the account holds. Checking here keeps
+        // the preview honest: without it, overselling drives the market
+        // inventory negative and surfaces an engine range error instead of a
+        // statement about the trader's own holding.
+        if request.side == Side::Sell {
+            let owned = self
+                .position_millis(account_id, &instance.id, outcome)
+                .await?;
+            if request.quantity_millis > owned {
+                let held = Decimal::from(owned) / Decimal::from(1000);
+                let message = if owned == 0 {
+                    "You do not own shares in this outcome".to_string()
+                } else {
+                    format!("You own {held} shares in this outcome; reduce the quantity")
+                };
+                return Err(conflict(&message));
+            }
+        }
         let calculation = amm::calculate(
             &instance.inventory,
             instance.liquidity_units,

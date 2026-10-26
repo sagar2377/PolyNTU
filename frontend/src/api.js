@@ -52,7 +52,7 @@ export const api = {
   adminTick: (adminToken) => request("/admin/worker/tick", { method: "POST", adminToken }),
   eventsUrl: (id) => `${BASE}/api/v2/instances/${encodeURIComponent(id)}/events`,
 };
-export const categories = { weather: "Weather", bus: "Bus timings", elections: "Elections", queue_crowd: "Queue & crowd", attendance: "Event & lecture attendance" };
+export const categories = { weather: "Weather", bus: "Bus timings", elections: "Elections", queue_crowd: "Queue & crowd", attendance: "Event & lecture attendance", other: "Others" };
 export function units(micros) {
   const amount = BigInt(micros ?? 0);
   const sign = amount < 0n ? "-" : "";

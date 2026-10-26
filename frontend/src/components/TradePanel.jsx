@@ -1,10 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { api, units, quantityMillis, pendingTrade, PENDING_KEY } from "../api";
+/// The engine accepts at most 100 shares per request (amm::MAX_QUANTITY).
+const MAX_TRADE_MILLIS = 100_000;
 export default function TradePanel({ instance, account, onTrade }) {
-  const [outcome, setOutcome] = useState(instance.outcomes[0].id);
+  // `holdings` maps outcome id to millishares and is present only for a
+  // signed-in caller, so a sell can be limited to what the account owns.
+  const holdings = instance.holdings || {};
+  const ownedOutcomes = instance.outcomes.filter((o) => (holdings[o.id] || 0) > 0);
+  const [outcome, setOutcome] = useState(() => ownedOutcomes[0]?.id ?? instance.outcomes[0].id);
   const [side, setSide] = useState("buy");
   const [quantity, setQuantity] = useState("10");
   const [quoteData, setQuote] = useState(null);
+  const ownedMillis = holdings[outcome] || 0;
+  const selling = side === "sell";
+  // A sell is bounded by the holding, which is itself capped at 100 shares per
+  // trade; a buy is bounded by the per-trade limit.
+  const maxMillis = selling ? Math.min(ownedMillis, MAX_TRADE_MILLIS) : MAX_TRADE_MILLIS;
+  const maxShares = (maxMillis / 1000).toFixed(3).replace(/\.?0+$/, "");
+  const quantityValue = quantityMillis(quantity);
+  const quantityInvalid = quantityValue === null || quantityValue > maxMillis;
   const requestKey = `${outcome}:${side}:${quantity}:${instance.version}`;
   const quote = quoteData?.requestKey === requestKey ? quoteData : null;
   const [busy, setBusy] = useState(false);
@@ -14,6 +28,13 @@ export default function TradePanel({ instance, account, onTrade }) {
   const [remaining, setRemaining] = useState(0);
   const sequence = useRef(0);
   const executing = useRef(false);
+  useEffect(() => {
+    // Selling is only offered on outcomes the account holds, so a sell whose
+    // holding has gone (another tab sold it) falls back to the first one held.
+    if (side !== "sell" || (holdings[outcome] || 0) > 0) return;
+    const next = instance.outcomes.find((o) => (holdings[o.id] || 0) > 0);
+    if (next) setOutcome(next.id);
+  }, [side, outcome, holdings, instance.outcomes]);
   useEffect(() => {
     if (!quote) return;
     const update = () => setRemaining(Math.max(0, Math.ceil((quote.local_deadline - Date.now()) / 1000)));
@@ -50,10 +71,15 @@ export default function TradePanel({ instance, account, onTrade }) {
       {blocked && <p className="inline-error">Resolve the pending trade before starting another one. Use “Resume trade” above.</p>}
       {pending ? <><p>The original request is saved. Retrying uses the same key, so a completed trade returns its existing receipt.</p><button className="primary wide" disabled={busy} onClick={execute}>{busy ? "Retrieving…" : "Retry / retrieve receipt"}</button></> : <>
         <form onSubmit={preview}><fieldset disabled={busy || !instance.tradable || Boolean(blocked)}><legend className="sr-only">Trade details</legend>
-          <div className="segmented"><button type="button" aria-pressed={side === "buy"} className={side === "buy" ? "selected" : ""} onClick={() => setSide("buy")}>Buy</button><button type="button" aria-pressed={side === "sell"} className={side === "sell" ? "selected" : ""} onClick={() => setSide("sell")}>Sell owned shares</button></div>
-          <label htmlFor="outcome">Outcome</label><select id="outcome" value={outcome} onChange={(e) => setOutcome(e.target.value)}>{instance.outcomes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>
-          <label htmlFor="quantity">Shares <span className="muted">(0.001–100)</span></label><input id="quantity" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
-          <button className="wide" disabled={quantityMillis(quantity) === null}>{busy ? "Calculating…" : "Preview trade"}</button>
+          <div className="segmented"><button type="button" aria-pressed={side === "buy"} className={side === "buy" ? "selected" : ""} onClick={() => setSide("buy")}>Buy</button><button type="button" aria-pressed={side === "sell"} className={side === "sell" ? "selected" : ""} disabled={ownedOutcomes.length === 0} onClick={() => setSide("sell")}>Sell owned shares</button></div>
+          {selling
+            ? ownedOutcomes.length === 0
+              ? <p className="muted">You do not hold shares in this market.</p>
+              : <><label htmlFor="outcome">Outcome you own</label><select id="outcome" value={outcome} onChange={(e) => setOutcome(e.target.value)}>{ownedOutcomes.map((o) => <option key={o.id} value={o.id}>{o.label} · {(holdings[o.id] / 1000).toFixed(3).replace(/\.?0+$/, "")} shares</option>)}</select></>
+            : <><label htmlFor="outcome">Outcome</label><select id="outcome" value={outcome} onChange={(e) => setOutcome(e.target.value)}>{instance.outcomes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select></>}
+          <label htmlFor="quantity">Shares <span className="muted">(0.001–{maxShares})</span></label><input id="quantity" inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} required aria-invalid={quantityInvalid} aria-describedby={quantityInvalid ? "quantity-error" : undefined} />
+          {quantityInvalid && <p id="quantity-error" className="inline-error" role="alert">{quantityValue === null ? "Enter a number of shares, up to three decimals." : `You can sell at most ${maxShares} shares here.`}</p>}
+          <button className="wide" disabled={quantityInvalid || (selling && ownedOutcomes.length === 0)}>{busy ? "Calculating…" : "Preview trade"}</button>
         </fieldset></form>
         {!instance.tradable && <p className="muted">Trading is {instance.suspended ? "suspended" : "closed"}.</p>}
         {quote && <div className="quote-preview"><div className="quote-total"><span>{side === "buy" ? "Total cost" : "Total proceeds"}</span><strong>{units(quote.amount_micros)} units</strong></div><dl><div><dt>Average price per share</dt><dd>{quote.average_price.toFixed(6)}</dd></div><div><dt>Trading fee (0.25%)</dt><dd>{units(quote.fee_micros)} units</dd></div><div><dt>Probability after trade</dt><dd>{(quote.price_after * 100).toFixed(2)}%</dd></div><div><dt>Quote expires</dt><dd>{remaining > 0 ? `in ${remaining}s` : "Expired — preview again"}</dd></div></dl><button className="primary wide" disabled={busy || remaining === 0 || !instance.tradable} onClick={execute}>Confirm {side}</button><p className="small muted">A changed price requires a new preview. Winning shares resolve to one unit each.</p></div>}

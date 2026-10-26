@@ -38,7 +38,11 @@ pub fn validate(inventory: &[i64], liquidity: i64) -> Result<()> {
         ));
     }
     if inventory.iter().any(|q| !(0..=MAX_INVENTORY).contains(q)) {
-        return Err(invalid("Inventory is outside the supported range"));
+        // Only reachable if a stored inventory was corrupted or a write path
+        // skipped its own checks: no user request can express an inventory.
+        return Err(crate::error::Error::Internal(
+            "Stored market inventory is outside its supported range".into(),
+        ));
     }
     let spread = inventory.iter().max().unwrap() - inventory.iter().min().unwrap();
     if spread > 20 * liquidity * SHARE_SCALE {
@@ -166,6 +170,76 @@ mod tests {
         assert!(calculate(&[0, 0], 100, 2, Side::Buy, 1).is_err());
         assert!(calculate(&[0, 0], 100, 0, Side::Buy, i64::MAX).is_err());
         assert!(prices(&[0, 1_000_000], 10).is_err());
+    }
+
+    /// Equivalence classes and boundaries for the quantity and inventory
+    /// ranges. Each class is represented by its edges, so a bound that shifts
+    /// silently fails here rather than at a user.
+    #[test]
+    fn quantity_and_inventory_boundaries() {
+        // Quantity: below, at, and above both edges of 1..=MAX_QUANTITY.
+        for (quantity, accepted) in [
+            (0, false),
+            (1, true),
+            (MAX_QUANTITY, true),
+            (MAX_QUANTITY + 1, false),
+        ] {
+            assert_eq!(
+                calculate(&[0, 0], 100, 0, Side::Buy, quantity).is_ok(),
+                accepted,
+                "buy quantity {quantity}"
+            );
+        }
+        // A sell has no quantity floor beyond the range check; the holding
+        // bound is enforced by the quote path, not the engine.
+        assert!(calculate(&[1_000, 0], 100, 0, Side::Sell, 1).is_ok());
+
+        // Inventory: the accepted class is 0..=MAX_INVENTORY per outcome. The
+        // spread limit is a separate constraint, so both outcomes carry the
+        // same quantity here and only the per-outcome bound is exercised.
+        for (inventory, accepted) in [
+            (0i64, true),
+            (MAX_INVENTORY, true),
+            (MAX_INVENTORY + 1, false),
+            (-1, false),
+        ] {
+            assert_eq!(
+                prices(&[inventory, inventory], 100_000).is_ok(),
+                accepted,
+                "inventory {inventory}"
+            );
+        }
+        // A wide spread is refused independently of the per-outcome bound.
+        assert!(prices(&[MAX_INVENTORY, 0], 100).is_err());
+
+        // Outcome count and liquidity edges.
+        for (outcomes, liquidity, accepted) in [
+            (1usize, 100, false),
+            (2, 100, true),
+            (8, 100, true),
+            (9, 100, false),
+            (2, 9, false),
+            (2, 10, true),
+            (2, 100_000, true),
+            (2, 100_001, false),
+        ] {
+            assert_eq!(
+                validate(&vec![0; outcomes], liquidity).is_ok(),
+                accepted,
+                "{outcomes} outcomes, liquidity {liquidity}"
+            );
+        }
+    }
+
+    /// An out-of-range stored inventory is an internal fault, not a user
+    /// error: it must not surface as a validation message to a trader.
+    #[test]
+    fn corrupt_inventory_reports_an_internal_error() {
+        let error = prices(&[-1, 0], 100).expect_err("negative inventory");
+        assert!(
+            matches!(error, crate::error::Error::Internal(_)),
+            "unexpected error: {error:?}"
+        );
     }
 
     proptest! {

@@ -87,7 +87,7 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
     <div className="layout"><section className="panel"><h2>Market probabilities</h2>
       {instance.outcomes.map((outcome) => <div className="outcome-row" key={outcome.id}><span>{outcome.label}</span><strong>{(outcome.probability * 100).toFixed(2)}%</strong><div className="probability-track"><span style={{ width: `${outcome.probability * 100}%` }} /></div></div>)}
       <p className="muted small">Prices reflect trading activity. Opening prices are uniform and are not a forecast from a data provider.</p>
-      <dl className="market-facts"><div><dt>Trading closes</dt><dd>{timestamp(instance.close_ms)}</dd></div><div><dt>Observation window</dt><dd>{timestamp(instance.observation_start_ms)} – {timestamp(instance.observation_end_ms)}</dd></div><div><dt>Evidence deadline</dt><dd>{timestamp(instance.evidence_deadline_ms)}</dd></div><div><dt>Liquidity parameter</dt><dd>{instance.liquidity_units} units</dd></div><div><dt>Trading fee</dt><dd>{instance.fee_charged ? "25 bps, half funds the creator" : "None, a welfare market"}</dd></div></dl>
+      <dl className="market-facts"><div><dt>Trading closes</dt><dd>{timestamp(instance.close_ms)}</dd></div><div><dt>Observation window</dt><dd>{timestamp(instance.observation_start_ms)} – {timestamp(instance.observation_end_ms)}</dd></div><div><dt>Evidence deadline</dt><dd>{timestamp(instance.evidence_deadline_ms)}</dd></div><div><dt>Trading fee</dt><dd>{instance.fee_charged ? "25 bps, half funds the creator" : "None, a welfare market"}</dd></div></dl>
     </section><TradePanel instance={instance} account={account} onTrade={onTrade} /></div>
     <section className="panel" aria-label="Price and volume history"><h2>Price and volume history</h2>
       <p className="muted small">Each line is one outcome's price; bars are traded volume per interval. The chart refreshes with every trade.</p>
@@ -108,7 +108,6 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
         {recurring && <div><dt>Runs until</dt><dd>{series.schedule.end_ms ? timestamp(series.schedule.end_ms) : "Perpetual"}</dd></div>}
         <div><dt>Trading fee</dt><dd>{series.fee_charged ? "25 bps, half funds the creator" : "None, a welfare market"}</dd></div>
         <div><dt>Resolved by</dt><dd>{series.resolution?.authority === "creator" ? "The creator's signed statement" : series.resolution?.authority === "resolver" ? (series.resolution.endpoint?.includes("/resolvers/ntu-bus") ? "NTU Bus API" : `An automatic resolver (${series.resolution.endpoint})`) : "Platform administrator evidence"}</dd></div>
-        <div><dt>Liquidity parameter</dt><dd>{series.liquidity_units} units per bracket</dd></div>
         <div><dt>Series state</dt><dd>{series.state === "active" ? "Active" : "Ended"}</dd></div>
       </dl>
       <p>{series.resolution_criterion}</p>

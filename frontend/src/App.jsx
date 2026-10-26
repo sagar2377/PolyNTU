@@ -111,9 +111,12 @@ export default function App() {
     } catch (e) { setError(e.message); }
   };
   const pending = pendingTrade();
+  // Verified creators publish; administrators hold every privileged path
+  // already, so publishing is open to them without a second role.
+  const canPublish = account?.role === "creator" || account?.role === "admin";
   return <div className="app">
     <header className="topbar"><button className="wordmark" onClick={() => setView("browse")}>Poly<span>NTU</span></button>
-      <nav aria-label="Main navigation"><button className={view !== "portfolio" && view !== "create" ? "active" : ""} onClick={() => setView("browse")}>Markets</button><button className={view === "portfolio" ? "active" : ""} onClick={() => setView("portfolio")}>Portfolio</button>{account?.role === "creator" && <button className={view === "create" ? "active" : ""} onClick={() => setView("create")}>Create market</button>}</nav>
+      <nav aria-label="Main navigation"><button className={view !== "portfolio" && view !== "create" ? "active" : ""} onClick={() => setView("browse")}>Markets</button><button className={view === "portfolio" ? "active" : ""} onClick={() => setView("portfolio")}>Portfolio</button>{canPublish && <button className={view === "create" ? "active" : ""} onClick={() => setView("create")}>Create market</button>}</nav>
       {account
         ? <div className="account-chip"><span>{account.display_name}{account.role ? ` · ${account.role}` : ""}</span><strong>{units(account.balance_micros)} units</strong><button className="signout-button" onClick={signOut}>Sign out</button></div>
         : <div className="signin-toggle" aria-label="Account access">
@@ -164,7 +167,7 @@ export default function App() {
     </section>}
     {view === "browse" && <MarketBrowse refresh={refresh} onError={setError} liveMode={config?.live_mode} onSelect={(id) => openMarket(id, "browse")} />}
     {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} config={config} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView(marketFrom)} onSelect={(id) => openMarket(id, marketFrom)} />}
-    {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setRefresh((n) => n + 1); openSeries(id); }} onError={setError} onBack={() => setView("browse")} />}
+    {view === "create" && canPublish && <CreateMarket account={account} onCreated={(id) => { setRefresh((n) => n + 1); openSeries(id); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "portfolio")} />}
     <footer><span>PolyNTU · Outcome markets</span><span className="footer-actions">{config?.demo_mode && <button className="link-button" onClick={() => setClockOpen(true)}>Demo clock</button>}<button className="link-button" onClick={() => setAdminOpen(true)}>Admin</button></span></footer>
     {adminOpen && <AdminPanel account={account} onClose={() => setAdminOpen(false)} onChanged={() => setRefresh((n) => n + 1)} />}

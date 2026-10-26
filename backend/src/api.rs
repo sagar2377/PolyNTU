@@ -296,8 +296,20 @@ async fn instances(
             .await?,
     ))
 }
-async fn instance(State(s): State<AppState>, Path(id): Path<String>) -> Result<Json<Value>> {
-    Ok(Json(s.store.instance_detail(&id).await?))
+async fn instance(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    // Signed-in callers also receive their own holdings so the trade panel can
+    // restrict a sell to what they actually own. A missing or bad token is not
+    // an error here: the market facts are public.
+    let account = s.account(&headers).await.ok();
+    Ok(Json(
+        s.store
+            .instance_detail_for(&id, account.as_ref().map(|a| a.id.as_str()))
+            .await?,
+    ))
 }
 #[derive(Deserialize, Default)]
 struct HistoryQuery {

@@ -43,6 +43,9 @@ pub enum Rule {
         location_id: String,
         threshold: i64,
     },
+    /// A market that fits none of the structured categories: the creator names
+    /// the condition in prose and states the outcome when it is settled.
+    Other { condition: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +74,10 @@ pub enum Observation {
         value: i64,
         complete: bool,
     },
+    Other {
+        condition: String,
+        outcome_id: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -91,6 +98,7 @@ impl Rule {
                 ..
             } => "attendance",
             Self::Count { .. } => "queue_crowd",
+            Self::Other { .. } => "other",
         }
     }
 
@@ -123,6 +131,7 @@ impl Rule {
                 threshold,
                 ..
             } => valid_id(location_id) && (1..=1_000_000).contains(threshold),
+            Self::Other { condition } => !condition.trim().is_empty() && condition.len() <= 4000,
         };
         if valid {
             Ok(())
@@ -246,6 +255,15 @@ impl Rule {
             } else {
                 None
             }),
+            (Self::Other { .. }, Observation::Other { outcome_id, .. }) => match outcome_id {
+                Some(id) => self
+                    .outcomes()
+                    .iter()
+                    .position(|o| o.id == *id)
+                    .map(|outcome| Some(Resolution::Winner { outcome }))
+                    .ok_or_else(|| invalid("Evidence names an unknown outcome")),
+                None => Ok(None),
+            },
             _ => Err(invalid("Evidence does not match the published market rule")),
         }
     }
@@ -295,6 +313,10 @@ impl Rule {
                 value: threshold + sample % 21 - 10.min(*threshold),
                 complete: true,
             },
+            Self::Other { condition } => Observation::Other {
+                condition: condition.clone(),
+                outcome_id: Some(if sample % 2 == 0 { "yes" } else { "no" }.into()),
+            },
         }
     }
 }
@@ -341,7 +363,7 @@ impl NewInstance {
         amm::funding(self.liquidity_units, self.rule.outcomes().len())?;
         if self.title.trim().len() < 5
             || self.title.len() > 240
-            || self.resolution_criterion.trim().len() < 30
+            || self.resolution_criterion.trim().len() < 5
             || self.resolution_criterion.len() > 4000
             || self.template_id.is_empty()
             || self.template_id.len() > 80
@@ -726,7 +748,7 @@ impl NewSeries {
         amm::funding(self.liquidity_units, self.rule.outcomes().len())?;
         if self.title.trim().len() < 5
             || self.title.len() > 240
-            || self.resolution_criterion.trim().len() < 30
+            || self.resolution_criterion.trim().len() < 5
             || self.resolution_criterion.len() > 4000
             || self.source_id.trim().is_empty()
             || self.source_id.len() > 120
@@ -848,6 +870,7 @@ pub fn demo_specs(now: i64) -> Vec<NewInstance> {
             Rule::Election { .. } => "The sole final winner of the fictional demo election resolves to one unit. A tie, runoff or cancellation voids the instance.",
             Rule::Count { metric: Metric::UniqueAttendance, .. } => "Yes if the trusted source reports at least the threshold number of unique check-ins during the published window. Repeat check-ins are counted once by the source.",
             Rule::Count { .. } => "Yes if the trusted source's count at the end of the published sampling window reaches the threshold. Queue length and occupancy use distinct measurements.",
+            Rule::Other { condition } => condition,
         };
         NewInstance { template_id: id.into(), title: title.into(), resolution_criterion: format!("{criterion} Demo: deterministic simulated evidence. Missing final evidence voids shares at 1/n units each."),
             rule, source_id: "polyntu-simulator-v1".into(), data_mode: "simulated".into(), close_ms: close,
@@ -972,6 +995,51 @@ mod tests {
                     .is_some()
             );
         }
+    }
+
+    /// The catch-all category settles from the outcome the evidence names, and
+    /// refuses one that was never published.
+    #[test]
+    fn other_category_resolves_the_named_outcome() {
+        let rule = Rule::Other {
+            condition: "Yes if the union announces a Reading Week".into(),
+        };
+        rule.validate().unwrap();
+        assert_eq!(rule.category(), "other");
+        assert_eq!(rule.outcomes().len(), 2);
+
+        for (named, expected) in [("yes", Some(0usize)), ("no", Some(1))] {
+            let observation = Observation::Other {
+                condition: "Yes if the union announces a Reading Week".into(),
+                outcome_id: Some(named.into()),
+            };
+            assert_eq!(
+                rule.evaluate(&observation, 0, 1).unwrap(),
+                Some(Resolution::Winner {
+                    outcome: expected.unwrap()
+                })
+            );
+        }
+
+        let pending = Observation::Other {
+            condition: "Yes if the union announces a Reading Week".into(),
+            outcome_id: None,
+        };
+        assert_eq!(rule.evaluate(&pending, 0, 1).unwrap(), None);
+
+        let unknown = Observation::Other {
+            condition: "Yes if the union announces a Reading Week".into(),
+            outcome_id: Some("maybe".into()),
+        };
+        assert!(rule.evaluate(&unknown, 0, 1).is_err());
+
+        assert!(
+            Rule::Other {
+                condition: "   ".into()
+            }
+            .validate()
+            .is_err()
+        );
     }
 
     #[test]

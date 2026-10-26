@@ -681,8 +681,35 @@ impl Store {
     }
 
     pub async fn instance_detail(&self, id: &str) -> Result<Value> {
+        self.instance_detail_for(id, None).await
+    }
+
+    /// The instance detail, with the caller's own holdings when an account is
+    /// given. `holdings` maps outcome id to millishares, so the trade panel can
+    /// offer only the direction and quantity the account can actually sell.
+    pub async fn instance_detail_for(&self, id: &str, account: Option<&str>) -> Result<Value> {
         let instance = self.instance(id).await?;
         let mut view = instance_view(&instance, self.now().await?)?;
+        if let Some(account) = account {
+            let rows = sqlx::query(
+                "SELECT outcome_index, quantity_millis FROM positions WHERE account_id=$1 AND instance_id=$2 AND quantity_millis>0",
+            )
+            .bind(account)
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await?;
+            let mut holdings = serde_json::Map::new();
+            for row in rows {
+                let index: i32 = row.get("outcome_index");
+                if let Some(outcome) = instance.outcomes.get(index as usize) {
+                    holdings.insert(
+                        outcome.id.clone(),
+                        json!(row.get::<i64, _>("quantity_millis")),
+                    );
+                }
+            }
+            view["holdings"] = Value::Object(holdings);
+        }
         if let Some(evidence_id) = &instance.evidence_id {
             let record = sqlx::query(
                 "SELECT source_id,event_id,received_ms,payload FROM evidence WHERE id=$1",
@@ -927,12 +954,16 @@ impl Store {
             .bind(creator)
             .fetch_optional(&mut *tx)
             .await?;
-            if record
-                .as_ref()
-                .and_then(|row| row.get::<Option<String>, _>("role"))
-                .as_deref()
-                != Some("creator")
-            {
+            // Publishers are verified creators and administrators. An
+            // administrator already holds every privileged path, so publishing
+            // does not need a second role.
+            if !matches!(
+                record
+                    .as_ref()
+                    .and_then(|row| row.get::<Option<String>, _>("role"))
+                    .as_deref(),
+                Some("creator" | "admin")
+            ) {
                 return Err(Error::Forbidden);
             }
         }
