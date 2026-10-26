@@ -182,15 +182,41 @@ The worker ticks every second and skips accumulated timer ticks. Each cycle:
 
 The actionable query prevents many markets waiting for evidence from starving a later market that is ready to resolve; it also admits resolver-authority instances from their finalize window so the worker can ask their external source. Each instance still settles serially under its row lock; concurrency is across instances only.
 
+The chunk size of eight is a budget, not a measurement result. Each settlement task holds one pooled connection for the duration of its transaction, and the pool is 32, so eight leaves three quarters of the pool for HTTP requests while settlement runs. Raising it trades request capacity for settlement throughput; lowering it leaves the pool idle during a settlement burst. Nothing derives the value from a benchmark, and it is not tuned per deployment.
+
+## Concurrency and multicore use
+
+The server runs Tokio's multi-thread runtime, one worker thread per core, so independent requests — including cache-served quotes, trades on different markets, evidence, and settlement batches — execute in parallel. Two serialisation points remain by design: the instance row lock orders trades within one market, and the PostgreSQL commit provides the durability guarantee for acknowledged trades. Quotes are CPU-bound after caching and scale with cores; trade throughput across markets is bounded by the connection pool (32) and commit latency.
+
+### Where serialisation comes from
+
+Quotes take no locks and reserve nothing: a quote is a cache read, a cached clock, pure arithmetic, and a signature. Parallel quoting is therefore free, and a stale quote can only produce one that execution rejects.
+
+Trades serialise on two locks, taken in a fixed order:
+
+1. the instance row, `FOR UPDATE`, which serialises every trade that can change that market's inventory or any position in it;
+2. the participant and reserve account rows, `FOR NO KEY UPDATE`, ordered by account ID.
+
+The account lock is what stops one account overdrawing by trading two markets at once; the instance lock is what stops two traders racing the same inventory. Ordering accounts by ID means a trade holding market A's lock and a settlement holding account X's lock cannot form a cycle. `FOR NO KEY UPDATE` rather than `FOR UPDATE` is deliberate: foreign-key checks take `KEY SHARE` locks during idempotency and position inserts, and a stronger mode would create lock-upgrade cycles with them. Settlement takes the same instance lock, so a batch and a trade on one market cannot interleave, and then locks its selected accounts with the same sorted helper.
+
+Deadlocks that still occur — `40P01`, `40001`, `55P03` — are retried up to three times with short backoff, and the client keeps the same idempotency key.
+
+### Reducing serialisation
+
+The instance lock is the main limit: all trades in one market queue behind it. It is also load-bearing, because positions and inventory are only correct if those writes are ordered. The options, in order of how much they change:
+
+- **Shard by outcome.** A categorical market's outcomes have independent inventory in the LMSR sense only when the price vector is recomputed per outcome; the current engine treats the vector as one state, so this needs a pricing redesign, not a locking one.
+- **Move the position write off the hot path.** Positions could be appended as an event and folded into a read model, which removes the position row from the transaction but adds eventual consistency to a balance-visible value. Not worth it for an academic deployment.
+- **Batch settlement claims more aggressively.** Settlement already takes 100 accounts per transaction; a larger batch reduces round trips at the cost of a longer-held lock, which would start blocking trades on that market for longer. The current size keeps the lock short.
+- **Raise the pool and the chunk size together.** The 32-connection pool and the eight-task chunk are both fixed constants. Making them configurable would let a larger machine use more connections, but trade throughput across markets is bounded by commit latency, not by the chunk size, so the gain is small.
+
+None of these is implemented. The current design deliberately keeps one lock per market, because that is what makes the accounting provable with row-level reasoning rather than a distributed protocol.
+
 ## Events and consistency
 
 State-changing instance transactions append an `outbox` row and issue a `pg_notify` on the same channel in the same statement, so the notification is delivered exactly when the transaction commits. A dedicated listener connection in each process receives these notifications and fans them out to connected SSE subscribers through per-instance broadcast channels. Each stream first replays the durable outbox by global sequence ID — accepting `Last-Event-ID` or `?after=` for resumption — and re-checks it on a slow interval, so a lost or lagged notification delays an event but never drops it. The UI treats an event as a signal to refetch the current snapshot; it also polls periodically.
 
 Events may be delivered more than once and are not a replacement for snapshots. Outbox rows are deleted only by the bracket retention purge; no general compaction exists, so operators must still monitor outbox growth from one-time markets before public deployment.
-
-## Concurrency and multicore use
-
-The server runs Tokio's multi-thread runtime, one worker thread per core, so independent requests — including cache-served quotes, trades on different markets, evidence, and settlement batches — execute in parallel. Two serialisation points remain by design: the instance row lock orders trades within one market, and the PostgreSQL commit provides the durability guarantee for acknowledged trades. Quotes are CPU-bound after caching and scale with cores; trade throughput across markets is bounded by the connection pool (32) and commit latency.
 
 ## Multi-process behaviour
 
