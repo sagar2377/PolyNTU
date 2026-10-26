@@ -22,10 +22,10 @@ skinparam legendBorderColor #CBD5E1
 
 title PolyNTU architecture\nFunctional modules
 
-component "Participant browser\nReact interface" as Browser
-component "Market service\nquotes, trades, pricing,\nmarket lifecycle\n\nparallel: requests are tasks on\nthe Tokio multi-thread runtime,\nwhich runs one worker thread\nper core" as Service
-component "Settlement worker\nbracket scheduling, resolution,\nclaim settlement\n\nparallel: up to 8 independent\nmarkets settle at once\n(instance row lock keeps each\nmarket internally serial)" as Worker
-database "PostgreSQL\naccounts, markets, trades,\nevidence, ledger\n\nparallel: 32-connection pool,\nrow locks order writes" as Db
+component "Participant browser\nReact-based frontend" as Browser
+component "Market service\nquotes, trades, pricing,\nmarket lifecycle\n\nparallel unit: one HTTP request\neach request is its own task\non the multi-thread runtime" as Service
+component "Settlement worker\nbracket scheduling, resolution,\nclaim settlement\n\nparallel unit: one market instance\nup to 8 settle at once, each in\nits own task; one market never\nsplits across tasks" as Worker
+database "PostgreSQL\naccounts, markets, trades,\nevidence, ledger\n\nparallel unit: one connection\n32 pooled; row locks serialise\nwrites to the same market" as Db
 component "External data sources\nconfigured resolvers and\nthe NTU bus feed" as Sources
 
 Browser --> Service : trade, publish, resolve
@@ -37,9 +37,9 @@ Worker --> Sources : fetches the outcome
 legend bottom left
   One Rust process serves the browser and runs the settlement worker;
   both read and write the same database.
-  The process runs Tokio's multi-thread runtime: HTTP requests, the worker,
-  the event listener, and the clock refresher run as separate tasks, so
-  independent work uses multiple cores. Work inside one market stays serial
-  under its row lock.
+  The runtime has one worker thread per core and multiplexes tasks onto them.
+  Requests split by request; settlement splits by market instance, never by
+  account or claim, so one market's claims stay ordered under its row lock.
+  Each open SSE stream is also its own task.
 endlegend
 @enduml

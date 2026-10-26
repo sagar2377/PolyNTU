@@ -93,9 +93,7 @@ PostgreSQL is the durable authority for time-adjusted cutoffs, accounts, ledger 
 
 ### External evidence adapters
 
-The repository includes a [Python NTU bus provider](../provider/ntubus/README.md) and the built-in `POST /api/v2/resolvers/ntu-bus` adapter. For eligible bus instances marked `simulated`, the adapter first asks the configured provider (default `http://127.0.0.1:8090/resolve`) after the observation window ends. An explicitly empty `POLYNTU_NTUBUS_PROVIDER` disables that path. If the provider does not return a valid outcome after bounded attempts, the adapter uses deterministic simulated evidence. Its response records `ntubus-live` or `simulated-fallback` as the source. This provider-specific fallback is distinct from the generic resolver retry/deadline policy.
-
-Other integrations implement the fixed resolver contract and return a published outcome ID ([ADR 0007](decisions/0007-resolution-authority.md)). The scoped Lab 3 review establishes that this integration code exists; it does not establish live feed availability, accuracy, or production readiness. Generic resolver failures continue to retry until the published deadline and then void, rather than silently using simulated evidence.
+Other integrations implement the fixed resolver contract and return a published outcome ID ([ADR 0007](decisions/0007-resolution-authority.md)). The repository also includes a [Python NTU bus provider](../provider/ntubus/README.md) behind the built-in `POST /api/v2/resolvers/ntu-bus` adapter. Generic resolver failures retry until the published deadline and then void.
 
 ## Authoritative time
 

@@ -8,7 +8,7 @@ The maintained detailed explanation is [docs/architecture.md](../docs/architectu
 
 ## Architectural style
 
-PolyNTU uses a **layered client-server architecture with a monolithic Rust backend**. A React browser communicates with an Axum HTTP API and receives public Server-Sent Events (SSE). PostgreSQL stores durable state. The Rust executable serves the built frontend and runs the lifecycle worker and event tasks in the same process. Configured external resolvers and the optional Python NTU bus provider are separate integration endpoints.
+PolyNTU uses a **layered client-server architecture with a monolithic Rust backend**. A React-based frontend communicates with an Axum HTTP API and receives public Server-Sent Events (SSE). PostgreSQL stores durable state. The Rust executable serves the built frontend and runs the lifecycle worker and event tasks in the same process. Configured external resolvers and the optional Python NTU bus provider are separate integration endpoints.
 
 ## Responsibility allocation
 
