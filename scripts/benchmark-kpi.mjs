@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { createAccounts, createMarkets, verifiedCreator } from './bench-setup.mjs';
 
 const base = process.env.BENCH_URL || 'http://127.0.0.1:18000';
 const admin = process.env.POLYNTU_ADMIN_TOKEN;
@@ -89,19 +90,18 @@ const config = await required('/config');
 const now = config.server_time_ms;
 const accounts = [], markets = [];
 console.log('Preparing accounts and markets…');
-await parallel(Array.from({ length: accountCount }), 5, async (_, i) => {
-  accounts[i] = await required('/admin/accounts', { display_name: `KPI ${run} ${i}` }, null, null, true);
-});
-await parallel(Array.from({ length: marketCount }), 5, async (_, i) => {
-  markets[i] = await required('/admin/instances', {
-    template_id: `kpi-${run}-${i}`, title: `KPI rainfall ${i}`,
-    resolution_criterion: 'Yes when the benchmark station records at least 0.2 mm in the fixed observation window. Missing complete evidence voids the market.',
-    rule: { kind: 'weather', station_id: 'kpi-benchmark', threshold_milli_mm: 200 },
-    source_id: 'kpi-observer', data_mode: 'manual', close_ms: now + 7200000,
-    observation_start_ms: now + 7200000, observation_end_ms: now + 10800000,
-    finalize_after_ms: now + 10860000, evidence_deadline_ms: now + 14400000, liquidity_units: 100,
-  }, null, null, true);
-});
+// Markets are published by a verified creator, because there is no
+// administrator instance-creation route: every market belongs to a series
+// whose resolution authority is fixed at creation. The authority is a
+// resolver endpoint that is never called during the measured phases, since
+// the benchmark closes no markets.
+console.log('Verifying a benchmark creator…');
+const creator = await verifiedCreator(call, run);
+accounts.push(...await createAccounts(call, accountCount, run, 'KPI'));
+markets.push(...await createMarkets(call, creator, marketCount, run, {
+  station: 'kpi-benchmark', source: 'kpi-observer',
+  timing: () => ({ close: now + 7200000, observationMs: 3600000 }),
+}));
 const before = await required('/admin/reconcile', undefined, null, null, true);
 if (!before.ok) throw new Error(`Initial reconciliation failed: ${JSON.stringify(before)}`);
 

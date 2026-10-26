@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
+import { createAccounts, createMarkets, verifiedCreator } from './bench-setup.mjs';
 const base = process.env.BENCH_URL || 'http://127.0.0.1:18000';
 const admin = process.env.POLYNTU_ADMIN_TOKEN;
 if (!admin) throw new Error('POLYNTU_ADMIN_TOKEN is required');
@@ -31,19 +32,12 @@ const accounts = [], markets = [];
 const config = await required('/config');
 const now = config.server_time_ms;
 console.log('Preparing 100 markets, 200 accounts, and 10000 positions…');
-await parallel(Array.from({ length: 200 }), 5, async (_, i) => {
-  accounts[i] = await required('/admin/accounts', { display_name: `Benchmark ${run} ${i}` }, null, null, true);
-});
-await parallel(Array.from({ length: 100 }), 5, async (_, i) => {
-  markets[i] = await required('/admin/instances', {
-    template_id: `benchmark-${run}-${i}`, title: `Benchmark rainfall ${i}`,
-    resolution_criterion: 'Yes when the benchmark station records at least 0.2 mm in the fixed observation window. Missing complete evidence voids the market.',
-    rule: { kind: 'weather', station_id: 'benchmark', threshold_milli_mm: 200 },
-    source_id: 'benchmark-observer', data_mode: 'manual', close_ms: now + 7200000,
-    observation_start_ms: now + 7200000, observation_end_ms: now + 10800000,
-    finalize_after_ms: now + 10860000, evidence_deadline_ms: now + 14400000, liquidity_units: 100,
-  }, null, null, true);
-});
+const creator = await verifiedCreator(call, run);
+accounts.push(...await createAccounts(call, 200, run));
+markets.push(...await createMarkets(call, creator, 100, run, {
+  station: 'benchmark', source: 'benchmark-observer',
+  timing: () => ({ close: now + 7200000, observationMs: 3600000 }),
+}));
 const holdings = accounts.map(() => Array.from({ length: 100 }, (_, i) => i < 50 ? 1000 : 0));
 await parallel(markets.slice(0, 50), 10, async (market) => {
   for (const account of accounts) {

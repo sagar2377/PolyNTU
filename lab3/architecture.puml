@@ -1,0 +1,120 @@
+@startuml
+!pragma layout smetana
+hide circle
+hide empty members
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBorderColor #40546A
+skinparam componentBorderColor #40546A
+skinparam componentBackgroundColor #EAF2FC
+skinparam databaseBackgroundColor #E3F1D3
+skinparam databaseBorderColor #40546A
+skinparam nodeBackgroundColor #FAFBFD
+skinparam nodeBorderColor #CBD5E1
+skinparam packageBackgroundColor #FAFBFD
+skinparam packageBorderColor #CBD5E1
+skinparam ArrowColor #526579
+skinparam ArrowFontSize 12
+skinparam nodesep 45
+skinparam ranksep 55
+skinparam titleFontSize 22
+skinparam legendBackgroundColor #F7F9FC
+skinparam legendBorderColor #CBD5E1
+
+title PolyNTU runtime architecture\nOne Rust process, PostgreSQL, and two outbound integrations
+caption Maintained detail: docs/architecture.md
+
+package "Participant browser" as Browser {
+  component "React pages and components\nAccountPanel, MarketBrowsePage,\nMarketPage, CreatePage, PortfolioPage" as React
+  component "frontend/src/api.js\nHTTP client, SSE client,\ned25519 signing in WebCrypto" as ApiJs
+  component "Browser storage\nsession token, cached signing key" as Storage
+}
+
+package "Rust process (backend/src)" as Process {
+  component "main.rs\nStartupControl\nconfig, migrations, wiring,\ngraceful shutdown" as Main
+  component "api.rs\nAxum router and handlers\n64 KiB body limit, auth,\nadmin gate, SSE endpoint" as Api
+  component "cache.rs\ninstance and token caches\nlocal clock estimate" as Cache
+
+  package "Application coordination" as Coordination {
+    component "execution.rs\nTradingControl\nquotes, idempotent trades,\nledger movement, receipts" as Execution
+    component "resolution.rs\nMarketLifecycleControl\ncreator and resolver evidence,\nsuspension, settlement" as Resolution
+    component "store.rs\nStore\ncreation, read models, spawn,\npurge, reconcile, audit, events" as Store
+  }
+
+  package "Domain rules" as Domain {
+    component "amm.rs\npure LMSR pricing\nand funding" as Amm
+    component "fee.rs\npure fee and\ncreator split" as Fee
+    component "market.rs\ntyped rules, schedules,\nresolution authority" as Market
+    component "auth.rs\ntokens, HMAC, argon2,\ned25519 verification" as Auth
+  }
+
+  package "Background tasks" as Background {
+    component "worker.rs\nBackgroundWorker\n1 s loop: spawn, close,\nresolve, settle, purge, seed" as Worker
+    component "events.rs\nEventRuntime and EventBus\nPostgreSQL LISTEN,\nSSE fan-out, clock refresh" as Events
+    component "resolver.rs\nResolverGateway\nfixed resolver contract,\nNTU Bus adapter" as Resolver
+  }
+}
+
+database "PostgreSQL\naccounts, balanced ledger, templates,\ninstances, outcomes, inventory,\npositions, trades, idempotency,\nevidence, claims, outbox, audit" as Db
+
+package "Outbound integrations" as External {
+  component "External resolver endpoint\ncreator-configured per series\nreturns one published outcome id" as ExtResolver
+  component "NTU Bus provider (Python)\nprovider/ntubus\nOmnibus feed, loopback HTTP" as BusProvider
+}
+
+React --> ApiJs : calls
+ApiJs --> Storage : token, cached key
+ApiJs --> Api : "HTTP JSON + bearer\nand SSE stream"
+
+Main --> Api : builds router
+Main --> Store : Store::connect\nmigrations and bootstrap
+Main --> Events : spawns listener
+Main --> Worker : spawns loop
+Main --> Cache : shared
+
+Api --> Execution : quote, trade
+Api --> Resolution : evidence, resolution,\nsuspension
+Api --> Store : read models,\nseries publication
+Api --> Cache : read-through
+Api --> Events : SSE subscribe
+
+Execution --> Store : transactions
+Execution --> Amm : pricing
+Execution --> Fee : fee split
+Execution --> Auth : quote signing
+Execution --> Cache : invalidate
+
+Resolution --> Store : transactions
+Resolution --> Market : rule evaluation
+Resolution --> Auth : ed25519 verify
+Resolution --> Cache : invalidate
+
+Worker --> Store : spawn, purge, settle
+Worker --> Resolution : evidence and settlement
+Worker --> Resolver : resolver calls
+Worker --> Market : simulated observations
+Events --> Cache : write-through
+
+Store --> Market : typed rules
+Store --> Amm : funding
+Store --> Auth : hashing
+Store --> Db : SQLx pool
+
+Resolver --> ExtResolver : HTTPS, 5 s timeout
+Resolver --> BusProvider : loopback HTTP,\nprovider first, then\nsimulated fallback
+
+legend bottom left
+  Blue: code module and its main responsibility.
+  Green: durable storage.
+  Grey: process boundary.
+  Solid arrow: direct call or dependency in the current source.
+  The Python bus provider is a separate process; everything else in the blue
+  boxes runs inside one Rust executable.
+  Provider fallback applies only to eligible simulated bus instances; generic
+  resolver failures retry to the published deadline and then void.
+endlegend
+@enduml

@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
+import { createAccounts, createMarkets, resolveMarket, verifiedCreator } from './bench-setup.mjs';
 const base = process.env.BENCH_URL || 'http://127.0.0.1:18000';
 const admin = process.env.POLYNTU_ADMIN_TOKEN;
 if (!admin) throw new Error('POLYNTU_ADMIN_TOKEN is required');
@@ -28,19 +29,17 @@ const now = (await required('/config')).server_time_ms;
 const close = now + 90000, end = close + 1000, final = end + 1000;
 const accounts = [], markets = [], trading = [];
 console.log('Preparing 10000 settlement claims across 50 markets and 200 accounts…');
-await parallel(Array.from({ length: 200 }), 5, async (_, i) => { accounts[i] = await required('/admin/accounts', { display_name: `Settlement ${i}` }, null, null, true); });
-await parallel(Array.from({ length: 52 }), 5, async (_, i) => {
-  const c = i < 50 ? close : now + 3600000;
-  const market = await required('/admin/instances', {
-    template_id: `settlement-${run}-${i}`, title: `Settlement benchmark ${i}`,
-    resolution_criterion: 'Yes if the station records at least 0.2 mm during the fixed window. Complete final evidence is required; otherwise void at the deadline.',
-    rule: { kind: 'weather', station_id: 'benchmark', threshold_milli_mm: 200 },
-    source_id: 'benchmark-observer', data_mode: 'manual', close_ms: c,
-    observation_start_ms: c, observation_end_ms: c + 1000, finalize_after_ms: c + 2000,
-    evidence_deadline_ms: c + 120000, liquidity_units: 100,
-  }, null, null, true);
-  if (i < 50) markets.push(market); else trading.push(market);
+// Markets are published as series by a verified creator; the administrator
+// has no instance-creation route. Authority is the creator's signature, so
+// settlement measures the platform's own verification path rather than an
+// external resolver whose latency the project does not control.
+const creator = await verifiedCreator(call, run);
+accounts.push(...await createAccounts(call, 200, run, 'Settlement'));
+const all = await createMarkets(call, creator, 52, run, {
+  station: 'benchmark', source: 'benchmark-observer',
+  timing: (i) => (i < 50 ? { close, observationMs: 1000 } : { close: now + 3600000, observationMs: 1000 }),
 });
+for (const [i, market] of all.entries()) (i < 50 ? markets : trading).push(market);
 await parallel(markets, 10, async (market) => {
   for (const account of accounts) {
     const q = await required('/quotes', { instance_id: market.id, outcome_id: 'yes', side: 'buy', quantity_millis: 1000 }, account.token);
@@ -84,13 +83,14 @@ console.log('Trading and 200 SSE streams active; waiting for the fixed observati
 while ((await required('/config')).server_time_ms < end) await new Promise((r) => setTimeout(r, 1000));
 measuring = true;
 const started = performance.now();
-await parallel(markets, 5, (market) => required(`/admin/instances/${market.id}/evidence`, {
-  source_id: 'benchmark-observer', event_id: `final-${run}`, source_revision: 1,
-  window_start_ms: close, window_end_ms: end,
-  observation: { kind: 'weather', station_id: 'benchmark', total_milli_mm: 250, complete: true },
-  reference: 'Synthetic benchmark aggregate: complete rainfall coverage',
-}, null, null, true));
-const evidenceReadyMs = performance.now() - started;
+// Settlement is driven by the creator's signatures: each bracket is resolved
+// once its observation window has ended, and the worker then settles claims.
+// Signature verification is the platform's own code, so it belongs in the
+// measurement.
+await parallel(Array.from(markets), 5, async (market) => {
+  const result = await resolveMarket(call, creator, market.id, 'yes');
+  if (result.status !== 200) throw new Error(`resolution failed: ${result.status} ${JSON.stringify(result.value)}`);
+});
 const ids = new Set(markets.map((m) => m.id));
 let completed = 0;
 while (completed < 50 && performance.now() - started < 90000) {
@@ -116,7 +116,7 @@ function summary(values) {
 }
 const report = { timestamp: new Date().toISOString(), expected_claims: 10000, markets_completed: completed, sse_clients: connected,
   actual_claims: actualClaims, invalid_credits: invalidCredits,
-  seconds_from_evidence_submission_start: elapsed / 1000, evidence_upload_ms: evidenceReadyMs,
+  seconds_from_resolution_start: elapsed / 1000,
   measurement: 'Real HTTP and fixed wall-clock windows; completion polled every 500 ms; includes evidence upload and finalization wait. Quote/trade samples cover settlement interval only.',
   nominal_finalize_ms: final, ...stats, quote: summary(stats.quote), trade: summary(stats.trade), reconciliation };
 await writeFile(process.env.BENCH_REPORT || '.local/settlement-performance.json', JSON.stringify(report, null, 2) + '\n');

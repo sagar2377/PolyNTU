@@ -2,30 +2,11 @@
 
 The maintained detailed explanation is [docs/architecture.md](../docs/architecture.md). The [class diagram](class-diagram.png), [editable source](class-diagram.puml), [class responsibilities](../docs/developer/class-diagram.md), and [handoff](steps-1-4-handoff.md) provide the matching design view.
 
+![Runtime architecture](architecture.png)
+
 ## Architectural style
 
 PolyNTU uses a **layered client-server architecture with a monolithic Rust backend**. A React browser communicates with an Axum HTTP API and receives public Server-Sent Events (SSE). PostgreSQL stores durable state. The Rust executable serves the built frontend and runs the lifecycle worker and event tasks in the same process. Configured external resolvers and the optional Python NTU bus provider are separate integration endpoints.
-
-```text
-React browser: account, browse, creation, market/trading, portfolio
-    | HTTP JSON requests / SSE refresh signals
-    v
-Rust process
-    Axum router and HTTP handlers
-        -> account, market-query, creation, trading, portfolio,
-           lifecycle, and administrator coordination
-        -> domain rules, pure pricing/fee calculations, auth helpers
-        -> SQLx / Store ----------------------------> PostgreSQL
-    Background worker -----------------------------> PostgreSQL
-        -> ResolverGateway -> configured resolver endpoint
-    Event listener / EventBus <---------------------- PostgreSQL
-        -> SSE subscribers
-    Clock refresher: active in demo mode only
-
-Optional bus path:
-configured bus resolver -> built-in bus adapter -> Python NTU bus provider
-                                             -> simulated fallback
-```
 
 The bus adapter tries the provider only for eligible bus instances marked `simulated`, after their observation window ends. It records whether the provider or simulated fallback supplied the outcome. Generic resolver failures instead retry until the deadline and then void; they do not automatically use this fallback. Presence of the provider code is established by source inspection, not a live-service verification.
 

@@ -24,34 +24,13 @@ These are logical layers: `Store` combines application behaviour and data access
 
 The monolithic backend keeps the academic application's deployment and shared transaction coordination simple. Rust/Axum supports concurrent HTTP and background work in one runtime; React provides reusable interactive boundaries; PostgreSQL supplies the transactions, constraints, and locking used by trading and settlement. Pure pricing and fee calculations keep those rules independent of HTTP, storage, and external-provider availability. The resolver contract gives provider-specific acquisition a separate integration boundary. These choices justify the existing design; they do not introduce a new stack or replace the separate Lab 3.3 AI exercise.
 
-For the draft class model and use-case mapping, see [class diagram](developer/class-diagram.md). The scoped Lab 3 handoff is [steps 1-4](../lab3/steps-1-4-handoff.md).
+For the class model and use-case mapping, see [class diagram](developer/class-diagram.md). The scoped Lab 3 handoff is [steps 1-4](../lab3/steps-1-4-handoff.md).
 
 ## System context
 
 PolyNTU is one deployable application backed by PostgreSQL. The Rust executable serves the versioned JSON API, Server-Sent Events, and the built React files. It also starts a periodic background worker from the same codebase.
 
-```text
-Participant browser
-   |  HTTP JSON, bearer token, idempotency key
-   |  public SSE stream
-   v
-Axum API ---------------------------------------------------+
-   |                                                        |
-   +--> auth/signatures                                     |
-   +--> pure LMSR calculation                               |
-   +--> trade execution                                     |
-   +--> evidence/resolution                                 |
-   |                                                        |
-   v                                                        |
-PostgreSQL <-------- periodic worker -----------------------+
-   |                     |
-   |                     +--> external resolver endpoints
-   |                          (resolver-authority series, ADR 0007)
-   +-- accounts and balanced ledger transfers
-   +-- templates, instances, outcomes, and inventory
-   +-- positions, trades, and idempotency receipts
-   +-- evidence, claims, administrator audit, and outbox
-```
+![Runtime architecture](diagrams/architecture.png)
 
 Market categories provide typed rules and evidence evaluation only. They do not receive network access, calculate prices, authenticate users, or move balances.
 
@@ -152,7 +131,7 @@ Foreign-key checks can hold `KEY SHARE` locks on accounts during idempotency and
 
 ### Instance creation
 
-Instance creation validates the complete immutable specification, derives category and outcomes from the rule, calculates required funding, creates the reserve account, transfers its subsidy from the treasury, inserts the instance, and writes an `opened` event in one transaction. Direct (non-series) creations also record an administrator audit; scheduler-spawned brackets publish through the outbox event only.
+Instance creation validates the complete immutable specification, derives category and outcomes from the rule, calculates required funding, creates the reserve account, transfers its subsidy from the treasury, inserts the instance, and writes an `opened` event in one transaction. The demo seeder's non-series creations also record an audit row; scheduler-spawned brackets publish through the outbox event only.
 
 Series publication validates the schedule, requires the creator role under an account lock, inserts the immutable series row plus a template row under the series ID, and audits the creation. A one-time schedule immediately publishes its single bracket through instance creation; if funding fails, the series row is removed again.
 
