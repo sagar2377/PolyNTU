@@ -19,7 +19,6 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
   const [candidates, setCandidates] = useState("");
   const [metric, setMetric] = useState("queue_length");
   const [locationId, setLocationId] = useState("");
-  const [liquidity, setLiquidity] = useState("100");
   const [feeCharged, setFeeCharged] = useState(true);
   const [scheduleKind, setScheduleKind] = useState("once");
   const [resolutionKind, setResolutionKind] = useState("admin");
@@ -68,7 +67,7 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
         : resolutionKind === "resolver"
           ? { kind: "resolver", endpoint: resolverEndpoint.trim() }
           : undefined;
-      const created = await api.createSeries({ title: title.trim(), resolution_criterion: criterion.trim(), rule, source_id: "polyntu-creator", liquidity_units: Number(liquidity), fee_charged: feeCharged, resolution, schedule });
+      const created = await api.createSeries({ title: title.trim(), resolution_criterion: criterion.trim(), rule, source_id: "polyntu-creator", liquidity_units: 100, fee_charged: feeCharged, resolution, schedule });
       if (resolutionKind === "creator" && pair) storeSigningKey(account.email, pair);
       onCreated(created.id);
     } catch (e) { onError(e.message); } finally { setBusy(false); }
@@ -115,11 +114,7 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
         <label htmlFor="market-count-threshold">Count threshold</label>
         <input id="market-count-threshold" type="number" min={1} max={1000000} value={threshold} required onChange={(e) => setThreshold(e.target.value)} />
       </>}
-      {category === "other" && <>
-      </>}
       <div className="form-row">
-        <div><label htmlFor="market-liquidity">Liquidity (10 to 100000)</label>
-          <input id="market-liquidity" type="number" min={10} max={100000} value={liquidity} required onChange={(e) => setLiquidity(e.target.value)} /></div>
         <div><label htmlFor="market-fee">Charge the 25 bps trading fee?</label>
           <select id="market-fee" value={feeCharged ? "yes" : "no"} onChange={(e) => setFeeCharged(e.target.value === "yes")}>
             <option value="yes">Yes</option>
