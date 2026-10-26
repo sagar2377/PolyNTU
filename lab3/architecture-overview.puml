@@ -23,8 +23,8 @@ skinparam legendBorderColor #CBD5E1
 title PolyNTU architecture\nFunctional modules
 
 component "Participant browser\nReact-based frontend" as Browser
-component "Market service\nquotes, trades, pricing,\nmarket lifecycle\n\nparallel unit: one HTTP request\neach request is its own task\non the multi-thread runtime" as Service
-component "Settlement worker\nbracket scheduling, resolution,\nclaim settlement\n\nparallel unit: one market instance\nup to 8 settle at once, each in\nits own task; one market never\nsplits across tasks" as Worker
+component "Market service\nquotes, trades, pricing,\nmarket lifecycle\n\nparallel unit: one HTTP request\none task per request on the\nmulti-thread runtime" as Service
+component "Settlement worker\nbracket scheduling, resolution,\nclaim settlement\n\nparallel unit: one market instance\nup to 8 settle at once, each\nholding one pooled connection" as Worker
 database "PostgreSQL\naccounts, markets, trades,\nevidence, ledger\n\nparallel unit: one connection\n32 pooled; row locks serialise\nwrites to the same market" as Db
 component "External data sources\nconfigured resolvers and\nthe NTU bus feed" as Sources
 
@@ -33,13 +33,4 @@ Service --> Browser : live updates
 Service --> Db : reads and writes
 Worker --> Db : closes, resolves, settles
 Worker --> Sources : fetches the outcome
-
-legend bottom left
-  One Rust process serves the browser and runs the settlement worker;
-  both read and write the same database.
-  The runtime has one worker thread per core and multiplexes tasks onto them.
-  Requests split by request; settlement splits by market instance, never by
-  account or claim, so one market's claims stay ordered under its row lock.
-  Each open SSE stream is also its own task.
-endlegend
 @enduml
