@@ -1,8 +1,6 @@
 # Persistent data design - Lab 3
 
-Status: **draft contribution for original checklist step 9**, 26 October 2026. This write-up covers the persistent-data half of manual section 3.2; the access-control review that shares section 3.2.1 remains with its owner.
-
-This document maps the ten design entities of the [class model](../docs/developer/class-diagram.md) onto the implemented PostgreSQL schema, records how each design association and value type is stored, and lists which invariants the database enforces itself. It describes the current schema and proposes no schema change. The maintained references are the [database reference](../docs/developer/database.md) and the transaction and retention sections of [architecture.md](../docs/architecture.md); this submission write-up links to them rather than duplicating their detail.
+This document maps the ten design entities of the [class model](../docs/developer/class-diagram.md) onto the implemented PostgreSQL schema, records how each design association and value type is stored, and lists which invariants the database enforces itself. The maintained references are the [database reference](../docs/developer/database.md) and the transaction and retention sections of [architecture.md](../docs/architecture.md); this submission write-up links to them rather than duplicating their detail.
 
 ## Design classes and their storage
 
@@ -140,9 +138,9 @@ The policy is to never edit an applied migration and to add a numbered file inst
 
 The schema is not squashed into a single file for three reasons. Applied databases hold the checksums of the twelve files, so a replacement file would fail verification. Existing databases upgrade by applying only the new files, while a squashed file describes only a fresh database and provides no upgrade path. And the sequence stays traceable: [ADR 0004](../docs/decisions/0004-trade-fees.md) cites migration 0005, [ADR 0005](../docs/decisions/0005-ntu-accounts-and-creator-roles.md) cites 0006-0008, [ADR 0006](../docs/decisions/0006-market-series-and-recurrence.md) cites 0009, and [ADR 0007](../docs/decisions/0007-resolution-authority.md) cites 0010. The repeated `CREATE OR REPLACE FUNCTION` pattern - `protect_instance` in 0002, 0005, 0009 and `protect_series` in 0009, 0010, 0012 - shows how a definition grows one migration at a time: each replacement widens the protected column set, and each step remains reproducible on a database that applied only the earlier files. Any change is verified against both fresh creation and upgrade.
 
-## Open items and production gaps
+## Production gaps
 
-Current limitations recorded in the maintained references, not proposals of this write-up:
+Current limitations recorded in the maintained references:
 
 - One database role: application processes use a single database URL rather than separate least-privilege migration and runtime roles ([security and privacy](../docs/developer/security-and-privacy.md#database-controls)).
 - No idempotency retention: idempotency rows are not expired or compacted, so the table grows with every distinct trade key.
@@ -157,4 +155,4 @@ Current limitations recorded in the maintained references, not proposals of this
 - [Architecture](../docs/architecture.md) - transaction boundaries, lifecycle and immutability, data retention, recovery model.
 - [Class diagram and responsibilities](../docs/developer/class-diagram.md) - the ten entities, containers, and value types this write-up maps onto storage.
 - [Security and privacy](../docs/developer/security-and-privacy.md) - database controls and backup sensitivity.
-- [Architecture write-up](architecture.md) and [handoff](steps-1-4-handoff.md) - the other Lab 3 contributions and the remaining-work boundary.
+- [Architecture write-up](architecture.md) and [design notes](steps-1-4-handoff.md) - the other Lab 3 contributions.

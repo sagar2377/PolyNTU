@@ -1,7 +1,5 @@
 # PolyNTU system architecture - Lab 3
 
-Status: **draft contribution for original checklist steps 1-4, extended through the later design steps**, 26 October 2026. This write-up describes the implemented architecture. The AI artifacts and submission assembly remain with the team.
-
 The maintained detailed explanation is [docs/architecture.md](../docs/architecture.md). The [class diagram](class-diagram.png), [editable source](class-diagram.puml), [class responsibilities](../docs/developer/class-diagram.md), and [handoff](steps-1-4-handoff.md) provide the matching design view.
 
 ## Architectural style
@@ -66,6 +64,6 @@ These are logical layers. Store currently contains both service behaviour and SQ
 
 Initialization errors propagate through Result values. Some validation occurs after database initialization, and the normal shutdown description does not imply comprehensive error-path cleanup. Startup wiring uses existing functions and structs; it creates no new controller objects.
 
-## Submission scope
+## Related design artifacts
 
-This is the architecture contribution only. The class diagram covers checklist steps 1-12: containers, patterns, the dialog maps and the detailed operation signatures are included. The persistence and access-control design are in [persistent data](persistent-data.md) and [access control](access-control.md), and the pattern assessment in [design patterns](design-patterns.md). Teammates still need the implementation audit and the final submission. See the [handoff](steps-1-4-handoff.md) for ownership boundaries and refresh instructions.
+The class diagram covers the class model, containers, patterns, dialog maps and detailed operation signatures. The persistence and access-control design are in [persistent data](persistent-data.md) and [access control](access-control.md), and the pattern assessment in [design patterns](design-patterns.md). See the [design notes](steps-1-4-handoff.md) for the manual mapping and refresh instructions.

@@ -29,7 +29,7 @@ skinparam titleFontSize 22
 skinparam legendBackgroundColor #F7F9FC
 skinparam legendBorderColor #CBD5E1
 
-title PolyNTU Lab 3 design class model\nDraft: checklist steps 1-8, detailed operations from step 12
+title PolyNTU Lab 3 design class model\nClasses, containers, patterns and detailed operations
 caption Class responsibilities, patterns and use-case mappings: docs/developer/class-diagram.md
 
 package "User and administrator boundaries" {

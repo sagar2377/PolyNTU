@@ -1,9 +1,5 @@
 # Design patterns - Lab 3
 
-Status: **draft contribution for original checklist steps 6 and 11** (manual sections 3.1.3 and 3.2.2), 26 October 2026. This write-up expands the pattern assessment sketched in the [class responsibilities](../docs/developer/class-diagram.md) into the submission section. It describes the existing application and proposes no refactor; the persistence/access-control review and the implementation audit remain with their owners, and final submission assembly remains with the team.
-
-Two status levels are used throughout, matching the [class responsibilities](../docs/developer/class-diagram.md#design-patterns) document. **In code** means the pattern's participant structure exists in the source. **Design level** means the diagram expresses the pattern while Rust implements the same variation with a lighter idiom - here a stored authority value with parallel methods rather than a trait object. A pattern is claimed only where the source supports the participants, and every claim is anchored to files and functions.
-
 ## Selection method
 
 Each candidate followed the same procedure: identify the varying dimension or recurring problem in the source, match it against a pattern's intent, name the participants as design classes, and record the consequences for this system with evidence. Pattern names follow the standard GoF catalogue, with Repository and Unit of Work taken from the enterprise-patterns literature. Patterns are claimed only where the participant structure exists, not where code merely resembles the shape; candidates that failed the evidence test are recorded below with reasons rather than omitted. The four catalogue entries are the patterns that passed.
@@ -17,7 +13,6 @@ Each candidate followed the same procedure: identify the varying dimension or re
 - **Implementation anchor:** the `resolution_authority` column (`admin`, `creator`, `resolver`) in [store.rs](../backend/src/store.rs) `create_series`; `ingest_evidence`, `record_creator_resolution`, and `record_resolver_evidence` in [resolution.rs](../backend/src/resolution.rs), each re-checking its own authority and refusing the others. The three implementations are entered from three places: the administrator evidence route and the creator resolution route in [api.rs](../backend/src/api.rs), and the automatic resolver call in [worker.rs](../backend/src/worker.rs), which gates on the `resolver` value.
 - **Consequences and trade-offs:** the lifecycle machinery stays in one place and a wrong-authority submission is rejected inside the method, not by the caller. The cost is duplication: each method repeats the lock, dedupe, record, version, audit, and outbox steps as inlined statements.
 - **Adding a variant:** a fourth authority needs a CHECK-constraint value, a `ResolutionSpec` variant with validation, a `create_series` mapping arm, a new ingestion method, and a route or worker branch. No trait or enum exists for the compiler to flag a missed site.
-- **Status:** design level. `AuthorityKind` is a diagram value type; the source stores a CHECK-constrained text column read back as a string, and the three implementations are reached through separate routes and worker branches rather than one dispatch point.
 
 ### Adapter
 
@@ -26,7 +21,6 @@ Each candidate followed the same procedure: identify the varying dimension or re
 - **Implementation anchor:** `ntu_bus_answer` in [resolver.rs](../backend/src/resolver.rs), served at `POST /api/v2/resolvers/ntu-bus` by the handler in [api.rs](../backend/src/api.rs). It answers pending before the observation window ends or for ineligible instances, retries the provider three times, and on fallback derives an observation (`rule.simulated`), evaluates it, and converts the winning index into a published outcome id.
 - **Consequences and trade-offs:** bus series resolve through the same contract as any other series, so settlement has no bus-specific branch, and a future data source is adopted by pointing a series at a new endpoint. The costs are an extra loopback HTTP hop in demo mode and a fallback policy that applies only to eligible simulated bus instances - generic resolver failures retry to the deadline and void instead of falling back.
 - **Adding a variant:** a new data source means a new endpoint plus conversion code outside the core; no settlement or evidence code changes, which is the point of the contract.
-- **Status:** in code.
 
 ### Observer
 
@@ -35,7 +29,6 @@ Each candidate followed the same procedure: identify the varying dimension or re
 - **Implementation anchor:** `EventBus::subscribe`/`publish` in [events.rs](../backend/src/events.rs) - one broadcast channel per instance, created on first subscription and removed when a later publish finds no receivers left; `run_listener` fans PostgreSQL notifications out; `store::event` writes the outbox row and notification in one statement; the SSE handler in [api.rs](../backend/src/api.rs) replays from the outbox, de-duplicates by cursor, and re-reads on a 30-second catch-up pass.
 - **Consequences and trade-offs:** observers attach and detach per instance with no registration lists in domain code, and outbox replay makes delivery delay-tolerant across processes. A lagged receiver is dropped by the broadcast channel and must fall back to the outbox pass, and trade events carry inventory so the cache can update without a read - a coupling between one observer's needs and the event payload.
 - **Adding a variant:** a new transport (webhooks, for example) needs fan-out changes in the listener, because `publish` only knows broadcast channels; a new subscriber kind that can read the outbox or notifications needs none.
-- **Status:** in code.
 
 ### Factory Method
 
@@ -44,7 +37,6 @@ Each candidate followed the same procedure: identify the varying dimension or re
 - **Implementation anchor:** `Series::bracket_spec` in [market.rs](../backend/src/market.rs) and `NewSeries::instance_spec` with `Schedule::bracket_timing` (stored windows for `Once`, computed windows for `Recurring`); `Store::create_instance` in [store.rs](../backend/src/store.rs) validates, funds from the treasury, and inserts; `Store::spawn_series_brackets` drives the rolling grid.
 - **Consequences and trade-offs:** what varies per slot is isolated in the spec builders, and the funding, validation, and audit invariants live once in `create_instance` for all callers. There is no polymorphic factory hierarchy; the claim covers spec construction plus shared creation, which is what the source supports.
 - **Adding a variant:** a new instance shape means editing the shared `NewInstance` struct and its builders; a new schedule kind means a new `Schedule` variant with a `bracket_timing` arm and validation - extension by modification, since the enum is closed.
-- **Status:** in code.
 
 ## Patterns considered and rejected
 

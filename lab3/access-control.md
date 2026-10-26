@@ -1,7 +1,5 @@
 # PolyNTU access control - Lab 3
 
-Status: **draft contribution for original checklist step 10** (manual section 3.2; Bruegge 7.4 access control), 26 October 2026. This write-up describes the implemented access controls and proposes no new mechanism; final submission assembly remains with the team.
-
 The authoritative operational description is the [security guide](../docs/developer/security-and-privacy.md). Routes and checks below are taken from [api.rs](../backend/src/api.rs), [auth.rs](../backend/src/auth.rs), [store.rs](../backend/src/store.rs), and [execution.rs](../backend/src/execution.rs); the design view follows the [class responsibilities](../docs/developer/class-diagram.md) and the [architecture write-up](architecture.md).
 
 ## Actors and roles

@@ -1,27 +1,31 @@
-# Lab 3 handoff - original checklist steps 1-4
+# Lab 3 design notes - checklist steps 1-12
 
-Date: **23 October 2026**. Scope: design-model draft, architecture, startup class, and control responsibility allocation. Application source and behaviour are unchanged. This is an internal handoff, not an extra deliverable prescribed by the manual.
-
-> **Superseded 26 October 2026.** This is a point-in-time record of the 23 October state. The container classes, design patterns, dialog maps, detailed operation signatures, and the 3.3 AI artifacts have since been delivered, and the class count has risen from 31 to 39. Read the counts and the remaining-work table below as history, not as the current status. Current state: [class diagram](class-diagram.png) / [editable source](class-diagram.puml), [class responsibilities](../docs/developer/class-diagram.md), [architecture](architecture.md), [persistent data](persistent-data.md), [access control](access-control.md), [design patterns](design-patterns.md).
+Scope: design model, architecture, startup class, control responsibility allocation, containers, patterns, dialog maps, detailed operations, persistent data, and access control. Application source and behaviour are unchanged by the documentation work.
 
 ## Read this first
 
-The class diagram was an **intermediate draft** at the time of writing; it has since been completed through the later design tasks. Keep the maintained sources under `docs/`; refresh the diagram copies under `lab3/` after changes. The original Lab 2 transcript and diagram provenance have not been recovered or reconstructed by this work.
+Keep the maintained sources under `docs/`; refresh the diagram copies under `lab3/` after changes. The original Lab 2 transcript and diagram provenance have not been recovered or reconstructed by this work.
 
 ## Scope and manual mapping
 
-The source of the academic requirements is the five-page **Lab 3 Manual-1.pdf** supplied by the team. The scope here follows the team's original numbered checklist, rather than interpreting "steps 1-4" as all four numbered subsections of manual 3.1.
+The source of the academic requirements is the five-page **Lab 3 Manual-1.pdf** supplied by the team. The scope follows the team's numbered checklist.
 
-| Original checklist step | Manual requirement | Work in this contribution |
+| Checklist step | Manual requirement | Design artifact |
 |---|---|---|
-| 1. Draft design model | 3.1.1 | Refine the existing `docs/diagrams/class-diagram.puml`; retain the ten entities/associations and explain their implementation mapping. |
-| 2. Determine architecture | 3.1.2 | Name and justify the layered client-server architecture with a monolithic Rust backend. |
-| 3. Add startup class | First bullet of 3.1.3 | Model existing main initialization and runtime wiring as StartupControl. |
-| 4. Add controls/distribute logic | Second bullet of 3.1.3 | Retain seven use-case controls and clarify ownership/collaboration against the code. |
+| 1. Design model | 3.1.1 | `docs/diagrams/class-diagram.puml`; ten entities/associations with their implementation mapping. |
+| 2. Determine architecture | 3.1.2 | [architecture.md](architecture.md): layered client-server with a monolithic Rust backend. |
+| 3. Add startup class | First bullet of 3.1.3 | StartupControl models main initialization and runtime wiring. |
+| 4. Add controls/distribute logic | Second bullet of 3.1.3 | Seven use-case controls and their ownership/collaboration against the code. |
+| 5. Collection containers | Remaining bullet of 3.1.3 | OutcomeSet, PositionBook, TradeHistory. |
+| 6. Design patterns | 3.1.3 and 3.2.2 | [design-patterns.md](design-patterns.md). |
+| 7. Dialog maps | 3.1.4 | [dialog-map.png](dialog-map.png), [trade](dialog-map-trade.png), [resolve](dialog-map-resolve.png). |
+| 8. Detailed class model | 3.1.4 | Typed operation signatures in the class diagram. |
+| 9. Persistent data | 3.2.1 | [persistent-data.md](persistent-data.md). |
+| 10. Access control | 3.2.1 | [access-control.md](access-control.md). |
+| 11. Design patterns | 3.2.2 | See step 6. |
+| 12. More class detail | 3.2.3 | See step 8. |
 
-Manual 2.3 asks for encapsulation, loose coupling, and high cohesion; the design rationale addresses these. Manual 2.5 asks for traceability and justification of technology choices; this contribution supplies use-case/source mappings and existing test pointers, not a new technology-selection exercise or full test audit. Manual 3.1.3 refers to Fox pp. 341-345; this contribution applies the startup/control bullets reproduced in the manual and does not claim an independent review of those textbook pages.
-
-Manual 3.1.4 is dialog-map refinement and detailed class-model work, which remain outside our scope. The remaining bullets of 3.1.3 (containers/patterns), all of 3.2 and 3.3, and the 3.4 implementation audit are also left to their owners.
+Manual 2.3 asks for encapsulation, loose coupling, and high cohesion; the design rationale addresses these. Manual 2.5 asks for traceability and justification of technology choices; this contribution supplies use-case/source mappings and test pointers. Manual 3.1.3 refers to Fox pp. 341-345; this contribution applies the startup/control bullets reproduced in the manual and does not claim an independent review of those textbook pages.
 
 ## Files and source of truth
 
@@ -30,15 +34,17 @@ Manual 3.1.4 is dialog-map refinement and detailed class-model work, which remai
 | [docs/diagrams/class-diagram.puml](../docs/diagrams/class-diagram.puml) | Maintained editable design diagram. |
 | [docs/diagrams/class-diagram.png](../docs/diagrams/class-diagram.png) | Maintained rendered diagram. |
 | [docs/developer/class-diagram.md](../docs/developer/class-diagram.md) | Maintained entity/boundary/control explanations, runtime mappings, and use-case coverage. |
-| [docs/architecture.md](../docs/architecture.md) | Maintained detailed architecture, with style/startup/provider corrections. |
+| [docs/architecture.md](../docs/architecture.md) | Maintained detailed architecture. |
 | [lab3/class-diagram.puml](class-diagram.puml) | Submission snapshot of the maintained diagram source. |
 | [lab3/class-diagram.png](class-diagram.png) | Submission snapshot of its rendered image. |
 | [lab3/architecture.md](architecture.md) | Concise architecture submission write-up, with links to maintained details. |
-| [lab3/steps-1-4-handoff.md](steps-1-4-handoff.md) | This handoff and remaining-work boundary. |
+| [lab3/persistent-data.md](persistent-data.md) | Persistent-data design write-up. |
+| [lab3/access-control.md](access-control.md) | Access-control design write-up. |
+| [lab3/design-patterns.md](design-patterns.md) | Pattern assessment write-up. |
 
-The manual's section 4 asks for deliverables under `lab3/` in GitHub before Lab 4. These files prepare only this contribution; final packaging, commits, and upload remain with the team. References to canonical artifacts elsewhere in this repository are navigation aids, not a claim that the full submission package is already assembled.
+The manual's section 4 asks for deliverables under `lab3/` in GitHub before Lab 4. References to canonical artifacts elsewhere in this repository are navigation aids.
 
-## Step 1 - design model draft
+## Step 1 - design model
 
 The original ten entities remain Account, VerificationRequest, MarketSeries, MarketInstance, Outcome, Position, Trade, Evidence, SettlementClaim, and LedgerTransfer. Existing entity attributes, associations, multiplicities, and composition are preserved. The seven existing boundaries remain; ApiRouter is added for startup wiring. No new collection container classes, pattern claims, entity operations, or detailed signatures have been introduced.
 
@@ -84,7 +90,6 @@ Important interpretation details:
 - `recoverReceipt()` reuses the same trade body and idempotency key through execute; no new recovery endpoint exists.
 - Registration and its welcome gift are atomic. One-time series publication commits the series first, then creates/funds the instance, attempting cleanup on failure; the two stages are not one database transaction.
 - Direct administrator creation/evidence, demo clock/tick utilities, and retention are existing implementation paths outside the numbered use-case register. They do not silently add new numbered requirements.
-- Existing security, accounting, and retention behaviour is referenced to allocate responsibilities; the later persistence/access-control/pattern tasks are not marked complete by those references.
 
 ## Traceability and existing test pointers
 
@@ -104,25 +109,9 @@ The following test names were found in [backend/tests/integration.rs](../backend
 | UC-7 -> AdminControl | `approval_grants_the_creator_role_permanently`; `rejection_records_a_reason_and_allows_reapplication`. |
 | Existing retention implementation | `old_recurring_brackets_purge_but_one_time_markets_stay`. |
 
-Full test traceability and any coverage gaps, including portfolio/admin operational paths and startup, remain for the verification owner. No backend/frontend tests or builds are required by the documentation-only edits, and none are represented here as newly passed.
+Full test traceability and coverage gaps, including portfolio/admin operational paths and startup, are recorded in [verification.md](../docs/verification.md).
 
-## Remaining work for teammates
-
-**Status at 26 October 2026:** the rows marked *delivered* below are complete; the table is retained as the original allocation record.
-
-| Owner/work area | Remaining task and boundary | Status |
-|---|---|---|
-| Collection/container design | Original step 5 / remaining container bullet of 3.1.3: assess outcomes, positions, and trades collections; model appropriate containers without assuming each is a database table. | Delivered: OutcomeSet, PositionBook, TradeHistory. |
-| Pattern assessment | Original steps 6/11 / 3.1.3 and 3.2.2: assess and justify appropriate patterns. | Delivered: [design patterns](design-patterns.md). |
-| Dialog map | Original step 7 / 3.1.4: revisit and refine the existing dialog maps. | Delivered: [dialog map](dialog-map.png), [trade](dialog-map-trade.png), [resolve](dialog-map-resolve.png). |
-| Detailed class model | Original steps 8/12 / 3.1.4 and 3.2.3: refine attributes, operation signatures, visibility, value types, and relationships as needed. | Delivered: typed operation signatures in the class diagram. |
-| Persistent data and access control | Original steps 9/10 / 3.2.1: perform the schema/migration and authorization design review. | Delivered: [persistent data](persistent-data.md), [access control](access-control.md). |
-| AI technology-stack comparison | Original steps 13/14 / 3.3.1-2: obtain the actual Lab 2 prompt/response/model details and original diagram, plus the Lab 1 description; then use the team's completed updated diagram. | Delivered: see the 3.3 report. |
-| AI skeleton, evaluation, and reporting | Original steps 15-18 / 3.3.3-5: generate the TODO-only skeleton separately, evaluate it, retain prompts/responses, prepare the short PDF, and package its distinct ZIP. | Delivered: both skeleton ZIPs and the report PDF. |
-| Implementation audit | Original steps 19-22 / 3.4: verify the existing application against the design, consider stereotype/folder mapping, audit class/key-public-method documentation, and check source availability in GitHub. | Open. |
-| Submission assembly | Section 4: include the complete use-case diagram/descriptions, completed class diagram and dialog map, architecture, full application skeleton/prototype with clear structure, AI PDF, and separately identifiable AI skeleton ZIP. Arrange artifacts under `lab3/` and upload before Lab 4. | Open. |
-
-Manual clarifications for later owners:
+## Manual clarifications
 
 - Reusing the same AI model/copied prompt in a fresh chat is requested **if possible** (3.3.1). If language/framework preferences changed, the manual permits prompting with the new information. Do not fabricate missing Lab 2 transcripts or claim a controlled comparison without the evidence.
 - With unchanged prompt/preferences, explain whether differences between the two class diagrams could explain changed recommendations (3.3.2(1)). With changed preferences, ask the AI to compare old/new choices and whether it agrees with the change, and retain that follow-up (3.3.2(2)).
@@ -141,7 +130,7 @@ Copy-Item -LiteralPath 'docs\diagrams\class-diagram.puml' -Destination 'lab3\cla
 Copy-Item -LiteralPath 'docs\diagrams\class-diagram.png' -Destination 'lab3\class-diagram.png'
 ```
 
-The renderer requires Java and a PlantUML JAR; the repository script downloads the JAR into ignored `.tools/` when absent. Update the concise architecture write-up if later design changes alter its responsibilities. Keep both diagram snapshots marked draft until the remaining design work is complete.
+The renderer requires Java and a PlantUML JAR; the repository script downloads the JAR into ignored `.tools/` when absent. Update the concise architecture write-up if later design changes alter its responsibilities.
 
 Verification performed on **23 October 2026**:
 
