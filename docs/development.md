@@ -99,7 +99,6 @@ Never log bearer tokens, administrator tokens, quote bodies, or `.local/dev-secr
 | `scripts/stop-preview.ps1` | Stops only the verified hidden preview recorded by this workspace. |
 | `scripts/generate-math-fixtures.py` | Rebuilds high-precision LMSR reference JSON using fixed-seed Python Decimal calculations. |
 | `scripts/run-benchmark.ps1` | Builds the release backend and runs an isolated database/server workload on port 18000. `-Workload benchmark-kpi.mjs` runs the short throughput KPI instead of the ten-minute soak. |
-| `scripts/demo-run.mjs` | Executes the [demonstration runbook](demo-runbook.md) end to end against both demo instances over the Chrome DevTools protocol. |
 
 ## Database modes and migrations
 

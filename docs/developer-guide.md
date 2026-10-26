@@ -16,7 +16,7 @@ This guide is the entry point for engineers who need to understand, review, modi
 10. [Operations](developer/operations.md) and [development setup](development.md).
 11. [Verification and traceability](verification.md) for the test inventory, workloads, evidence record, and the requirements-to-code matrix.
 12. [Use case model](developer/use-cases.md): actors, the use case register, business rules, and detailed flows for every registered use case, all implemented in the current build.
-13. [Demonstration runbook](demo-runbook.md) for the scripted end-to-end walkthrough and the two-server simulated/live setup.
+13. [Demonstration runbook](demo-runbook.md) for the human-operated end-to-end walkthrough and the two-server simulated/live setup.
 
 Use the [glossary](developer/glossary.md) when a domain or accounting term is unfamiliar.
 

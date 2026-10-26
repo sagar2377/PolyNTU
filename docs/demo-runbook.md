@@ -42,8 +42,6 @@ there, because neither operation can succeed.
    the browse grid already show movement instead of a flat 50/50 line. The
    first fills land within a minute of start-up; a market with only one fill
    still reads close to 50/50, so give it three or four minutes.
-6. Run `node scripts/demo-run.mjs` once as a rehearsal. It executes this whole
-   runbook against both instances and reports the first step that fails.
 
 ### The three account types
 
@@ -234,21 +232,25 @@ Worth saying explicitly, because the demo is more credible for it:
 | "That password does not match the key published for this series" | Wrong password, or a different account | Sign in as the series creator |
 | Resolution rejected with 409 | Window not open, deadline passed, or already resolved | One resolution per instance; check the bracket's timestamps |
 
-## Scripted execution
+## This runbook is operated by a person
 
-`scripts/demo-run.mjs` runs this runbook end to end over the Chrome DevTools
-protocol against both instances and fails on the first step that does not
-behave as promised. It is the way to check the demo still works before
-presenting it, and the way to check a change did not break the sequence.
+The walkthrough is presented live: a person signs in, clicks, and narrates. It
+is deliberately not automated, because the point is to show the audience what
+the product does, not to replay a recording.
+
+The automated equivalent is `scripts/browser-e2e.mjs`, which runs in CI on
+every backend, frontend, or test-script change. It drives the same core flow
+over the Chrome DevTools protocol — registration, verification, publishing a
+creator-authority market, trading, both charts, and both resolution paths — and
+fails the build if any of it regresses. That is where automated coverage
+belongs; this document is the human script.
+
+To check the demo still works before presenting it, run the CI test locally
+against the simulated instance:
 
 ```text
-node scripts/demo-run.mjs
+node scripts/browser-e2e.mjs
 ```
-
-It needs both instances running, the provider answering on 8090, and headless
-Chrome with `--remote-debugging-port=9223` on a dedicated `--user-data-dir`.
-It leaves its markets and accounts in the demo databases, like
-`scripts/browser-e2e.mjs` does.
 
 ## Related documents
 
