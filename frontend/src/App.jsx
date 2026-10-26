@@ -19,6 +19,7 @@ export default function App() {
   const [name, setName] = useState("");
   const [entryView, setEntryView] = useState(null);
   const [clockOpen, setClockOpen] = useState(false);
+  const [clockMinutes, setClockMinutes] = useState("1");
   const [adminOpen, setAdminOpen] = useState(false);
   const [admin, setAdmin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -167,13 +168,22 @@ export default function App() {
     {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} config={config} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView(marketFrom)} onSelect={(id) => openMarket(id, marketFrom)} />}
     {view === "create" && canPublish && <CreateMarket account={account} onCreated={(id) => { setRefresh((n) => n + 1); openSeries(id); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "portfolio")} />}
-    <footer><span>PolyNTU · Outcome markets</span><span className="footer-actions">{config?.demo_mode && <button className="link-button" onClick={() => setClockOpen(true)}>Demo clock</button>}<button className="link-button" onClick={() => setAdminOpen(true)}>Admin</button></span></footer>
+    {/* Live mode is the external-connector demonstration: the virtual clock is
+        refused by the backend and the administrator console would only offer
+        operations that cannot run, so neither control is shown there. */}
+    <footer><span>PolyNTU · Outcome markets</span>{!config?.live_mode && <span className="footer-actions">{config?.demo_mode && <button className="link-button" onClick={() => setClockOpen(true)}>Demo clock</button>}<button className="link-button" onClick={() => setAdminOpen(true)}>Admin</button></span>}</footer>
     {adminOpen && <AdminPanel account={account} onClose={() => setAdminOpen(false)} onChanged={() => setRefresh((n) => n + 1)} />}
     {config?.demo_mode && clockOpen && <Modal label="Demo clock controls" onClose={() => setClockOpen(false)}>
       <h2>Demo clock controls</h2>
       <label htmlFor="admin-token">Administrator token</label>
       <input id="admin-token" type="password" value={admin} autoComplete="off" onChange={(e) => setAdmin(e.target.value)} />
+      {/* A creator-authority market is resolvable only between its observation
+          end and its evidence deadline, which can be as narrow as a minute.
+          The presets cover the common jumps; the minute field is how a
+          demonstrator lands inside that window. */}
       <div className="button-row"><button disabled={busy || !admin} onClick={() => advance(60)}>Advance 1 hour</button><button disabled={busy || !admin} onClick={() => advance(1440)}>Advance 1 day</button></div>
+      <label htmlFor="clock-minutes">Or advance an exact number of minutes</label>
+      <div className="inline-form"><input id="clock-minutes" type="number" min={1} max={10080} value={clockMinutes} onChange={(e) => setClockMinutes(e.target.value)} /><button disabled={busy || !admin || !(Number(clockMinutes) >= 1)} onClick={() => advance(Number(clockMinutes))}>Advance</button></div>
     </Modal>}
   </div>;
 }

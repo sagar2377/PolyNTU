@@ -1,8 +1,10 @@
 use crate::{
+    amm::Side,
     error::{Error, Result},
+    execution::QuoteRequest,
     market::{EvidenceInput, Instance, NewSeries, Rule, Series, demo_series_specs, demo_specs},
     resolver,
-    store::Store,
+    store::{DEMO_TRADERS, Store},
 };
 use serde_json::{Value, json};
 
@@ -67,17 +69,22 @@ pub async fn seed_demo(store: &Store) -> Result<()> {
                 .await?;
         }
     }
-    for spec in demo_specs(now) {
-        // One upcoming occurrence per template; elections are a single demo event.
-        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM instances WHERE template_id=$1 AND (close_ms>$2 OR category='elections'))")
-            .bind(&spec.template_id).bind(now).fetch_one(&store.pool).await?;
-        if !exists {
-            match store.create_instance(&spec).await {
-                Ok(_) => {}
-                Err(Error::Conflict(message))
-                    if message == "An instance already exists for this template and close time" => {
-                } // competing scheduler
-                Err(e) => return Err(e),
+    // Live mode demonstrates the external bus feed, and its worker refuses to
+    // fabricate evidence. The simulator-only one-time demo markets would then
+    // void at their deadline, so a live database seeds only the bus series.
+    if !store.live_mode {
+        for spec in demo_specs(now) {
+            // One upcoming occurrence per template; elections are a single demo event.
+            let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM instances WHERE template_id=$1 AND (close_ms>$2 OR category='elections'))")
+                .bind(&spec.template_id).bind(now).fetch_one(&store.pool).await?;
+            if !exists {
+                match store.create_instance(&spec).await {
+                    Ok(_) => {}
+                    Err(Error::Conflict(message))
+                        if message
+                            == "An instance already exists for this template and close time" => {} // competing scheduler
+                    Err(e) => return Err(e),
+                }
             }
         }
     }
@@ -92,6 +99,7 @@ pub async fn tick(store: &Store) -> Result<usize> {
     let _pass = store.tick_lock.lock().await;
     store.close_due().await?;
     store.spawn_due_brackets().await?;
+    seed_demo_trades(store).await?;
     let now = store.now().await?;
     // Select actionable rows so markets awaiting evidence cannot fill the batch
     // indefinitely and starve later instances whose results are ready.
@@ -125,6 +133,105 @@ pub async fn tick(store: &Store) -> Result<usize> {
     }
     seed_demo(store).await?;
     Ok(count)
+}
+
+/// How often the demo worker adds one fill to each seeded one-time market.
+/// Long enough that consecutive fills land in separate chart buckets at the
+/// market page's default bucket size, short enough that a demonstration
+/// shows movement within a few minutes of starting.
+const DEMO_TRADE_INTERVAL_MS: i64 = 45_000;
+
+/// Give the seeded demo markets a price history worth demonstrating. The
+/// demo's one-time markets open at a flat 50/50 (or an even split across
+/// three candidates), which makes every chart a horizontal line; the funded
+/// demo participants trade each one a few times so the browse grid, the
+/// probability bars, and the price/volume chart all show movement.
+///
+/// Trades go through the ordinary signed-quote path (`Store::quote` then
+/// `Store::execute`) under each participant's own idempotency key, so the
+/// ledger, reserve coverage, fee split, and self-trading rules apply exactly
+/// as they do for a browser trade. The key names the instance and the
+/// participant, so a retried or concurrent tick cannot trade a market twice,
+/// and one participant trades per interval rather than all at once, which
+/// puts the fills in separate chart buckets instead of one.
+async fn seed_demo_trades(store: &Store) -> Result<()> {
+    if !store.demo_trades {
+        return Ok(());
+    }
+    let Some(secret) = store.secret() else {
+        return Ok(());
+    };
+    // One-time demo markets only: the bus brackets settle within minutes and
+    // are fee-free welfare series, so trading them would only add noise.
+    let markets: Vec<Instance> = sqlx::query_as(
+        "SELECT * FROM instances WHERE state='open' AND series_id IS NULL AND data_mode='simulated' ORDER BY close_ms,id LIMIT 20",
+    )
+    .fetch_all(&store.pool)
+    .await?;
+    let now = store.now().await?;
+    for instance in markets {
+        // One fill per interval keeps consecutive trades in different chart
+        // buckets, so the history is a stepped line rather than a single step.
+        let last: Option<i64> =
+            sqlx::query_scalar("SELECT max(created_ms) FROM trades WHERE instance_id=$1")
+                .bind(&instance.id)
+                .fetch_one(&store.pool)
+                .await?;
+        if last.is_some_and(|last| now - last < DEMO_TRADE_INTERVAL_MS) {
+            continue;
+        }
+        // Deterministic per instance and participant: the same market always
+        // gets the same trades, so a demo run is reproducible.
+        let seed = crate::auth::hash(instance.id.as_bytes());
+        let byte = |offset: usize| u8::from_str_radix(&seed[offset..offset + 2], 16).unwrap_or(0);
+        let outcomes = instance.outcomes.len();
+        // Each participant trades once per market; the idempotency key is the
+        // record of who already has, whether that attempt committed or not.
+        let mut chosen = None;
+        for (index, (account, _)) in DEMO_TRADERS.iter().enumerate() {
+            let key = format!("demo-trade-{}-{account}", instance.id);
+            let done: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM idempotency WHERE account_id=$1 AND key=$2)",
+            )
+            .bind(account)
+            .bind(&key)
+            .fetch_one(&store.pool)
+            .await?;
+            if !done {
+                chosen = Some((index, account, key));
+                break;
+            }
+        }
+        let Some((index, account, key)) = chosen else {
+            continue;
+        };
+        // A spread of buy quantities across outcomes, so probabilities move
+        // away from the opening split in different directions.
+        let outcome = (byte(index * 2) as usize + index) % outcomes;
+        let quantity = 2_000 + (byte(index * 2 + 1) as i64) % 9 * 1_000;
+        let request = QuoteRequest {
+            instance_id: instance.id.clone(),
+            outcome_id: instance.outcomes[outcome].id.clone(),
+            side: Side::Buy,
+            quantity_millis: quantity,
+        };
+        // A demo trade must never break a tick: the market may have closed
+        // between the query and the trade.
+        let quote = match store.quote(account, &request, &secret).await {
+            Ok(quote) => quote,
+            Err(Error::Conflict(_)) => continue,
+            Err(e) => return Err(e),
+        };
+        let trade = crate::execution::TradeRequest {
+            quote_token: quote["quote_token"].as_str().unwrap_or_default().into(),
+            limit_micros: quote["amount_micros"].as_str().unwrap_or_default().into(),
+        };
+        match store.execute(account, &key, &trade, &secret).await {
+            Ok(_) | Err(Error::Conflict(_)) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// Simulated evidence for one closed demo instance, then one settlement batch.

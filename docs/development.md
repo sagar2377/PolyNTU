@@ -94,9 +94,12 @@ Never log bearer tokens, administrator tokens, quote bodies, or `.local/dev-secr
 | `scripts/start-local-db.ps1` | Initializes/starts loopback PostgreSQL and creates the `polyntu` database if needed. |
 | `scripts/run-dev.ps1` | Runs environment setup, database startup, and a debug backend (`cargo run`, unlocked). No frontend build; use the Vite dev server or `run-prod.ps1`. |
 | `scripts/run-prod.ps1` | Runs the same pipeline with the locked, optimised release backend. |
+| `scripts/run-sim.ps1` | Simulated demonstration instance on port 8000 with the bus simulator and the advanceable demo clock. |
+| `scripts/run-live-demo.ps1` | Live demonstration instance on port 8001: bus brackets resolve only from the campus Omnibus feed through `provider/ntubus`. Creates its own `polyntu_live_demo` database, because a live instance cannot share a database whose clock was advanced. See the [demonstration runbook](demo-runbook.md). |
 | `scripts/stop-preview.ps1` | Stops only the verified hidden preview recorded by this workspace. |
 | `scripts/generate-math-fixtures.py` | Rebuilds high-precision LMSR reference JSON using fixed-seed Python Decimal calculations. |
 | `scripts/run-benchmark.ps1` | Builds the release backend and runs an isolated database/server workload on port 18000. `-Workload benchmark-kpi.mjs` runs the short throughput KPI instead of the ten-minute soak. |
+| `scripts/demo-run.mjs` | Executes the [demonstration runbook](demo-runbook.md) end to end against both demo instances over the Chrome DevTools protocol. |
 
 ## Database modes and migrations
 

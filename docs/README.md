@@ -16,6 +16,7 @@ This index separates concise project documentation from the detailed material in
 | [`README.md`](../README.md) | Repository entry point and quick start | Everyone | Current | Project maintainer |
 | [`overview.md`](overview.md) | Product-level system explanation | Reviewers and new contributors | Current | Project maintainer |
 | [`developer-guide.md`](developer-guide.md) | Detailed documentation reading path | Developers | Current | Project maintainer |
+| [`demo-runbook.md`](demo-runbook.md) | End-to-end demonstration sequence, the two-server simulated/live setup, and recovery steps | Demonstrators and reviewers | Current | Project maintainer |
 | [`documentation-audit.md`](documentation-audit.md) | Audit scope, corrections, coverage, and verification boundaries | Reviewers and maintainers | Completed baseline audit | Documentation maintainer |
 | [`architecture.md`](architecture.md) | Component boundaries and transaction model | Developers | Current | Backend maintainer |
 | [`performance.md`](performance.md) | How the design keeps throughput high, and what is deliberately not optimised | Developers and reviewers | Current | Backend maintainer |

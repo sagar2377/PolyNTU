@@ -26,6 +26,15 @@ pub struct Store {
     /// the simulated feed; the entry point sets it from
     /// POLYNTU_NTUBUS_PROVIDER (empty disables the live path).
     pub ntubus_provider: Option<String>,
+    /// Whether the demo worker should give the seeded demo markets a price
+    /// history by trading them on behalf of the funded demo participants.
+    /// The entry point enables it for a demonstration server; tests and
+    /// benchmarks keep their deterministic starting prices.
+    pub demo_trades: bool,
+    /// Quote-signing secret, installed by the entry point so the demo worker
+    /// can trade through the ordinary signed-quote path instead of a
+    /// privileged shortcut. Absent in tests, which sign their own quotes.
+    pub quote_secret: Option<Arc<str>>,
     /// Runtime concurrency limits, from the environment at startup.
     pub tuning: Tuning,
     /// Serializes settlement passes: the worker loop and the on-demand
@@ -91,6 +100,17 @@ pub const BRACKET_RETENTION_MS: i64 = 86_400_000;
 pub const WELCOME_GIFT_UNITS: i64 = 10_000;
 /// The one-click demo account keeps its smaller development grant.
 const DEMO_GRANT_UNITS: i64 = 1_000;
+
+/// Demo market participants, funded once at initialization. They hold no
+/// email, password, or role, so nobody can sign in as one: they exist only
+/// so the demo's own markets carry real trades and a price history that is
+/// not a flat 50/50 line (see `worker::seed_demo_trades`).
+pub const DEMO_TRADERS: [(&str, &str); 4] = [
+    ("demo-trader-1", "Demo trader 1"),
+    ("demo-trader-2", "Demo trader 2"),
+    ("demo-trader-3", "Demo trader 3"),
+    ("demo-trader-4", "Demo trader 4"),
+];
 
 fn valid_display_name(name: &str) -> bool {
     name.len() >= 2 && name.len() <= 60 && !name.chars().any(char::is_control)
@@ -237,6 +257,8 @@ impl Store {
             live_mode,
             cache: Cache::new(0),
             ntubus_provider: None,
+            demo_trades: false,
+            quote_secret: None,
             tuning,
             tick_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
@@ -337,6 +359,42 @@ impl Store {
                     .await?;
                 }
             }
+            // Funded demo participants give the seeded markets something to
+            // show: they trade so the price history has movement. The schema
+            // requires a token hash on every user account, so each gets a
+            // random one whose plaintext is discarded here: nobody can sign
+            // in as a demo participant, and the grant is only reachable
+            // through the demo worker's trades.
+            for (id, display_name) in DEMO_TRADERS {
+                let unguessable_token = auth::random_token()?;
+                sqlx::query(
+                    "INSERT INTO accounts(id,display_name,kind,token_hash) VALUES($1,$2,'user',$3) ON CONFLICT (id) DO NOTHING",
+                )
+                .bind(id)
+                .bind(display_name)
+                .bind(auth::hash(unguessable_token.as_bytes()))
+                .execute(&mut *tx)
+                .await?;
+                let granted: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM ledger_transfers WHERE reference=$1)",
+                )
+                .bind(format!("grant:{id}"))
+                .fetch_one(&mut *tx)
+                .await?;
+                if !granted {
+                    lock_accounts(&mut tx, &[id.into(), "treasury".into()]).await?;
+                    transfer(
+                        &mut tx,
+                        "treasury",
+                        id,
+                        WELCOME_GIFT_UNITS * amm::CREDIT_SCALE,
+                        "grant",
+                        &format!("grant:{id}"),
+                        now,
+                    )
+                    .await?;
+                }
+            }
         }
         tx.commit().await?;
         Ok(offset)
@@ -349,6 +407,11 @@ impl Store {
     /// Local estimate of the database clock for preview-only responses.
     pub fn now_cached(&self) -> i64 {
         self.cache.now_ms()
+    }
+
+    /// The quote-signing secret, when the entry point installed one.
+    pub fn secret(&self) -> Option<String> {
+        self.quote_secret.as_deref().map(str::to_string)
     }
 
     pub async fn account_for_token(&self, token: &str) -> Result<Account> {

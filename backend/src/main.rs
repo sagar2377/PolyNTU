@@ -45,6 +45,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         settle_concurrency: env_number("POLYNTU_SETTLE_CONCURRENCY", 8)? as usize,
     };
     let mut store = Store::connect_with(&database_url, demo_mode, live_mode, tuning).await?;
+    // The demo worker trades the seeded markets through the ordinary signed
+    // quote path, so it needs the same secret the API signs with.
+    store.quote_secret = Some(quote_secret.clone().into());
+    store.demo_trades = demo_mode && !live_mode;
     // The NTU Bus API provider the bus adapter prefers over the simulated
     // feed; an empty value disables the live path.
     if let Ok(provider) = std::env::var("POLYNTU_NTUBUS_PROVIDER") {

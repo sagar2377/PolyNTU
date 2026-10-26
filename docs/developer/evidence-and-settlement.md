@@ -73,6 +73,85 @@ Two further evidence sources feed the same settlement pipeline. Both are fixed b
 
 Every series fixes its authority at creation, so only the private key's holder or the configured endpoint can resolve it. The platform has no evidence route of its own.
 
+### How the creator signature works end to end
+
+The creator authority is the only path where a human decides an outcome, so
+the whole mechanism is worth stating in one place: what the key is, where it
+lives, what exactly gets signed, and what the server checks.
+
+**1. The key is derived from the password, not generated.** At registration and
+at every login the browser derives an ed25519 keypair with WebCrypto:
+
+| Step | Value |
+|---|---|
+| Password input | The account password exactly as registered |
+| PRF | PBKDF2-HMAC-SHA256 |
+| Salt | UTF-8 `polyntu.resolution.v1:{email}`, email lowercased as registered |
+| Iterations | 600,000 |
+| Output | 32 bytes, used as the ed25519 seed |
+| Public key | The 32-byte verifying key, standard base64 (RFC 4648, padded) |
+
+Because the derivation is deterministic, holding the password is holding the
+key: any browser where the creator signs in can re-derive it. `auth.rs`
+(`resolution_key_seed`, `RESOLUTION_KEY_ITERATIONS`) implements the same
+contract server-side, and the unit test
+`resolution_key_seed_matches_the_browser_derivation` pins both implementations
+to one known-answer vector. The server never sees the password and performs no
+derivation of its own.
+
+**2. Only the public key is published.** Publishing a series with
+`{"kind":"creator","public_key":"…"}` stores the key on the `market_series`
+row. `protect_series` makes it part of the immutable published definition, so
+it cannot be swapped afterwards. The private key stays in the browser: the
+cached copy under `polyntu.v2.signing-key` is only a convenience, and the
+create form or the bracket page asks for the password again if the cache is
+missing or its public key does not match the series.
+
+**3. The signature covers exactly one decision.** The browser signs the UTF-8
+string
+
+```text
+polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}
+```
+
+with a fresh random nonce per resolution. Binding the instance id stops a
+signature from being replayed on another bracket of the same series; binding
+the outcome id stops a signature from being reinterpreted as a different
+result; the nonce makes two signatures for the same outcome distinct, so an
+intercepted signature cannot be reused as proof of a second resolution.
+
+**4. The server verifies before it records.** `POST
+/api/v2/instances/{id}/resolution` takes the bearer session and the
+`{outcome_id, nonce, signature}` triple. Inside one transaction
+`record_creator_resolution` checks, in order:
+
+1. the instance exists and its series authority is `creator` (a resolver-owned
+   or series-less market is rejected);
+2. the caller is the series creator (administrators included: only the creator
+   can sign);
+3. the instance is `closed` and its observation window has ended;
+4. the published evidence deadline has not passed;
+5. the instance has no creator resolution yet (one per instance; replays
+   conflict);
+6. the nonce is well formed and `verify_ed25519` accepts the signature over
+   `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}` against the
+   stored public key, failing closed on a malformed key or signature; and
+7. the outcome id is one of the published outcomes.
+
+Only then is evidence inserted: source `creator-signature`, parser
+`creator-signature-v1`, revision 0, with the outcome, nonce, signature, and
+public key in the payload. The instance points at it and settles through the
+same pipeline as any other evidence.
+
+**5. What this excludes.** The platform holds no private key, so it can verify
+a resolution but never forge one. There is no administrator evidence route at
+all, so a compromised administrator credential cannot resolve any market. The
+remaining trust is the creator's password: a lost password loses the key, and
+with no password recovery the affected markets void at their deadlines. The
+published public key also permits offline password guessing at one PBKDF2 run
+per guess, which the 600,000 iterations and 12-character minimum make
+expensive but do not eliminate.
+
 ## Public-data rule
 
 The selected normalized payload is returned by the public instance-detail endpoint and rendered inside a frontend disclosure. Therefore:
