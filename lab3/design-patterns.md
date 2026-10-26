@@ -54,7 +54,7 @@ Seven further candidates were assessed against the source; each is recorded with
 
 ## Patterns in the diagram
 
-The strategy participants are the only pattern boxes: the `<<strategy>>` package in the [diagram source](../docs/diagrams/class-diagram.puml) shows the `ResolutionAuthority` interface with its three implementations, the `MarketLifecycleControl ..> ResolutionAuthority` delegation arrow, and `ExternalResolverAuthority ..> ResolverGateway`. The adapter and observer appear as ordinary stereotypes - `NtuBusAdapter` as a `<<boundary>>` behind `ResolverGateway`, `EventBus`/`EventRuntime` as `<<infrastructure>>` - because their participants are runtime structures rather than interchangeable behaviours; stereotyping them as patterns would suggest a code refactor this write-up does not propose. The factory-method roles are operations on existing classes (`MarketSeries.bracketSpec()`, `MarketCreationControl.createFundedInstance()`), so no new box was introduced for them either. This keeps the diagram's 39 classes and its legend counts unchanged from the maintained source.
+The strategy participants are the only pattern boxes: the `<<strategy>>` package in the [diagram source](../docs/diagrams/class-diagram.puml) shows the `ResolutionAuthority` interface with its three implementations, the `MarketLifecycleControl ..> ResolutionAuthority` delegation arrow, and `ExternalResolverAuthority ..> ResolverGateway`. The adapter and observer appear as ordinary stereotypes - `NtuBusAdapter` as a `<<boundary>>` behind `ResolverGateway`, `EventBus`/`EventRuntime` as `<<infrastructure>>` - because their participants are runtime structures rather than interchangeable behaviours; stereotyping them as patterns would suggest a code refactor that is not proposed. The factory-method roles are operations on existing classes (`MarketSeries.bracketSpec()`, `MarketCreationControl.createFundedInstance()`), so no new box was introduced for them either. This keeps the diagram's 39 classes and its legend counts unchanged from the maintained source.
 
 ## Pattern-to-design-class map
 
@@ -76,8 +76,6 @@ The strategy participants are the only pattern boxes: the `<<strategy>>` package
 
 ## References
 
-- [Class responsibilities and pattern assessment](../docs/developer/class-diagram.md) - maintained detail: the diagram legend, container classes, and the pattern table this write-up expands.
+- [Class responsibilities and pattern assessment](../docs/developer/class-diagram.md) - maintained detail: the diagram legend, container classes, and the pattern table.
 - [Design class diagram source](../docs/diagrams/class-diagram.puml) - the `<<strategy>>` package and the collaboration arrows.
 - [Architecture write-up](architecture.md) - the layered style and runtime tasks these patterns sit in.
-
-All source anchors were checked against the repository on 26 October 2026 by reading the files; no builds, tests, or the application were run, and this documentation change touches no application code.

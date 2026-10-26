@@ -153,6 +153,6 @@ Current limitations recorded in the maintained references:
 
 - [Database reference](../docs/developer/database.md) - authoritative table-by-table and migration reference.
 - [Architecture](../docs/architecture.md) - transaction boundaries, lifecycle and immutability, data retention, recovery model.
-- [Class diagram and responsibilities](../docs/developer/class-diagram.md) - the ten entities, containers, and value types this write-up maps onto storage.
+- [Class diagram and responsibilities](../docs/developer/class-diagram.md) - the ten entities, containers, and value types mapped onto storage.
 - [Security and privacy](../docs/developer/security-and-privacy.md) - database controls and backup sensitivity.
 - [Architecture write-up](architecture.md) and [design notes](steps-1-4-handoff.md) - the other Lab 3 contributions.

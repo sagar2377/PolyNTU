@@ -1,8 +1,6 @@
-# Lab 3 draft design class model
+# Lab 3 design class model
 
-Status: **draft covering original checklist steps 1-8 and the step-12 detailed operations**, reviewed against source on **26 October 2026**. Persistence and access-control design (manual 3.2.1) are delivered in the [persistent-data](../../lab3/persistent-data.md) and [access-control](../../lab3/access-control.md) write-ups; the implementation audit (3.4) remains open.
-
-This draft refines the existing conceptual/design diagram using the [use cases](use-cases.md) and active implementation. It covers manual 3.1.1 to 3.1.4: the design model, architecture, startup and control classes, collection containers, patterns, the dialog maps and the detailed attributes and operations. It retains the existing entity attributes and associations, adds startup wiring, and makes coordination ownership explicit. It does not establish the provenance of an untouched Lab 2 diagram. See the [steps 1-4 handoff](../../lab3/steps-1-4-handoff.md).
+This document refines the existing conceptual/design diagram using the [use cases](use-cases.md) and active implementation. It covers manual 3.1.1 to 3.1.4: the design model, architecture, startup and control classes, collection containers, patterns, the dialog maps and the detailed attributes and operations. It retains the existing entity attributes and associations, adds startup wiring, and makes coordination ownership explicit. It does not establish the provenance of an untouched Lab 2 diagram. See the [steps 1-4 handoff](../../lab3/steps-1-4-handoff.md).
 
 The diagram has **39 classes: 10 entities, 9 boundaries, 8 controls, 4 infrastructure classes, 1 active runtime abstraction, 3 containers and 4 strategy classes**. The controls comprise the original **seven use-case controls plus StartupControl**; ApiRouter and NtuBusAdapter are the eighth and ninth boundaries. The strategy classes are one interface and three implementations. These are design abstractions, not a claim that all 39 names exist as literal Rust/React classes. One self-contained PlantUML file defines the diagram.
 
@@ -130,7 +128,7 @@ The lifecycle control is invoked by BackgroundWorker for background activity, Ma
 | TradingControl / MarketLifecycleControl | Trading owns atomic trade effects and quote validation; lifecycle owns post-close resolution, claims, fee distribution, and cleanup. PortfolioControl only reads the results. |
 | Controls / helpers | `amm.rs`, `fee.rs`, and cryptographic functions perform reusable calculations/verification; they do not become additional use-case controls. Provider calls stay behind ResolverGateway. |
 
-The seven groups have high cohesion around their use cases. MarketLifecycleControl is the broadest, but its scheduling, evidence/resolution, and settlement/cleanup responsibilities all coordinate one market lifecycle; this draft retains one logical facade. Loose coupling is supported by the provider contract and pure pricing/fee helpers. Encapsulation is expressed by giving each mutation a clear owner and enforcing invariants inside its service/transaction path. The current Store/API SQL mix limits physical separation, so these are responsibility decisions rather than a completed layer refactor. Existing operation visibility is not being comprehensively redesigned in this pass.
+The seven groups have high cohesion around their use cases. MarketLifecycleControl is the broadest, but its scheduling, evidence/resolution, and settlement/cleanup responsibilities all coordinate one market lifecycle; it stays one logical facade. Loose coupling is supported by the provider contract and pure pricing/fee helpers. Encapsulation is expressed by giving each mutation a clear owner and enforcing invariants inside its service/transaction path. The Store/API SQL mix limits physical separation, so these are responsibility decisions rather than a layer refactor.
 
 TradingControl's `recoverReceipt()` replays the exact saved request and idempotency key through `execute`; there is no separate recovery endpoint. Demo clock advancement and the administrator's manual worker tick are existing operational paths in `api.rs`: after the administrator gate they invoke `advance_demo_clock` and/or `worker::tick`, reusing lifecycle processing. They do not introduce additional user use cases in this model.
 
@@ -175,20 +173,20 @@ In the diagram, `MarketInstance` owns one `OutcomeSet`, which owns 2 to 8 `Outco
 
 ## Design patterns
 
-"In code" means the structure exists in the source; "design level" means the diagram expresses it but Rust implements it with a lighter idiom. Operation signatures in the diagram are abbreviated design-level forms: request structs stand for their expanded fields, and `ExternalResolverAuthority.acceptEvidence` omits its `replay` argument, which only decides whether a demo-mode answer may bypass the published evidence deadline.
+Operation signatures in the diagram are abbreviated forms: request structs stand for their expanded fields, and `ExternalResolverAuthority.acceptEvidence` omits its `replay` argument, which only decides whether a demo-mode answer may bypass the published evidence deadline.
 
-| Pattern | Problem and roles | Status |
+| Pattern | Problem and roles | Source anchor |
 |---|---|---|
-| Strategy | Three resolution authorities (administrator, creator signature, external resolver) accept evidence differently but share one lifecycle. `ResolutionAuthority` is implemented by `AdminAuthority`, `CreatorSignedAuthority` and `ExternalResolverAuthority`; `MarketLifecycleControl` delegates by the series' `AuthorityKind`. | Design level: the source stores a CHECK-constrained `resolution_authority` text column and reaches the three implementations through separate routes and worker branches; there is no `AuthorityKind` Rust type and no single `match` dispatch point. |
-| Adapter | The bus provider's data differs from the fixed resolver contract. `NtuBusAdapter` converts it to one published outcome id. | In code (`ntu_bus_answer`) |
-| Observer | Browsers learn of changes without polling. `EventBus` keeps a channel per instance and SSE clients subscribe. | In code (`EventBus::subscribe`) |
-| Factory Method | A recurring series creates a correctly timed instance per slot. `MarketSeries.bracketSpec` builds the definition for the scheduler, and `createFundedInstance` creates it; creator publication uses the parallel `NewSeries.instanceSpec` builder. | In code (`Series::bracket_spec`, `NewSeries::instance_spec`) |
+| Strategy | Three resolution authorities (administrator, creator signature, external resolver) accept evidence differently but share one lifecycle. `ResolutionAuthority` is implemented by `AdminAuthority`, `CreatorSignedAuthority` and `ExternalResolverAuthority`; `MarketLifecycleControl` delegates by the series' `AuthorityKind`. | The `resolution_authority` text column selects the path. There is no `AuthorityKind` Rust type and no single `match` dispatch point: the three implementations are reached through separate routes and worker branches, each re-checking its own authority. |
+| Adapter | The bus provider's data differs from the fixed resolver contract. `NtuBusAdapter` converts it to one published outcome id. | `ntu_bus_answer` |
+| Observer | Browsers learn of changes without polling. `EventBus` keeps a channel per instance and SSE clients subscribe. | `EventBus::subscribe` |
+| Factory Method | A recurring series creates a correctly timed instance per slot. `MarketSeries.bracketSpec` builds the definition for the scheduler, and `createFundedInstance` creates it; creator publication uses the parallel `NewSeries.instanceSpec` builder. | `Series::bracket_spec`, `NewSeries::instance_spec` |
 
 State, Singleton and Repository were considered and not applied: instance states are enforced by database constraints, `AppState` and `Store` are cloned handles passed explicitly, and `Store` mixes service logic with SQL.
 
 ## Attributes and operations
 
-Boundary operations come from the dialog maps. Control operations follow the `Store`, `execution.rs` and `resolution.rs` methods listed in the control table above. Entity attributes are retained from the earlier draft; the entity and container operations added in this step are:
+Boundary operations come from the dialog maps. Control operations follow the `Store`, `execution.rs` and `resolution.rs` methods listed in the control table above. Entity attributes are retained from the earlier model; the entity and container operations added here are:
 
 | Class | Operation | Code anchor |
 |---|---|---|
@@ -232,7 +230,7 @@ Outcome is stored in the instance's outcome JSON and corresponding inventory arr
 
 Startup/shared runtime support is now included. Operational records such as idempotency, audit, SSE outbox, and cache entries remain outside the entity boxes. Receipt recovery uses idempotency records, while creator decisions and suspensions append audit records. Existing retention is preserved: eligible recurring instances and their associated trading/settlement records are purged, while ledger transfers and reserve accounts survive.
 
-Operation names communicate responsibilities only, and the model remains a design view: it does not rename Rust functions or move logic between modules. This draft does not propose an administrator screen, text search, server logout or application refactor. Still open: persistent data and access-control design (manual 3.2.1), the AI exercises (3.3) and the implementation audit (3.4).
+Operation names communicate responsibilities only, and the model remains a design view: it does not rename Rust functions or move logic between modules. It does not propose an administrator screen, text search, server logout or application refactor.
 
 ## Re-rendering
 

@@ -183,7 +183,6 @@ async function publishSignedMarket(cdp, title, closeEpochMs, password) {
   await evaluate(cdp, `__set('#market-criterion', ${JSON.stringify(`Resolves yes when the e2e station reports at least the threshold; e2e market ${title}`)})`);
   await evaluate(cdp, `__set('#market-station', 'e2e-station')`);
   await evaluate(cdp, `__set('#market-threshold', '100')`);
-  await evaluate(cdp, `__set('#market-source', 'e2e-source')`);
   await evaluate(cdp, `__set('#market-close', ${JSON.stringify(localInputValue(closeEpochMs))})`);
   // A 5-minute observation leaves a 60-second resolvable window between the
   // finalize point and the evidence deadline; the advance helper lands the

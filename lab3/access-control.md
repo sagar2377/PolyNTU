@@ -113,7 +113,7 @@ A series fixes its resolution authority at creation ([ADR 0007](../docs/decision
 | `AccountControl.authenticate` | Registration validation, password verification, and single-token session rotation. | `register_account` and `login` in [store.rs](../backend/src/store.rs) with [auth.rs](../backend/src/auth.rs) helpers. |
 | `AdminControl.authorize` | Gates every privileged route before coordination. | `AppState::require_admin` and the admin handlers in [api.rs](../backend/src/api.rs). |
 | `AdminApi` | Boundary that receives authorized administrator requests. | `/api/v2/admin/*` routes in [api.rs](../backend/src/api.rs). |
-| `ResolutionAuthority` strategies | `AdminAuthority`, `CreatorSignedAuthority`, and `ExternalResolverAuthority` accept evidence differently under one lifecycle. | Design level: `AuthorityKind` and `match` dispatch over `record_evidence`, `record_creator_resolution`, and `record_resolver_evidence`. |
+| `ResolutionAuthority` strategies | `AdminAuthority`, `CreatorSignedAuthority`, and `ExternalResolverAuthority` accept evidence differently under one lifecycle. | The `resolution_authority` column selects the path; `record_evidence`, `record_creator_resolution`, and `record_resolver_evidence` each re-check their own authority and refuse the others. |
 | `TradingControl` | Binds quotes to accounts and enforces the self-trading prohibition. | `quote` and `execute` in [execution.rs](../backend/src/execution.rs). |
 | `StartupControl` | Validates distinct quote and admin secrets of at least 32 characters and rejects a public demo-mode bind. | `AppState::new` in [api.rs](../backend/src/api.rs); startup in [main.rs](../backend/src/main.rs). |
 

@@ -25,7 +25,7 @@ The source of the academic requirements is the five-page **Lab 3 Manual-1.pdf** 
 | 11. Design patterns | 3.2.2 | See step 6. |
 | 12. More class detail | 3.2.3 | See step 8. |
 
-Manual 2.3 asks for encapsulation, loose coupling, and high cohesion; the design rationale addresses these. Manual 2.5 asks for traceability and justification of technology choices; this contribution supplies use-case/source mappings and test pointers. Manual 3.1.3 refers to Fox pp. 341-345; this contribution applies the startup/control bullets reproduced in the manual and does not claim an independent review of those textbook pages.
+Manual 2.3 asks for encapsulation, loose coupling, and high cohesion; the design rationale addresses these. Manual 2.5 asks for traceability and justification of technology choices; the use-case/source mappings and test pointers below supply it. Manual 3.1.3 refers to Fox pp. 341-345; the design applies the startup/control bullets reproduced in the manual rather than an independent review of those textbook pages.
 
 ## Files and source of truth
 
@@ -80,7 +80,7 @@ Secrets are validated by AppState::new after database initialization. Initializa
 | MarketLifecycleControl | Scheduled spawning/closure, evidence/resolution, suspension mutation, settlement/fee split, deadline voiding, expired-bracket cleanup. | worker::tick/process_instance; Store::spawn_due_brackets/purge_expired_brackets; resolution.rs and fee helpers. |
 | AdminControl | Privileged entry-point gate, creator decisions, provisioning/grants, reconciliation, and coordination of direct creation/evidence/suspension. | AppState::require_admin and admin handlers; Store decision/provision/reconcile methods and lifecycle methods. |
 
-New explicit logical dependencies are AdminControl -> MarketCreationControl, AdminControl -> MarketLifecycleControl, MarketLifecycleControl -> MarketCreationControl, and BackgroundWorker -> MarketLifecycleControl. The first three describe responsibility allocation currently implemented through shared Store methods, not new controller instances or calls added by this contribution.
+New explicit logical dependencies are AdminControl -> MarketCreationControl, AdminControl -> MarketLifecycleControl, MarketLifecycleControl -> MarketCreationControl, and BackgroundWorker -> MarketLifecycleControl. The first three describe responsibility allocation implemented through shared Store methods, not new controller instances or calls.
 
 The seven controls remain cohesive around use cases. Lifecycle is the broadest but coordinates the same market across scheduling, evidence/resolution, and settlement/cleanup. Pure calculations/verification remain helpers, and external calls remain behind ResolverGateway. Mutation ownership and transaction checks provide encapsulation; shared contracts/helpers reduce coupling. Physical separation is limited by the existing Store/API SQL mix.
 
@@ -95,7 +95,7 @@ Important interpretation details:
 
 The complete use-case-to-boundary/control table is in [class-diagram.md](../docs/developer/class-diagram.md#use-case-coverage), based on the existing [use-case descriptions](../docs/developer/use-cases.md) and [diagram](../docs/diagrams/use-case.puml). Those artifacts were not edited.
 
-The following test names were found in [backend/tests/integration.rs](../backend/tests/integration.rs). These are navigation examples, not an exhaustive test matrix or evidence that the tests were run in this pass.
+The following test names are in [backend/tests/integration.rs](../backend/tests/integration.rs). They are navigation examples, not an exhaustive test matrix.
 
 | Requirement/design path | Existing test examples |
 |---|---|
