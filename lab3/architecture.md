@@ -10,8 +10,6 @@ The maintained detailed explanation is [docs/architecture.md](../docs/architectu
 
 PolyNTU uses a **layered client-server architecture with a monolithic Rust backend**. A React browser communicates with an Axum HTTP API and receives public Server-Sent Events (SSE). PostgreSQL stores durable state. The Rust executable serves the built frontend and runs the lifecycle worker and event tasks in the same process. Configured external resolvers and the optional Python NTU bus provider are separate integration endpoints.
 
-The bus adapter tries the provider only for eligible bus instances marked `simulated`, after their observation window ends. It records whether the provider or simulated fallback supplied the outcome. Generic resolver failures instead retry until the deadline and then void; they do not automatically use this fallback. Presence of the provider code is established by source inspection, not a live-service verification.
-
 ## Responsibility allocation
 
 | Logical responsibility | Implementation | Design model |
