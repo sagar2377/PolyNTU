@@ -1,8 +1,6 @@
 # Design patterns - Lab 3
 
-## Selection method
-
-Each candidate followed the same procedure: identify the varying dimension or recurring problem in the source, match it against a pattern's intent, name the participants as design classes, and record the consequences for this system with evidence. Pattern names follow the standard GoF catalogue, with Repository and Unit of Work taken from the enterprise-patterns literature. Patterns are claimed only where the participant structure exists, not where code merely resembles the shape; candidates that failed the evidence test are recorded below with reasons rather than omitted. The four catalogue entries are the patterns that passed.
+Pattern names follow the standard GoF catalogue, with Repository and Unit of Work taken from the enterprise-patterns literature.
 
 ## Pattern catalogue
 
@@ -40,7 +38,7 @@ Each candidate followed the same procedure: identify the varying dimension or re
 
 ## Patterns considered and rejected
 
-Seven further candidates were assessed against the source; each is recorded with the concrete reason it is not claimed, and partial presences are stated as partial.
+Each candidate below is recorded with the reason it is not claimed; partial presences are stated as partial.
 
 | Pattern | Reason grounded in this codebase |
 |---|---|
