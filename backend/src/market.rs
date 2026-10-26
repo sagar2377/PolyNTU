@@ -580,8 +580,8 @@ fn every_day() -> Vec<u32> {
     vec![1, 2, 3, 4, 5, 6, 7]
 }
 
-/// How a series resolves (ADR 0007), fixed at creation. Absent means the
-/// platform administrator resolves it, as before.
+/// How a series resolves (ADR 0007), fixed at creation. The platform
+/// administrator is never an authority.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResolutionSpec {
@@ -640,10 +640,9 @@ pub struct NewSeries {
     /// fee and pay no creator share (welfare markets like bus timing).
     #[serde(default = "default_fee_charged")]
     pub fee_charged: bool,
-    /// Resolution authority fixed at creation (ADR 0007); absent means the
-    /// platform administrator resolves.
-    #[serde(default)]
-    pub resolution: Option<ResolutionSpec>,
+    /// Resolution authority fixed at creation (ADR 0007): the creator signs
+    /// every human resolution, or an external resolver answers automatically.
+    pub resolution: ResolutionSpec,
     pub schedule: Schedule,
 }
 
@@ -757,9 +756,7 @@ impl NewSeries {
                 "Publish a title, source and a specific resolution criterion",
             ));
         }
-        if let Some(resolution) = &self.resolution {
-            resolution.validate()?;
-        }
+        self.resolution.validate()?;
         self.schedule.validate(now)
     }
 
@@ -913,9 +910,9 @@ pub fn demo_series_specs(resolver_endpoint: &str) -> Vec<NewSeries> {
         source_id: "polyntu-simulator-v1".into(),
         liquidity_units: 100,
         fee_charged: false,
-        resolution: Some(ResolutionSpec::Resolver {
+        resolution: ResolutionSpec::Resolver {
             endpoint: resolver_endpoint.into(),
-        }),
+        },
         schedule: Schedule::Recurring {
             interval_ms: 120000,
             // Each line's published service span, 07:30 to 23:00 SGT.

@@ -64,9 +64,7 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
       }
       const resolution = resolutionKind === "creator"
         ? { kind: "creator", public_key: pair?.public_key }
-        : resolutionKind === "resolver"
-          ? { kind: "resolver", endpoint: resolverEndpoint.trim() }
-          : undefined;
+        : { kind: "resolver", endpoint: resolverEndpoint.trim() };
       const created = await api.createSeries({ title: title.trim(), resolution_criterion: criterion.trim(), rule, source_id: "polyntu-creator", liquidity_units: 100, fee_charged: feeCharged, resolution, schedule });
       if (resolutionKind === "creator" && pair) storeSigningKey(account.email, pair);
       onCreated(created.id);

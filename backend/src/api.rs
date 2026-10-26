@@ -4,9 +4,9 @@ use crate::{
     error::{Error, Result},
     events::EventBus,
     execution::{QuoteRequest, TradeRequest},
-    market::{EvidenceInput, NewInstance, NewSeries},
+    market::NewSeries,
     resolver,
-    store::{Account, Store, instance_view},
+    store::{Account, Store},
     worker,
 };
 use axum::{
@@ -109,13 +109,11 @@ pub fn router(state: AppState, origins: Vec<HeaderValue>) -> Router {
             post(request_verification).get(my_verification_request),
         )
         .route("/admin/accounts", post(admin_account))
-        .route("/admin/instances", post(create_instance))
         .route("/admin/verification-requests", get(verification_list))
         .route(
             "/admin/verification-requests/{id}/decision",
             post(verification_decision),
         )
-        .route("/admin/instances/{id}/evidence", post(evidence))
         .route("/admin/instances/{id}/suspension", post(suspend))
         .route("/admin/clock/advance", post(advance))
         .route("/admin/reconcile", get(reconcile))
@@ -370,17 +368,6 @@ async fn trade(
             .await?,
     ))
 }
-async fn create_instance(
-    State(s): State<AppState>,
-    headers: HeaderMap,
-    Json(req): Json<NewInstance>,
-) -> Result<Json<Value>> {
-    s.require_admin(&headers).await?;
-    Ok(Json(instance_view(
-        &s.store.create_instance(&req).await?,
-        s.store.now().await?,
-    )?))
-}
 async fn request_verification(
     State(s): State<AppState>,
     headers: HeaderMap,
@@ -436,15 +423,6 @@ async fn verification_decision(
             .decide_verification_request(&id, req.approve, req.reason.as_deref())
             .await?,
     ))
-}
-async fn evidence(
-    State(s): State<AppState>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-    Json(req): Json<EvidenceInput>,
-) -> Result<Json<Value>> {
-    s.require_admin(&headers).await?;
-    Ok(Json(s.store.ingest_evidence(&id, &req).await?))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

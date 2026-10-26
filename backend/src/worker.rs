@@ -146,14 +146,15 @@ async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
         }
         None => None,
     };
+    // Only the demo's own one-time markets are simulated directly. Every
+    // series-owned market settles through its fixed authority: a creator
+    // signature, or the external resolver below.
     if store.demo_mode
         && !store.live_mode
         && instance.data_mode == "simulated"
         && instance.state == "closed"
         && instance.evidence_id.is_none()
-        && series
-            .as_ref()
-            .is_none_or(|s| s.resolution_authority != "resolver")
+        && series.is_none()
     {
         let secret: String =
             sqlx::query_scalar("SELECT simulation_secret FROM settings WHERE singleton")
@@ -164,7 +165,7 @@ async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
             window_start_ms: instance.observation_start_ms, window_end_ms: instance.observation_end_ms,
             observation: instance.rule.simulated(&private_seed, instance.observation_start_ms, instance.observation_end_ms),
             reference: "Deterministic demo observation, generated after the observation window; no live source".into() };
-        match store.record_evidence(&instance.id, &input, true).await {
+        match store.record_evidence(&instance.id, &input).await {
             Ok(_) | Err(Error::Conflict(_)) => {}
             Err(e) => {
                 tracing::error!(instance_id=%instance.id, error=%e, "simulated observation failed");

@@ -45,7 +45,7 @@ Because the hash covers the full JSON representation accepted by Serde, changing
 3. authoritative time read;
 4. exact event-ID duplicate lookup;
 5. terminal-state late rejection with committed audit record;
-6. resolution-authority exclusion (ADR 0007): manual evidence is rejected unless the series authority is `admin`;
+6. series-owned market rejection (ADR 0007): this simulator path settles only the demo's own series-less markets;
 7. manual/simulator mode authorization;
 8. observation-end and manual-deadline checks;
 9. exact source/window match;
@@ -71,7 +71,7 @@ Two further evidence sources feed the same settlement pipeline. Both are fixed b
 - `creator-signature`: the series creator submits `POST /api/v2/instances/{id}/resolution` with an ed25519 signature over `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}`, verified against the public key fixed at series creation. Only the creator may submit, the instance must be closed with the observation window ended and the deadline not passed, and one resolution per instance is allowed (replays conflict). The verified outcome is stored as evidence (source `creator-signature`, parser `creator-signature-v1`, revision 0) whose payload carries the outcome, nonce, signature, and public key; the instance points at it and settles like any other evidence.
 - `external-resolver`: from the finalize window the settlement worker POSTs the fixed request to the series endpoint and parses the answer against the published options. A valid outcome ID is stored as evidence (source `external-resolver`, parser `external-resolver-v1`, revision 0) with the request and response in the payload, and settles the same way. `pending`, malformed, and unreachable answers record nothing and retry on every tick until the published evidence deadline voids the instance.
 
-The administrator exclusion in step 6 above means administrator evidence cannot resolve a creator-signed or resolver-settled market, even with full API access: no valid signature or resolver answer can be produced through that route. Only the private key's holder or the endpoint can resolve.
+Every series fixes its authority at creation, so only the private key's holder or the configured endpoint can resolve it. The platform has no evidence route of its own.
 
 ## Public-data rule
 
@@ -167,7 +167,7 @@ When no unclaimed positive-position account remains, the transaction transfers t
 
 Suspension is an independent boolean available only while persisted state is open. It stops new quotes/trades without altering close or evidence times. Every change requires a 5–1,000 character reason, advances the version, and appends audit/event records.
 
-Suspension is not cancellation. Unless an administrator supplies valid evidence or the market reaches its missing-evidence deadline, normal resolution rules still apply.
+Suspension is not cancellation. Unless the market's resolution authority settles it or it reaches its missing-evidence deadline, normal resolution rules still apply.
 
 ## External-provider assumption
 

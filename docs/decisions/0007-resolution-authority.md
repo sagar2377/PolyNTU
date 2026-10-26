@@ -73,3 +73,13 @@ The demo bus series now resolves through the external-resolver contract instead 
 - Resolver-authority instances never fall back to the simulated-evidence path the demo uses for administrator-authority markets, so a broken resolver surfaces as retries and a deadline void instead of being masked by automatic evidence. The adapter's own fallback to the deterministic feed is explicit and tagged in the evidence, not a mask.
 - `record_resolver_evidence` takes a replay flag: a valid answer for a simulated instance is recorded even when a demo clock jump skipped the ask window past the published deadline, because the answer is deterministic and mirrors the simulated-evidence replay path; answers for manual instances keep the hard deadline.
 - The resolve controls and password prompt moved from the series page to every bracket's market page when the series page was merged into it; the signing path itself is unchanged.
+
+## Amendment (27 October 2026): the administrator is not an authority
+
+The administrator authority value is removed entirely rather than only being excluded from creator- and resolver-owned series. The decision above already said the platform must not be able to resolve a creator's market; keeping a platform authority for "its own" markets left a route that could resolve anything not explicitly protected, and the create form had stopped offering it.
+
+- Migration `0015_creator_and_resolver_authority_only.sql` deletes the remaining `admin`-authority series with their whole subtree, drops the column default, and constrains `resolution_authority` to `creator` and `resolver`.
+- `ResolutionSpec` is no longer optional in `NewSeries`: publishing a series states its authority. `POST /api/v2/admin/instances` and `POST /api/v2/admin/instances/{id}/evidence` are removed.
+- `record_evidence` is now only the demo simulator's path, and it refuses any series-owned market, so the simulator cannot settle a market whose authority is fixed.
+- The demo's own one-time markets carry no series and keep settling through the worker's deterministic simulator. The seeded bus series are resolver-authority and unaffected.
+- The suspension, clock-advance, worker-tick, provisioning, verification, and reconciliation routes are unchanged: they are operational controls, not resolution.

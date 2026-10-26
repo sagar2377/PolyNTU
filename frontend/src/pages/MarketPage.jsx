@@ -56,9 +56,7 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
   // decides, or a configured external source answers.
   const resolutionMode = series?.resolution?.authority === "creator"
     ? "Manually resolved by the market creator"
-    : series?.resolution?.authority === "resolver"
-      ? "Automatically resolved by the external source the creator set"
-      : "Resolved by the platform administrator";
+    : "Automatically resolved by the external source the creator set";
   const key = localKey || (canSign ? accountSigningKey(account) : null);
   const keyMatches = key?.public_key === series?.resolution?.public_key;
   const resolve = async (bracket, outcomeId, pair) => {
@@ -112,7 +110,7 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
         {recurring && <div><dt>Live horizon</dt><dd>{series.schedule.max_concurrency} brackets, about {series.schedule.max_concurrency * intervalMinutes} minutes ahead</dd></div>}
         {recurring && <div><dt>Runs until</dt><dd>{series.schedule.end_ms ? timestamp(series.schedule.end_ms) : "Perpetual"}</dd></div>}
         <div><dt>Trading fee</dt><dd>{series.fee_charged ? "25 bps, half funds the creator" : "None, a welfare market"}</dd></div>
-        <div><dt>Resolved by</dt><dd>{series.resolution?.authority === "creator" ? "The creator's signed statement" : series.resolution?.authority === "resolver" ? (series.resolution.endpoint?.includes("/resolvers/ntu-bus") ? "NTU Bus API" : `An automatic resolver (${series.resolution.endpoint})`) : "Platform administrator evidence"}</dd></div>
+        <div><dt>Resolved by</dt><dd>{series.resolution?.authority === "creator" ? "The creator's signed statement" : series.resolution?.endpoint?.includes("/resolvers/ntu-bus") ? "NTU Bus API" : `An automatic resolver (${series.resolution?.endpoint})`}</dd></div>
         <div><dt>Series state</dt><dd>{series.state === "active" ? "Active" : "Ended"}</dd></div>
       </dl>
       <p>{series.resolution_criterion}</p>

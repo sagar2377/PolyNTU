@@ -938,7 +938,10 @@ impl Store {
         let mut tx = self.pool.begin().await?;
         let now = db_now(&mut tx).await?;
         spec.validate(now)?;
-        if let Some(crate::market::ResolutionSpec::Creator { .. }) = &spec.resolution {
+        if matches!(
+            &spec.resolution,
+            crate::market::ResolutionSpec::Creator { .. }
+        ) {
             // Human authority needs an account to hold the signing key.
             if creator.is_none() {
                 return Err(invalid(
@@ -1005,11 +1008,10 @@ impl Store {
                 }
             };
         let (authority, public_key, endpoint) = match &spec.resolution {
-            None => ("admin", None, None),
-            Some(crate::market::ResolutionSpec::Creator { public_key }) => {
+            crate::market::ResolutionSpec::Creator { public_key } => {
                 ("creator", Some(public_key.trim()), None)
             }
-            Some(crate::market::ResolutionSpec::Resolver { endpoint }) => {
+            crate::market::ResolutionSpec::Resolver { endpoint } => {
                 ("resolver", None, Some(endpoint.trim()))
             }
         };

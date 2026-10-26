@@ -138,17 +138,6 @@ The policy is to never edit an applied migration and to add a numbered file inst
 
 The schema is not squashed into a single file for three reasons. Applied databases hold the checksums of the twelve files, so a replacement file would fail verification. Existing databases upgrade by applying only the new files, while a squashed file describes only a fresh database and provides no upgrade path. And the sequence stays traceable: [ADR 0004](../docs/decisions/0004-trade-fees.md) cites migration 0005, [ADR 0005](../docs/decisions/0005-ntu-accounts-and-creator-roles.md) cites 0006-0008, [ADR 0006](../docs/decisions/0006-market-series-and-recurrence.md) cites 0009, and [ADR 0007](../docs/decisions/0007-resolution-authority.md) cites 0010. The repeated `CREATE OR REPLACE FUNCTION` pattern - `protect_instance` in 0002, 0005, 0009 and `protect_series` in 0009, 0010, 0012 - shows how a definition grows one migration at a time: each replacement widens the protected column set, and each step remains reproducible on a database that applied only the earlier files. Any change is verified against both fresh creation and upgrade.
 
-## Production gaps
-
-Current limitations recorded in the maintained references:
-
-- One database role: application processes use a single database URL rather than separate least-privilege migration and runtime roles ([security and privacy](../docs/developer/security-and-privacy.md#database-controls)).
-- No idempotency retention: idempotency rows are not expired or compacted, so the table grows with every distinct trade key.
-- No general compaction: outbox rows outside the bracket purge are never removed, and operator monitoring is manual.
-- Backup sensitivity: a useful backup must include the entire database, and backups carry token hashes, password hashes, public evidence payloads, the simulation secret, and operational history, so they must be protected as sensitive.
-- No general ledger correction: corrections require a new compensating transfer, and no correction endpoint currently exists.
-- Fixed categories: the `templates` category check must be migrated when a genuinely new category is added.
-
 ## References
 
 - [Database reference](../docs/developer/database.md) - authoritative table-by-table and migration reference.

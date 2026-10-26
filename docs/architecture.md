@@ -112,7 +112,7 @@ PostgreSQL is the durable authority for time-adjusted cutoffs, accounts, ledger 
 
 The repository includes a [Python NTU bus provider](../provider/ntubus/README.md) and the built-in `POST /api/v2/resolvers/ntu-bus` adapter. For eligible bus instances marked `simulated`, the adapter first asks the configured provider (default `http://127.0.0.1:8090/resolve`) after the observation window ends. An explicitly empty `POLYNTU_NTUBUS_PROVIDER` disables that path. If the provider does not return a valid outcome after bounded attempts, the adapter uses deterministic simulated evidence. Its response records `ntubus-live` or `simulated-fallback` as the source. This provider-specific fallback is distinct from the generic resolver retry/deadline policy.
 
-Other integrations can normalize provider data into `EvidenceInput` for the administrator route or implement the fixed resolver contract and return a published outcome ID ([ADR 0007](decisions/0007-resolution-authority.md)). The scoped Lab 3 review establishes that this integration code exists; it does not establish live feed availability, accuracy, or production readiness. Generic resolver failures continue to retry until the published deadline and then void, rather than silently using simulated evidence.
+Other integrations implement the fixed resolver contract and return a published outcome ID ([ADR 0007](decisions/0007-resolution-authority.md)). The scoped Lab 3 review establishes that this integration code exists; it does not establish live feed availability, accuracy, or production readiness. Generic resolver failures continue to retry until the published deadline and then void, rather than silently using simulated evidence.
 
 ## Authoritative time
 
@@ -158,7 +158,7 @@ Series publication validates the schedule, requires the creator role under an ac
 
 ### Evidence
 
-Evidence ingestion locks the instance, validates the source/window/state/deadline, checks duplicate event content and source revisions, evaluates the typed observation, appends the record, points the instance to the highest revision, advances its version, audits the receipt, and appends an event in one transaction. Manual evidence is rejected outright for series whose resolution authority is not `admin` (ADR 0007). Creator-signed resolutions and validated resolver answers enter through their own recorders under the same instance lock; neither runs rule evaluation, because the authority itself names the outcome.
+Evidence ingestion locks the instance, validates the source/window/state/deadline, checks duplicate event content and source revisions, evaluates the typed observation, appends the record, points the instance to the highest revision, advances its version, audits the receipt, and appends an event in one transaction. The simulator path refuses any series-owned market, so it can only settle the demo's own series-less markets (ADR 0007). Creator-signed resolutions and validated resolver answers enter through their own recorders under the same instance lock; neither runs rule evaluation, because the authority itself names the outcome.
 
 ### Settlement
 

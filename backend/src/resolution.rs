@@ -10,10 +10,6 @@ use sqlx::{Row, types::Json};
 use uuid::Uuid;
 
 impl Store {
-    pub async fn ingest_evidence(&self, id: &str, input: &EvidenceInput) -> Result<Value> {
-        self.record_evidence(id, input, false).await
-    }
-
     /// A creator's signed human resolution (ADR 0007). The signature covers
     /// (instance id, outcome, nonce) with the key fixed at series creation;
     /// the platform stores only the public key, so it can verify but never
@@ -175,12 +171,11 @@ impl Store {
         Ok(json!({"evidence_id":evidence_id,"evaluated_result":result,"outcome_id":outcome_id}))
     }
 
-    pub(crate) async fn record_evidence(
-        &self,
-        id: &str,
-        input: &EvidenceInput,
-        simulator: bool,
-    ) -> Result<Value> {
+    /// Record one evidence revision and evaluate it against the published
+    /// rule. The demo worker's deterministic simulator observation is the
+    /// caller; creator signatures and external resolver answers have their
+    /// own recording methods, and no administrator evidence route exists.
+    pub async fn record_evidence(&self, id: &str, input: &EvidenceInput) -> Result<Value> {
         if input.event_id.is_empty()
             || input.event_id.len() > 120
             || input.source_revision < 0
@@ -222,34 +217,23 @@ impl Store {
                 "Resolution is already final; evidence cannot change credited results",
             ));
         }
-        // ADR 0007: the administrator cannot resolve a market whose authority
-        // is fixed to its creator or an external resolver, even with full API
-        // access; no valid signature or resolver answer can be produced here.
-        if !simulator && let Some(series_id) = &instance.series_id {
-            let authority: String =
-                sqlx::query_scalar("SELECT resolution_authority FROM market_series WHERE id=$1")
-                    .bind(series_id)
-                    .fetch_one(&mut *tx)
-                    .await?;
-            if authority != "admin" {
-                tx.commit().await?;
-                return Err(invalid(
-                    "This market's resolution authority is fixed at creation; administrator evidence cannot resolve it",
-                ));
-            }
-        }
-        let replay = simulator
-            && self.demo_mode
-            && instance.data_mode == "simulated"
-            && input.source_id == "polyntu-simulator-v1";
-        if simulator && !replay {
-            return Err(Error::Forbidden);
-        }
-        if !simulator && instance.data_mode == "simulated" {
+        // ADR 0007: a series fixes its authority at creation, and only that
+        // authority can settle it. Every series is now creator- or
+        // resolver-owned, so this primitive - which backs the demo simulator
+        // - must never touch one. Only the demo's own series-less one-time
+        // markets reach the checks below.
+        if instance.series_id.is_some() {
+            tx.commit().await?;
             return Err(invalid(
-                "Simulator evidence is generated only by the demo worker",
+                "This market's resolution authority is fixed at creation; simulated evidence cannot resolve it",
             ));
         }
+        // A demo clock jump records the simulator's deterministic answer
+        // after the observation window; a real observation keeps the hard
+        // published deadline.
+        let replay = self.demo_mode
+            && instance.data_mode == "simulated"
+            && input.source_id == "polyntu-simulator-v1";
         if now < instance.observation_end_ms {
             return Err(conflict("The observation window has not ended"));
         }
@@ -282,11 +266,9 @@ impl Store {
             ));
         }
         let evidence_id = Uuid::new_v4().to_string();
-        let received = if replay {
-            instance.observation_end_ms
-        } else {
-            now
-        };
+        // A replay is recorded at the observation end, not at the moment the
+        // demo clock happened to jump past it.
+        let received = instance.observation_end_ms;
         sqlx::query("INSERT INTO evidence(id,instance_id,source_id,event_id,source_revision,received_ms,parser_version,payload,payload_hash,evaluated_result) VALUES($1,$2,$3,$4,$5,$6,'category-evidence-v1',$7,$8,$9)")
             .bind(&evidence_id).bind(id).bind(&input.source_id).bind(&input.event_id).bind(input.source_revision).bind(received)
             .bind(Json(input)).bind(fingerprint).bind(result.as_ref().map(Json)).execute(&mut *tx).await?;
@@ -294,11 +276,7 @@ impl Store {
             .bind(id).execute(&mut *tx).await?;
         audit(
             &mut tx,
-            if replay {
-                "simulated_evidence"
-            } else {
-                "evidence_received"
-            },
+            "simulated_evidence",
             Some(id),
             json!({"evidence_id":evidence_id,"source_revision":input.source_revision}),
             now,

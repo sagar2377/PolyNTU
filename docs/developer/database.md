@@ -15,7 +15,8 @@ PostgreSQL stores all active v2 state. SQLx embeds and applies the numbered migr
 | `0007_creator_verification.sql` | Add the `verification_requests` table and its one-pending-per-account partial unique index. |
 | `0008_admin_role.sql` | Extend the role check with the `admin` role. |
 | `0009_market_series.sql` | Add the `market_series` table, the instance series/bracket/fee columns, the `protect_series` trigger, and the extended `protect_instance`. |
-| `0010_resolution_authority.sql` | Fix the resolution authority at series creation: the `admin` default, the creator's ed25519 public key, or the external resolver endpoint, all immutable ([ADR 0007](../decisions/0007-resolution-authority.md)). |
+| `0010_resolution_authority.sql` | Fix the resolution authority at series creation: the creator's ed25519 public key or the external resolver endpoint, all immutable ([ADR 0007](../decisions/0007-resolution-authority.md)). |
+| `0015_creator_and_resolver_authority_only.sql` | Remove the administrator authority: delete its series and their subtree, drop the column default, and constrain the column to `creator` and `resolver`. |
 | `0011_bracket_retention.sql` | Bracket retention: recreate `immutable_record` so deletes pass only inside a purge transaction setting `polyntu.purge = 'on'`, make the circular `instances_evidence_id_fkey` deferrable, and add the partial `instances_purge` index. |
 | `0012_bus_operating_days.sql` | Add `market_series.active_days` (JSONB, default all seven days) so a recurring series can run on a subset of weekdays, with a non-empty-array check; folded into `protect_series` as an immutable definition field. |
 
@@ -180,7 +181,7 @@ One row per published series (migration 0009). A one-time market is a series wit
 | `max_concurrency` | How many upcoming slots stay live, 1–50, default 1. |
 | `end_ms` | Optional series end; null means perpetual. |
 | `anchor_ms` | Grid origin for slot calculation, fixed at creation. |
-| `resolution_authority` / `resolution_public_key` / `resolver_endpoint` | How the series resolves, fixed at creation (migration 0010, [ADR 0007](../decisions/0007-resolution-authority.md)): `admin` (the default), `creator` with a 32-byte ed25519 public key, or `resolver` with an endpoint. |
+| `resolution_authority` / `resolution_public_key` / `resolver_endpoint` | How the series resolves, fixed at creation (migrations 0010 and 0015, [ADR 0007](../decisions/0007-resolution-authority.md)): `creator` with a 32-byte ed25519 public key, or `resolver` with an endpoint. |
 | `state` | `active` or `ended`. |
 | `created_ms` | Creation time. |
 

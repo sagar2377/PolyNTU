@@ -15,7 +15,7 @@ Statements about existing behavior are verified against the current build. Every
 | Visitor | Primary | An unauthenticated person who registers. UC-1 turns a Visitor into a Trader. |
 | Trader | Primary | An account holder who browses markets, views quotes and probabilities, trades outcome shares, and tracks a portfolio. |
 | Market Creator | Primary | A verified trader who also defines markets: one-time markets and recurring series. The role generalizes Trader, with one restriction: a creator cannot trade in their own markets. |
-| Platform Admin | Primary | The operator, reached through the shared token or an admin-role account session (the seeded demo administrator in demo mode). Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. Today it still creates instances directly and records evidence for platform-authority markets; by design it cannot resolve markets whose authority is fixed to their creator or an external resolver. |
+| Platform Admin | Primary | The operator, reached through the shared token or an admin-role account session (the seeded demo administrator in demo mode). Verifies creators, suspends instances, grants units from the treasury, and runs reconciliation. It cannot create instances or resolve markets: every market's authority is fixed to its creator or an external resolver. |
 | External Resolver | Secondary system | An automated external API the settlement worker calls at finalize time, for example a bus timing service or a queue counter. Secondary actor in UC-13. |
 | Scheduler | Internal system | The background process that spawns bracket instances for recurring series on a rolling schedule (UC-12). |
 | Settlement Worker | Internal system | The background process that closes instances, resolves them, settles and pays out claims, and voids on missing or invalid evidence (UC-13, UC-15 to UC-17). |
@@ -73,9 +73,9 @@ Notes:
 6. Rolling spawn: a new bracket instance is created every interval while the live count is below the maximum concurrency; the covered horizon is maximum concurrency × interval. Each spawned bracket's title carries its time window (`{series title} · HH:MM to HH:MM` in Singapore time), so brackets of one series stay distinguishable; a one-time market keeps the creator's title unchanged.
 7. Recurrence only spawns brackets inside the creator-set active period, a daily window interpreted in Singapore time. A bus series, for example, runs 06:00 to 23:59 because buses do not run at midnight.
 8. Market reserves remain treasury-funded; creators contribute definitions and earn through the fee share, not through deposits.
-9. The resolution authority is fixed at market creation: the platform administrator (the default), the market creator (human), or a configured external resolver endpoint (automatic) (existing; [ADR 0007](../decisions/0007-resolution-authority.md)).
+9. The resolution authority is fixed at market creation: the market creator (human) or a configured external resolver endpoint (automatic) (existing; [ADR 0007](../decisions/0007-resolution-authority.md)).
 10. Human resolution requires a valid ed25519 signature from the key fixed at creation. The signing key is derived from the creator's account password (ADR 0007 amendment), so holding the password is holding the key and any browser where the creator signs in can resolve; a lost password means the market voids by the published policy, since no password recovery exists (existing; ADR 0007).
-11. The administrator cannot resolve markets whose authority is fixed to their creator or an external resolver, by design (existing; ADR 0007).
+11. The platform administrator cannot resolve any market, by design (existing; ADR 0007).
 12. Automatic resolution that stays unreachable, malformed, pending, or names an unpublished option through the published evidence deadline voids the market (existing; ADR 0007).
 13. A market offers 2 to 8 direct outcomes.
 14. Terminal brackets of a recurring series are purged 24 hours after their evidence deadline, together with their trades, positions, evidence, and settlement claims; one-time markets are kept indefinitely. The append-only ledger trail and audit history survive every purge, and balances keep settled units after the corresponding credits vanish from the portfolio history.
@@ -86,7 +86,7 @@ Notes:
 |---|---|---|
 | Account | existing | Identity and balance. Registered accounts carry a unique NTU email, an argon2 password hash, and a role (member, creator, or admin). |
 | VerificationRequest | existing | A member's creator request with status and the administrator's decision and reason. |
-| MarketSeries | existing | A published definition with the rule, recurrence rule (interval, active period, maximum concurrency, optional end date), liquidity, and fee policy; one-time or recurring. The resolution authority (administrator, creator key, or resolver endpoint) is fixed at creation. |
+| MarketSeries | existing | A published definition with the rule, recurrence rule (interval, active period, maximum concurrency, optional end date), liquidity, and fee policy; one-time or recurring. The resolution authority (creator key or resolver endpoint) is fixed at creation. |
 | Instance | existing | One concrete occurrence with its own inventory, reserve, evidence, and result; carries a series reference, bracket slot, and fee flag when it belongs to a series. |
 | ResolverConfig | existing | The endpoint URL and fixed request contract for automatic authority. |
 | ResolutionKey | existing | The ed25519 public key fixed at creation for human authority. |
@@ -343,7 +343,7 @@ The demo bus series is the built-in example: the platform serves its own adapter
 - Signature invalid: rejected.
 - The submitter is not the creator: rejected.
 - The market is not closed: rejected.
-- An administrator attempts it: rejected by design; the admin evidence route refuses markets with creator or resolver authority, and no valid signature exists.
+- An administrator attempts it: rejected by design; there is no administrator evidence route, and no valid signature exists.
 - The password is lost: the signing key cannot be re-derived, resolution is impossible, and the instance voids at the deadline (no password recovery exists).
 
 ### UC-15: Settle and pay out

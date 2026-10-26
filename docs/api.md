@@ -82,10 +82,8 @@ Exact messages are useful to humans but are not a stable machine-enumerated erro
 | `POST /api/v2/verification-requests` | Account | A member files one pending creator verification request. |
 | `GET /api/v2/verification-requests` | Account | The requester's own latest verification request, or null. |
 | `POST /api/v2/admin/accounts` | Administrator | Creates a funded account in either mode; primarily needed outside public demo enrollment. |
-| `POST /api/v2/admin/instances` | Administrator | Validates, funds, and immediately opens an immutable instance. |
 | `GET /api/v2/admin/verification-requests` | Administrator | Verification review list, optionally filtered by status. |
 | `POST /api/v2/admin/verification-requests/{id}/decision` | Administrator | Approves or rejects a pending verification request. |
-| `POST /api/v2/admin/instances/{id}/evidence` | Administrator | Appends a manual evidence revision. |
 | `POST /api/v2/admin/instances/{id}/suspension` | Administrator | Suspends or resumes trading on an open instance. |
 | `POST /api/v2/admin/clock/advance` | Administrator; demo mode only | Advances demo time and runs a worker cycle. |
 | `POST /api/v2/admin/worker/tick` | Administrator | Runs one close/bracket-spawn/evidence/settlement/seeding cycle. |
@@ -270,7 +268,7 @@ Validation includes:
 - title 5–240 characters and resolution criterion 30–4,000 characters, as for instances;
 - a valid typed rule and liquidity 10–100,000;
 - `fee_charged` defaults to true and is fixed at publication;
-- an optional `resolution` field fixes the resolution authority at publication ([ADR 0007](../decisions/0007-resolution-authority.md)): `{"kind":"creator","public_key":"base64"}` (a 32-byte ed25519 public key) or `{"kind":"resolver","endpoint":"https://..."}`; absent means the platform administrator resolves;
+- an optional `resolution` field fixes the resolution authority at publication ([ADR 0007](../decisions/0007-resolution-authority.md)): `{"kind":"creator","public_key":"base64"}` (a 32-byte ed25519 public key) or `{"kind":"resolver","endpoint":"https://..."}`; it is required, because the platform administrator is never a resolution authority;
 - recurring: `interval_ms` between 1 minute and 1 day, `max_concurrency` between 1 and 50, and an active window in minutes of day (start 0–1438, end 1–1439, start before end) interpreted in Singapore time; `active_days` optionally restricts which days of the week spawn brackets, as ISO day numbers (1 = Monday to 7 = Sunday, non-empty, stored sorted and deduplicated; absent means every day); `end_ms` is optional and must leave room for at least one more slot, and its absence means perpetual; and
 - once: the same future time ordering as an instance (`close <= observation start < observation end <= finalize < deadline`, within one year).
 
@@ -548,63 +546,7 @@ Successful response:
 }
 ```
 
-## Instance administration
-
-### Create an instance
-
-`POST /api/v2/admin/instances` accepts the `NewInstance` shape:
-
-```json
-{
-  "template_id": "weather-rain",
-  "title": "Rainfall at the campus station",
-  "resolution_criterion": "Yes if complete recorded rainfall reaches 0.2 mm during the published interval.",
-  "rule": {
-    "kind": "weather",
-    "station_id": "station-S",
-    "threshold_milli_mm": 200
-  },
-  "source_id": "campus-weather-observer",
-  "data_mode": "manual",
-  "close_ms": 1788832800000,
-  "observation_start_ms": 1788832800000,
-  "observation_end_ms": 1788836400000,
-  "finalize_after_ms": 1788836460000,
-  "evidence_deadline_ms": 1788837000000,
-  "liquidity_units": 100,
-  "fee_charged": true,
-  "creator_account_id": "optional-participant-account-uuid"
-}
-```
-
-Validation includes:
-
-- title 5–240 characters and resolution criterion 30–4,000 characters;
-- bounded nonempty template/source identifiers;
-- valid typed rule and derived category/outcomes;
-- future `close <= observation start < observation end <= finalize < deadline`;
-- evidence deadline within one year of creation;
-- liquidity 10–100,000;
-- `fee_charged` (default true) is fixed at creation: a fee-free market charges nothing, collects no fee, and pays no creator share;
-- `creator_account_id`, when present, must be an existing participant account and is immutable after publication; and
-- simulated mode only in demo mode with source `polyntu-simulator-v1`.
-
-Creation immediately funds and opens the instance. There is no draft/edit endpoint.
-
-### Rule JSON
-
-| Shape | JSON fields |
-|---|---|
-| Weather | `{"kind":"weather","station_id":"station-S","threshold_milli_mm":200}` |
-| Bus | `{"kind":"bus","route_id":"NTU-blue","direction":"clockwise","stop_id":"north-spine"}` |
-| Election | `{"kind":"election","candidates":["A","B","C"],"is_fictional":true}` |
-| Queue count | `{"kind":"count","metric":"queue_length","location_id":"canteen-queue","threshold":20}` |
-| Occupancy | `{"kind":"count","metric":"crowd_occupancy","location_id":"library-zone-A","threshold":100}` |
-| Attendance | `{"kind":"count","metric":"unique_attendance","location_id":"event-001","threshold":150}` |
-
-Unknown fields are rejected.
-
-### Suspension
+## Suspension
 
 `POST /api/v2/admin/instances/{id}/suspension`:
 
@@ -616,55 +558,6 @@ Unknown fields are rejected.
 ```
 
 The reason must be 5–1,000 characters. Only an `open` instance may change suspension state. A successful response is `{"ok":true}`.
-
-## Evidence
-
-### `POST /api/v2/admin/instances/{id}/evidence`
-
-Common envelope:
-
-```json
-{
-  "source_id": "campus-weather-observer",
-  "event_id": "station-reading-revision-2",
-  "source_revision": 2,
-  "window_start_ms": 1788832800000,
-  "window_end_ms": 1788836400000,
-  "observation": {
-    "kind": "weather",
-    "station_id": "station-S",
-    "total_milli_mm": 400,
-    "complete": true
-  },
-  "reference": "Public archived source record identifier"
-}
-```
-
-The event ID is at most 120 characters, revision is 0–1,000,000, reference is nonblank and at most 2,000 characters, encoded input is at most 64 KiB, and source/window must exactly match the published instance.
-
-Observation variants:
-
-```json
-{"kind":"weather","station_id":"station-S","total_milli_mm":400,"complete":true}
-```
-
-```json
-{"kind":"bus","route_id":"NTU-blue","direction":"clockwise","stop_id":"north-spine","arrivals_ms":[1788833000000],"complete":true}
-```
-
-```json
-{"kind":"election","winner":"Candidate A","is_final":true,"is_fictional":true}
-```
-
-```json
-{"kind":"count","metric":"unique_attendance","location_id":"event-001","value":162,"complete":true}
-```
-
-Weather/count values must be nonnegative. Bus arrays are limited to 10,000 timestamps; only entries in `[window_start_ms, window_end_ms)` determine Yes. Election winners must exactly match a published candidate. `complete:false` or `is_final:false` waits rather than implying No.
-
-Successful new evidence returns its ID, `duplicate:false`, and the evaluated result or `null`. Repeating identical event content returns the same ID with `duplicate:true`.
-
-Administrator evidence is rejected outright, with 400 `invalid_request`, for any instance whose series resolution authority is not `admin`: the authority is fixed at creation and administrator evidence cannot resolve creator-signed or resolver-settled markets ([ADR 0007](../decisions/0007-resolution-authority.md)).
 
 ## Resolution
 
@@ -810,5 +703,7 @@ These legacy paths return `410 options_retired`:
 - `POST` or `GET /contracts`
 - `GET /markets/{id}/quote`
 - `GET /markets/{id}/implied-sigma`
+
+The administrator's direct instance creation (`POST /api/v2/admin/instances`) and manual evidence (`POST /api/v2/admin/instances/{id}/evidence`) routes are removed: a market resolves only through its creator's signature or its configured external resolver ([ADR 0007](../decisions/0007-resolution-authority.md)).
 
 Other Python-era routes are not mounted and normally return the static fallback or not found, depending on path. No active route performs Black–Scholes or options pricing.

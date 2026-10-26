@@ -1,6 +1,5 @@
 @startuml
 !pragma layout smetana
-left to right direction
 hide circle
 hide empty fields
 hide empty methods
@@ -23,8 +22,8 @@ skinparam packageBackgroundColor #FAFBFD
 skinparam packageBorderColor #CBD5E1
 skinparam ArrowColor #526579
 skinparam ArrowFontSize 12
-skinparam nodesep 60
-skinparam ranksep 85
+skinparam nodesep 40
+skinparam ranksep 60
 skinparam titleFontSize 22
 skinparam legendBackgroundColor #F7F9FC
 skinparam legendBorderColor #CBD5E1
@@ -116,8 +115,6 @@ package "Use-case controls" {
     + authorize(adminToken: String [0..1], sessionToken: String [0..1]): Boolean
     + listCreatorRequests(status: VerificationStatus [0..1]): VerificationRequest[*]
     + reviewCreatorRequest(id: Identifier, approve: Boolean, reason: String [0..1]): VerificationRequest
-    + createDirectInstance(spec: NewInstance): MarketInstance
-    + submitAdminEvidence(id: Identifier, input: EvidenceInput): EvidenceRecord
     + requestSuspension(id: Identifier, suspended: Boolean, reason: String)
     + provisionAccountWithGrant(name: String): Session
     + reconcile(): ReconciliationReport
@@ -330,16 +327,12 @@ package "Resolution authority strategies" {
   interface ResolutionAuthority <<strategy>> {
     + acceptEvidence(evidence: EvidencePayload): EvidenceRecord
   }
-  class AdminAuthority <<strategy>> {
-    + acceptEvidence(id: Identifier, input: EvidenceInput): EvidenceRecord
-  }
   class CreatorSignedAuthority <<strategy>> {
     + acceptEvidence(id: Identifier, submitter: Identifier, stmt: SignedStatement): EvidenceRecord
   }
   class ExternalResolverAuthority <<strategy>> {
     + acceptEvidence(id: Identifier, outcomeId: String, req: ResolverRequest, res: ResolverResponse): EvidenceRecord
   }
-  ResolutionAuthority <|.. AdminAuthority
   ResolutionAuthority <|.. CreatorSignedAuthority
   ResolutionAuthority <|.. ExternalResolverAuthority
 }
@@ -352,27 +345,13 @@ MarketPage ..> TradingControl
 MarketPage ..> MarketLifecycleControl
 PortfolioPage ..> PortfolioControl
 AdminApi ..> AdminControl
-AdminControl ..> MarketCreationControl : direct creation
-AdminControl ..> MarketLifecycleControl : evidence / suspension
+AdminControl ..> MarketLifecycleControl : suspension
 MarketLifecycleControl ..> MarketCreationControl : funded bracket creation
 BackgroundWorker ..> MarketLifecycleControl : scheduled processing
 MarketLifecycleControl ..> ResolverGateway : calls external API
 ResolverGateway ..> NtuBusAdapter : HTTP resolver contract
 MarketLifecycleControl ..> ResolutionAuthority : delegates by series authority
 ExternalResolverAuthority ..> ResolverGateway : uses
-
-' Principal entity dependencies only; the companion matrix lists all participating entities.
-AccountControl ..> Account
-AccountControl ..> VerificationRequest
-MarketQueryControl ..> MarketInstance
-MarketCreationControl ..> MarketSeries
-TradingControl ..> TradeHistory
-TradingControl ..> PositionBook
-PortfolioControl ..> PositionBook
-MarketLifecycleControl ..> Evidence
-MarketLifecycleControl ..> SettlementClaim
-AdminControl ..> VerificationRequest
-AdminControl ..> LedgerTransfer
 
 legend bottom left
   Green <<boundary>>: UI or external interface. AdminApi is an API, not an admin screen.
@@ -384,7 +363,7 @@ legend bottom left
   Purple <<active>>: background task/module abstraction.
   Dashed arrow: uses / depends on; not a stored association and has no multiplicity.
   Solid line: entity association with multiplicities. Filled diamond: composition. Hollow diamond: aggregation.
-  Only principal control-to-entity dependencies are drawn; see the responsibility matrix.
+  Control-to-entity dependencies are listed in the responsibility matrix in docs/developer/class-diagram.md.
   Logical collaboration arrows group existing functions; they do not imply a code refactor.
   Browser-to-control arrows summarize HTTP paths. ApiRouter shows startup wiring.
   Operation signatures are design-level and abbreviated as documented in docs/developer/class-diagram.md.

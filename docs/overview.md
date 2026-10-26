@@ -104,7 +104,7 @@ PolyNTU has grown from an administrator-published demonstration into a campus pl
 
 - **Accounts**: implemented. Registration and login with an NTU email address and a password, a 10,000-unit welcome gift, and a member-to-creator verification workflow ([ADR 0005](decisions/0005-ntu-accounts-and-creator-roles.md), accepted).
 - **Creator-owned series**: implemented. Markets are published as series that occur once or recur in rolling brackets, with a creator-set interval, active period, maximum concurrency, and optional end date; a series without an end date is perpetual. Creators cannot trade in their own markets.
-- **Resolution authority**: implemented. Fixed at creation: the platform administrator (the default), the creator signing each human resolution with a key the platform never holds, or an external resolver endpoint whose answer PolyNTU validates against the published options. Administrator evidence cannot resolve a creator-signed or resolver-settled market ([ADR 0007](decisions/0007-resolution-authority.md), accepted).
+- **Resolution authority**: implemented. Fixed at creation: the creator signs each human resolution with a key the platform never holds, or an external resolver endpoint answers and PolyNTU validates the answer against the published options. The platform administrator cannot resolve any market ([ADR 0007](decisions/0007-resolution-authority.md), accepted).
 - **Market experience**: implemented. Live quotes and probabilities, joined by a live-refreshing price and volume history chart on every market and a day-long implied-probability view for recurring series.
 
 Every use case in the model is marked existing. The bus timing adapter is implemented for the campus shuttle lines; extending it to further routes or other data categories is integration work rather than platform work.
@@ -113,7 +113,7 @@ Every use case in the model is marked existing. The bus timing adapter is implem
 
 - No campus SSO or password recovery; login rotates the single session token.
 - The creator resolution signing key is derived from the account password, so any browser where the creator signs in can resolve, but a lost password voids the market at its published deadline because no password recovery exists; the copy in the browser's local storage is only a cache.
-- The shared administrator token carries no per-action identity; administrators resolve only platform-authority markets, and the seeded demo administrator (`admin@ntu.edu.sg`, password `admin`) exists only in demo-mode databases.
+- The shared administrator token carries no per-action identity, and the seeded demo administrator (`admin@ntu.edu.sg`, password `admin`) exists only in demo-mode databases.
 - No request-rate limiting or public deployment hardening.
 - No independent verification of manual observations, and resolver-based resolution trusts the configured endpoint. The bus adapter covers the five campus lines; weather, crowd, and attendance still rely on manual evidence.
 - No outbox retention or compaction beyond the bracket purge.

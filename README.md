@@ -35,7 +35,7 @@ For other platforms, Docker, separate frontend development, and environment vari
 - Per-market trading fees shared between the creator and the treasury; welfare markets can opt out of fees entirely.
 - Signed, account-bound, expiring quotes and idempotent trade execution.
 - Immutable published rules, append-only evidence, and resumable settlement.
-- Resolution by administrator evidence, creator-signed statements, or a configured external resolver.
+- Resolution by creator-signed statements or a configured external resolver.
 - Bucketed price and volume history reconstructed from executed trades.
 - Authenticated private portfolios and durable trade receipts.
 - Persisted public market events delivered through Server-Sent Events (SSE).

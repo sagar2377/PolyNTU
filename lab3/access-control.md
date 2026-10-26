@@ -45,7 +45,6 @@ Values follow the route handlers in [api.rs](../backend/src/api.rs). "Denied" me
 | Read own verification status | denied | own account only | own account only | own account only (null unless one exists) |
 | Verification review and decision | denied | denied | denied | allowed |
 | Account provisioning (`POST /admin/accounts`) | denied | denied | denied | allowed (either mode) |
-| Direct instance creation (`POST /admin/instances`) | denied | denied | denied | allowed |
 | Evidence submission | denied | denied | denied | allowed, except creator- or resolver-authority series |
 | Suspension | denied | denied | denied | allowed (any open instance) |
 | Demo clock advance | denied | denied | denied | allowed (demo mode only) |
@@ -89,12 +88,12 @@ CORS and the body limit are not authentication: CORS constrains browsers only, a
 
 ## Resolution authority as access control
 
-A series fixes its resolution authority at creation ([ADR 0007](../docs/decisions/0007-resolution-authority.md)): `admin` (the default, covering platform-owned and directly created instances), `creator` (with the creator's ed25519 public key), or `resolver` (with the endpoint). Migration 0010 checks that creator authority carries a public key on a creator-owned series and that resolver authority carries an endpoint, and the `protect_series` trigger makes all three fields part of the immutable published definition.
+A series fixes its resolution authority at creation ([ADR 0007](../docs/decisions/0007-resolution-authority.md)): `creator` (with the creator's ed25519 public key) or `resolver` (with the endpoint). The schema checks that creator authority carries a public key on a creator-owned series and that resolver authority carries an endpoint, and the `protect_series` trigger makes all three fields part of the immutable published definition.
 
 - A human resolution must carry an ed25519 signature over the exact string `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}`, checked against the public key fixed at creation; malformed keys and signatures fail closed (`verify_ed25519` in [auth.rs](../backend/src/auth.rs)).
-- The administrator evidence route rejects instances of series whose authority is not `admin`, so a compromised administrator credential cannot resolve a creator-signed or resolver-settled market. The exclusion is an application-path control; a database superuser can still drop constraints and insert evidence directly.
+- There is no administrator evidence route at all, so a compromised administrator credential cannot resolve any market. The exclusion is an application-path control; a database superuser can still drop constraints and insert evidence directly.
 - The platform stores only public keys and performs no key derivation server-side, so it can verify a creator's resolution but never forge one.
-- Suspension, clock advance, and worker operations remain administrator capabilities regardless of authority; only evidence and resolution are authority-scoped.
+- Suspension, clock advance, and worker operations remain administrator capabilities; evidence and resolution are not.
 
 ## Signed quotes as request integrity
 
@@ -113,7 +112,7 @@ A series fixes its resolution authority at creation ([ADR 0007](../docs/decision
 | `AccountControl.authenticate` | Registration validation, password verification, and single-token session rotation. | `register_account` and `login` in [store.rs](../backend/src/store.rs) with [auth.rs](../backend/src/auth.rs) helpers. |
 | `AdminControl.authorize` | Gates every privileged route before coordination. | `AppState::require_admin` and the admin handlers in [api.rs](../backend/src/api.rs). |
 | `AdminApi` | Boundary that receives authorized administrator requests. | `/api/v2/admin/*` routes in [api.rs](../backend/src/api.rs). |
-| `ResolutionAuthority` strategies | `AdminAuthority`, `CreatorSignedAuthority`, and `ExternalResolverAuthority` accept evidence differently under one lifecycle. | The `resolution_authority` column selects the path; `record_evidence`, `record_creator_resolution`, and `record_resolver_evidence` each re-check their own authority and refuse the others. |
+| `ResolutionAuthority` strategies | `CreatorSignedAuthority` and `ExternalResolverAuthority` accept evidence differently under one lifecycle. | The `resolution_authority` column selects the path; `record_creator_resolution` and `record_resolver_evidence` each re-check their own authority and refuse the other. |
 | `TradingControl` | Binds quotes to accounts and enforces the self-trading prohibition. | `quote` and `execute` in [execution.rs](../backend/src/execution.rs). |
 | `StartupControl` | Validates distinct quote and admin secrets of at least 32 characters and rejects a public demo-mode bind. | `AppState::new` in [api.rs](../backend/src/api.rs); startup in [main.rs](../backend/src/main.rs). |
 

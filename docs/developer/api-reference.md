@@ -46,8 +46,6 @@ This document maps external endpoints to Axum handlers and service code. The sta
 | `GET /api/v2/verification-requests` | `my_verification_request` | Account | `Store::verification_request` |
 | `GET /api/v2/admin/verification-requests` | `verification_list` | Administrator | `Store::verification_requests` |
 | `POST /api/v2/admin/verification-requests/{id}/decision` | `verification_decision` | Administrator | `Store::decide_verification_request` |
-| `POST /api/v2/admin/instances` | `create_instance` | Administrator | `Store::create_instance` + `instance_view` |
-| `POST /api/v2/admin/instances/{id}/evidence` | `evidence` | Administrator | `Store::ingest_evidence` |
 | `POST /api/v2/admin/instances/{id}/suspension` | `suspend` | Administrator | `Store::suspend` |
 | `POST /api/v2/admin/clock/advance` | `advance` | Administrator | `Store::advance_demo_clock`, then `worker::tick` |
 | `POST /api/v2/admin/worker/tick` | `tick` | Administrator | `worker::tick` |

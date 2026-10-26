@@ -7,10 +7,10 @@ Pattern names follow the standard GoF catalogue, with Repository and Unit of Wor
 ### Strategy
 
 - **Problem and forces:** three resolution authorities (administrator, creator signature, external resolver) accept evidence under different rules, yet all must feed one shared lifecycle - the same instance states, evidence recording, audit, outbox events, and settlement. Authority is fixed at publication and must not be bypassable, even by an administrator with full API access.
-- **Participants:** `ResolutionAuthority` (interface) implemented by `AdminAuthority`, `CreatorSignedAuthority`, and `ExternalResolverAuthority`; `MarketLifecycleControl` selects by the series' authority and delegates. `ExternalResolverAuthority` also depends on `ResolverGateway` for its outbound call.
-- **Implementation anchor:** the `resolution_authority` column (`admin`, `creator`, `resolver`) in [store.rs](../backend/src/store.rs) `create_series`; `ingest_evidence`, `record_creator_resolution`, and `record_resolver_evidence` in [resolution.rs](../backend/src/resolution.rs), each re-checking its own authority and refusing the others. The three implementations are entered from three places: the administrator evidence route and the creator resolution route in [api.rs](../backend/src/api.rs), and the automatic resolver call in [worker.rs](../backend/src/worker.rs), which gates on the `resolver` value.
+- **Participants:** `ResolutionAuthority` (interface) implemented by `CreatorSignedAuthority` and `ExternalResolverAuthority`; `MarketLifecycleControl` selects by the series' authority and delegates. `ExternalResolverAuthority` also depends on `ResolverGateway` for its outbound call.
+- **Implementation anchor:** the `resolution_authority` column (`creator`, `resolver`) in [store.rs](../backend/src/store.rs) `create_series`; `record_creator_resolution` and `record_resolver_evidence` in [resolution.rs](../backend/src/resolution.rs), each re-checking its own authority and refusing the other. The two implementations are entered from two places: the creator resolution route in [api.rs](../backend/src/api.rs), and the automatic resolver call in [worker.rs](../backend/src/worker.rs), which gates on the `resolver` value.
 - **Consequences and trade-offs:** the lifecycle machinery stays in one place and a wrong-authority submission is rejected inside the method, not by the caller. The cost is duplication: each method repeats the lock, dedupe, record, version, audit, and outbox steps as inlined statements.
-- **Adding a variant:** a fourth authority needs a CHECK-constraint value, a `ResolutionSpec` variant with validation, a `create_series` mapping arm, a new ingestion method, and a route or worker branch. No trait or enum exists for the compiler to flag a missed site.
+- **Adding a variant:** a third authority needs a CHECK-constraint value, a `ResolutionSpec` variant with validation, a `create_series` mapping arm, a new ingestion method, and a route or worker branch.
 
 ### Adapter
 
@@ -38,9 +38,7 @@ Pattern names follow the standard GoF catalogue, with Repository and Unit of Wor
 
 ## Patterns considered and rejected
 
-Each candidate below is recorded with the reason it is not claimed; partial presences are stated as partial.
-
-| Pattern | Reason grounded in this codebase |
+| Pattern | Reason |
 |---|---|
 | State | Lifecycle transitions (`open -> closed -> resolving -> resolved/voided`), version advance, finality, and the closed-market inventory freeze are enforced by the `protect_instance` trigger in [0005_trade_fees.sql](../backend/migrations/0005_trade_fees.sql); `Instance::tradable` is a predicate over stored state, suspension, and time. An in-code state machine would duplicate the database constraint without adding a transition. |
 | Singleton | `Store`, `AppState`, and `EventBus` derive `Clone` over an Arc pool, Arc secrets, and an Arc channel map; `main` constructs and passes them explicitly, and the worker clones `Store` per settlement task. The one `LazyLock` static in [store.rs](../backend/src/store.rs) holds a fixed login-timing hash, not a shared service, and documented multi-process operation rules out a process-wide instance. |
@@ -48,17 +46,17 @@ Each candidate below is recorded with the reason it is not claimed; partial pres
 | Unit of Work | Every service method opens and commits its own transaction inline; no object accumulates changes for one commit, and the outbox write shares the transaction instead. One-time publication is deliberately two transactions: `create_series` commits the series before funding the instance, with cleanup on failure. |
 | Facade | `Store` is one struct holding a pool with service methods, not an interface hiding subsystem objects; no subsystem classes sit behind it. The "logical facade" wording for `MarketLifecycleControl` in the class responsibilities describes grouping of design responsibilities, not the GoF structure. |
 | Builder | `NewInstance`, `NewSeries`, and `ResolverRequest` are plain data built in single expressions by `bracket_spec`, `instance_spec`, `demo_specs`, and `ResolverRequest::of`. No step-wise assembly, director, or alternative representation exists to justify the pattern. |
-| Template Method | The three evidence paths repeat the same skeleton (lock, dedupe, insert, version, audit, outbox, commit) as inlined statements in separate methods, with no inherited algorithm and no hook methods; Rust here offers no override hierarchy to hang it on. The variation is carried by the strategy above. |
+| Template Method | The two authority paths repeat the same skeleton (lock, dedupe, insert, version, audit, outbox, commit) as inlined statements in separate methods, with no inherited algorithm and no hook methods; Rust here offers no override hierarchy to hang it on. The variation is carried by the strategy above. |
 
 ## Patterns in the diagram
 
-The strategy participants are the only pattern boxes: the `<<strategy>>` package in the [diagram source](../docs/diagrams/class-diagram.puml) shows the `ResolutionAuthority` interface with its three implementations, the `MarketLifecycleControl ..> ResolutionAuthority` delegation arrow, and `ExternalResolverAuthority ..> ResolverGateway`. The adapter and observer appear as ordinary stereotypes - `NtuBusAdapter` as a `<<boundary>>` behind `ResolverGateway`, `EventBus`/`EventRuntime` as `<<infrastructure>>` - because their participants are runtime structures rather than interchangeable behaviours; stereotyping them as patterns would suggest a code refactor that is not proposed. The factory-method roles are operations on existing classes (`MarketSeries.bracketSpec()`, `MarketCreationControl.createFundedInstance()`), so no new box was introduced for them either. This keeps the diagram's 39 classes and its legend counts unchanged from the maintained source.
+The strategy participants are the only pattern boxes: the `<<strategy>>` package in the [diagram source](../docs/diagrams/class-diagram.puml) shows the `ResolutionAuthority` interface with its two implementations, the `MarketLifecycleControl ..> ResolutionAuthority` delegation arrow, and `ExternalResolverAuthority ..> ResolverGateway`. The adapter and observer appear as ordinary stereotypes - `NtuBusAdapter` as a `<<boundary>>` behind `ResolverGateway`, `EventBus`/`EventRuntime` as `<<infrastructure>>` - because their participants are runtime structures rather than interchangeable behaviours; stereotyping them as patterns would suggest a code refactor that is not proposed. The factory-method roles are operations on existing classes (`MarketSeries.bracketSpec()`, `MarketCreationControl.createFundedInstance()`), so no new box was introduced for them either. This keeps the diagram's class counts unchanged from the maintained source.
 
 ## Pattern-to-design-class map
 
 | Pattern | Diagram stereotypes and classes | Source anchor |
 |---|---|---|
-| Strategy | `<<strategy>>` `ResolutionAuthority` with `AdminAuthority`, `CreatorSignedAuthority`, `ExternalResolverAuthority`; `MarketLifecycleControl` delegates, `ExternalResolverAuthority` uses `ResolverGateway` | `resolution_authority` column; the three evidence methods in [resolution.rs](../backend/src/resolution.rs) |
+| Strategy | `<<strategy>>` `ResolutionAuthority` with `CreatorSignedAuthority`, `ExternalResolverAuthority`; `MarketLifecycleControl` delegates, `ExternalResolverAuthority` uses `ResolverGateway` | `resolution_authority` column; `record_creator_resolution` and `record_resolver_evidence` in [resolution.rs](../backend/src/resolution.rs) |
 | Adapter | `<<boundary>>` `NtuBusAdapter`; `ResolverGateway` calls it over the resolver contract | `ntu_bus_answer` in [resolver.rs](../backend/src/resolver.rs); handler in [api.rs](../backend/src/api.rs) |
 | Observer | `<<infrastructure>>` `EventBus`, `EventRuntime`; SSE streams opened by `MarketPage` | `EventBus::subscribe`/`publish` in [events.rs](../backend/src/events.rs); SSE handler in [api.rs](../backend/src/api.rs) |
 | Factory Method | `<<entity>>` `MarketSeries.bracketSpec()`; `MarketCreationControl.createFundedInstance()`; `MarketLifecycleControl` funds bracket creation through it | `Series::bracket_spec` in [market.rs](../backend/src/market.rs); `Store::create_instance` in [store.rs](../backend/src/store.rs) |
@@ -67,7 +65,7 @@ The strategy participants are the only pattern boxes: the `<<strategy>>` package
 
 | Pattern | Benefit in this system | Cost or limitation |
 |---|---|---|
-| Strategy | One lifecycle for three authorities; authority fixed at publication and enforced inside each method | Shared steps duplicated per method; no trait or enum the compiler checks when an authority is added |
+| Strategy | One lifecycle for both authorities; authority fixed at publication and enforced inside each method | Shared steps duplicated per method; no trait or enum the compiler checks when an authority is added |
 | Adapter | Any data source adopted by configuration; no bus branch in settlement | Extra loopback hop; a fallback policy specific to eligible simulated bus instances |
 | Observer | No polling; durable outbox keeps delivery delay-tolerant across processes | New transports need fan-out changes; lagged receivers fall back to outbox polling |
 | Factory Method | Per-slot variation isolated; funding and validation invariants shared by all creators | Extension of the instance shape or schedule kind is by modification, not addition |

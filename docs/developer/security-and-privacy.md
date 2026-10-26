@@ -66,7 +66,7 @@ Audit coverage includes instance creation, evidence events/rejections, suspensio
 
 ## Resolution authority
 
-A series fixes its resolution authority at creation ([ADR 0007](../decisions/0007-resolution-authority.md)): platform administrator, the creator's signature, or an external resolver endpoint.
+A series fixes its resolution authority at creation ([ADR 0007](../decisions/0007-resolution-authority.md)): the creator's signature or an external resolver endpoint. The platform administrator is not an authority.
 
 ### The built-in bus adapter
 
@@ -76,7 +76,7 @@ Its exposure is bounded even so. It answers `pending` for any instance that is n
 
 - Key custody: for creator authority the browser derives the ed25519 keypair from the account password (ADR 0007 amendment: PBKDF2-HMAC-SHA256 with the salt `polyntu.resolution.v1:{email}`, 600,000 iterations, the 32-byte output as the seed) and publishes only the public key, so holding the password is holding the key and any browser where the creator signs in can resolve. The private key never leaves the browser, and the local-storage entry under `polyntu.v2.signing-key` is only a per-account cache, filled after login and registration or through a password prompt. Losing the password loses the key, and no password recovery exists: the affected markets void at their published deadlines.
 - Signature verification: a human resolution must carry an ed25519 signature over the exact string `polyntu.resolution.v1:{instance_id}:{outcome_id}:{nonce}`, checked against the public key fixed at creation with ed25519-dalek; malformed keys and signatures fail closed. The platform holds no private key, so it can verify but never forge a resolution.
-- Administrator exclusion: the manual evidence route rejects any instance whose series authority is not `admin`, so a compromised administrator credential cannot resolve a creator-signed or resolver-settled market. The exclusion is an application-path control; a database superuser can still drop constraints and insert evidence directly.
+- Administrator exclusion: there is no administrator evidence route, so a compromised administrator credential cannot resolve any market. The exclusion is an application-path control; a database superuser can still drop constraints and insert evidence directly.
 - Resolver call hygiene: endpoints must be https, with plain http accepted only on loopback where local adapters run during development and tests. Calls run under a 5-second timeout and responses above 64 KiB are rejected. Unreachable, malformed, and pending answers count as missing evidence and retry until the published deadline voids the instance. The endpoint receives only the fixed request and cannot reach any internal state; it decides the outcome for its own series and nothing else.
 
 ## Signed quotes
@@ -138,7 +138,7 @@ React escapes normal text interpolation, including titles, evidence JSON, and er
 | Duplicate uncertain trade | Account-scoped body-hash idempotency | Rows have no retention policy |
 | Spend twice concurrently | Account locks and nonnegative DB constraint | Production contention not fully saturated |
 | Trade after close | Database time rechecked under instance lock | Clock depends on database/operator integrity |
-| Rewrite result/evidence | Immutable triggers and append-only revisions; the only delete path is the guarded purge | Shared admin token controls ingestion |
+| Rewrite result/evidence | Immutable triggers and append-only revisions; the only delete path is the guarded purge | Creator signatures and resolver endpoints are the only ingestion paths |
 | Double settlement | Unique claim key and transactional batches | Operational monitoring is manual |
 | Infer future demo outcome | Private persisted seed plus instance ID | Database readers can access the secret |
 | Leak attendee data | Aggregate evidence contract and documentation | No automatic reference redaction |
@@ -146,7 +146,7 @@ React escapes normal text interpolation, including titles, evidence JSON, and er
 | Enumerate accounts through login | Generic failure plus equal argon2 work for unknown emails | Timing equalization is not a rate limit |
 | Reuse a stolen old session token | Login rotates the single token hash and evicts caches | Unused tokens never expire |
 | Forge a creator resolution | ed25519 signature over a fixed message, public key fixed at creation | The key derives from the account password, so the published public key permits offline password guessing at one 600,000-iteration PBKDF2 run per guess; the cached private key is also readable by same-origin scripts |
-| Resolve a creator-signed or resolver-settled market as administrator | Authority exclusion on the evidence route | A database superuser can drop constraints |
+| Resolve a creator-signed or resolver-settled market as administrator | No administrator evidence route exists | A database superuser can drop constraints |
 | Malicious or broken resolver endpoint | Contract validation against the published options; missing evidence voids at the deadline | The endpoint decides the outcome for its own series |
 | Public abuse | Loopback demo bind | No rate limiting/public hardening |
 

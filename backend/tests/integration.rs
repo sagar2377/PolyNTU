@@ -518,6 +518,31 @@ async fn login_is_reachable_over_http() {
 }
 
 // ADR 0006: creator-owned market series and rolling spawn.
+/// The signing key the test creator's browser would derive from its
+/// password, so tests can sign resolutions the server accepts.
+fn test_signing() -> SigningKey {
+    SigningKey::from_bytes(&auth::resolution_key_seed(
+        "creator@ntu.edu.sg",
+        "correct horse battery",
+    ))
+}
+fn test_public_key() -> String {
+    base64::engine::general_purpose::STANDARD.encode(test_signing().verifying_key().as_bytes())
+}
+/// Resolve one instance the way the creator's browser does: sign the
+/// published resolution message with the password-derived key.
+async fn creator_resolve(store: &Store, creator_id: &str, instance_id: &str, outcome_id: &str) {
+    let nonce = Uuid::new_v4().to_string();
+    let signature = base64::engine::general_purpose::STANDARD.encode(
+        test_signing()
+            .sign(auth::resolution_message(instance_id, outcome_id, &nonce).as_bytes())
+            .to_bytes(),
+    );
+    store
+        .record_creator_resolution(instance_id, creator_id, outcome_id, &nonce, &signature)
+        .await
+        .unwrap();
+}
 fn rain_series(schedule: Schedule) -> NewSeries {
     NewSeries {
         title: "Campus rain · afternoon window".into(),
@@ -529,7 +554,9 @@ fn rain_series(schedule: Schedule) -> NewSeries {
         source_id: "campus-observer".into(),
         liquidity_units: 100,
         fee_charged: true,
-        resolution: None,
+        resolution: ResolutionSpec::Creator {
+            public_key: test_public_key(),
+        },
         schedule,
     }
 }
@@ -772,17 +799,11 @@ async fn old_recurring_brackets_purge_but_one_time_markets_stay() {
     buy(&db, &trader, &bracket, 1000).await;
     buy(&db, &trader, &once, 1000).await;
     // Two minutes cover both observation windows while both deadlines hold:
-    // record evidence for both, then advance past both finalize points.
+    // resolve both as the creator, then advance past both finalize points.
     db.store.advance_demo_clock(2).await.unwrap();
     worker::tick(&db.store).await.unwrap();
-    db.store
-        .ingest_evidence(&bracket_id, &rain(&bracket, 1, 250))
-        .await
-        .unwrap();
-    db.store
-        .ingest_evidence(&once_id, &rain(&once, 1, 250))
-        .await
-        .unwrap();
+    creator_resolve(&db.store, &creator.id, &bracket_id, "yes").await;
+    creator_resolve(&db.store, &creator.id, &once_id, "yes").await;
     db.store.advance_demo_clock(2).await.unwrap();
     for _ in 0..2 {
         worker::tick(&db.store).await.unwrap();
@@ -1282,7 +1303,7 @@ async fn bus_adapter_relays_the_live_provider_answer() {
 
 // ADR 0007: resolution authority is fixed at creation.
 #[tokio::test]
-async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
+async fn resolution_authority_is_fixed_at_creation_and_blocks_simulated_evidence() {
     let db = TestDb::new().await;
     let (creator, _) = db.creator().await;
     let now = db.store.now().await.unwrap();
@@ -1295,9 +1316,9 @@ async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
         finalize_after_ms: now + 240000,
         evidence_deadline_ms: now + 360000,
     });
-    spec.resolution = Some(ResolutionSpec::Creator {
+    spec.resolution = ResolutionSpec::Creator {
         public_key: public_key.clone(),
-    });
+    };
     let view = db
         .store
         .create_series(Some(&creator.id), &spec, "manual")
@@ -1307,10 +1328,13 @@ async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
     assert_eq!(view["resolution"]["public_key"], public_key);
     let instance_id = view["instances"][0]["id"].as_str().unwrap().to_owned();
     let instance = db.store.instance(&instance_id).await.unwrap();
-    // The administrator evidence route rejects the creator-owned market.
+    // The simulator primitive refuses a series-owned market outright: only
+    // the creator's signature or the configured resolver may settle it. The
+    // authority guard runs before the observation-window check, so this holds
+    // even while the market is still open.
     let evidence = EvidenceInput {
         source_id: instance.source_id.clone(),
-        event_id: "admin-attempt".into(),
+        event_id: "simulated-attempt".into(),
         source_revision: 0,
         window_start_ms: instance.observation_start_ms,
         window_end_ms: instance.observation_end_ms,
@@ -1319,16 +1343,16 @@ async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
             total_milli_mm: 300,
             complete: true,
         },
-        reference: "administrator attempt on a creator-owned market".into(),
+        reference: "simulated attempt on a creator-owned market".into(),
     };
     let rejected = db
         .store
-        .ingest_evidence(&instance_id, &evidence)
+        .record_evidence(&instance_id, &evidence)
         .await
         .unwrap_err();
     assert_eq!(
         rejected.to_string(),
-        "This market's resolution authority is fixed at creation; administrator evidence cannot resolve it"
+        "This market's resolution authority is fixed at creation; simulated evidence cannot resolve it"
     );
     // Resolver authority stores the endpoint.
     let mut resolver_spec = rain_series(Schedule::Once {
@@ -1338,9 +1362,9 @@ async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
         finalize_after_ms: now + 240000,
         evidence_deadline_ms: now + 360000,
     });
-    resolver_spec.resolution = Some(ResolutionSpec::Resolver {
+    resolver_spec.resolution = ResolutionSpec::Resolver {
         endpoint: "https://resolver.example.com/answer".into(),
-    });
+    };
     let view = db
         .store
         .create_series(Some(&creator.id), &resolver_spec, "manual")
@@ -1353,9 +1377,9 @@ async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
     );
     // Malformed authority inputs are rejected.
     let mut short_key = resolver_spec.clone();
-    short_key.resolution = Some(ResolutionSpec::Creator {
+    short_key.resolution = ResolutionSpec::Creator {
         public_key: "AAAA".into(),
-    });
+    };
     assert!(
         db.store
             .create_series(Some(&creator.id), &short_key, "manual")
@@ -1363,9 +1387,9 @@ async fn resolution_authority_is_fixed_at_creation_and_blocks_admin_evidence() {
             .is_err()
     );
     let mut insecure = resolver_spec.clone();
-    insecure.resolution = Some(ResolutionSpec::Resolver {
+    insecure.resolution = ResolutionSpec::Resolver {
         endpoint: "http://insecure.example.com".into(),
-    });
+    };
     assert!(
         db.store
             .create_series(Some(&creator.id), &insecure, "manual")
@@ -1395,7 +1419,7 @@ async fn creators_resolve_their_markets_with_signed_statements() {
         finalize_after_ms: now + 240000,
         evidence_deadline_ms: now + 360000,
     });
-    spec.resolution = Some(ResolutionSpec::Creator { public_key });
+    spec.resolution = ResolutionSpec::Creator { public_key };
     let view = db
         .store
         .create_series(Some(&creator.id), &spec, "manual")
@@ -1533,7 +1557,7 @@ async fn resolver_authority_settles_from_the_external_endpoint() {
         finalize_after_ms: now + 240000,
         evidence_deadline_ms: now + 360000,
     });
-    spec.resolution = Some(ResolutionSpec::Resolver { endpoint });
+    spec.resolution = ResolutionSpec::Resolver { endpoint };
     let view = db
         .store
         .create_series(Some(&creator.id), &spec, "manual")
@@ -1579,9 +1603,9 @@ async fn resolver_authority_voids_when_answers_stay_invalid_or_unreachable() {
     // One series whose source keeps naming an unpublished option.
     let mut invalid = rain_series(once.clone());
     invalid.title = "Invalid answer series".into();
-    invalid.resolution = Some(ResolutionSpec::Resolver {
+    invalid.resolution = ResolutionSpec::Resolver {
         endpoint: spawn_resolver(json!({"outcome_id": "maybe"})).await,
-    });
+    };
     let invalid_view = db
         .store
         .create_series(Some(&creator.id), &invalid, "manual")
@@ -1590,9 +1614,9 @@ async fn resolver_authority_voids_when_answers_stay_invalid_or_unreachable() {
     // One series whose source is unreachable.
     let mut unreachable = rain_series(once);
     unreachable.title = "Unreachable answer series".into();
-    unreachable.resolution = Some(ResolutionSpec::Resolver {
+    unreachable.resolution = ResolutionSpec::Resolver {
         endpoint: dead_endpoint().await,
-    });
+    };
     let unreachable_view = db
         .store
         .create_series(Some(&creator.id), &unreachable, "manual")
@@ -1651,7 +1675,7 @@ async fn instance_lists_filter_by_browse_class() {
     db.store.advance_demo_clock(4).await.unwrap();
     db.store.close_due().await.unwrap();
     db.store
-        .ingest_evidence(&resolved.id, &rain(&resolved, 1, 500))
+        .record_evidence(&resolved.id, &rain(&resolved, 1, 500))
         .await
         .unwrap();
     db.store.settle_batch(&resolved.id).await.unwrap();
@@ -2106,7 +2130,7 @@ async fn waiting_evidence_cannot_starve_ready_resolution() {
     db.store.close_due().await.unwrap();
     db.store.close_due().await.unwrap();
     db.store
-        .ingest_evidence(&ready.id, &rain(&ready, 1, 250))
+        .record_evidence(&ready.id, &rain(&ready, 1, 250))
         .await
         .unwrap();
     worker::tick(&db.store).await.unwrap();
@@ -2603,18 +2627,18 @@ async fn out_of_order_evidence_uses_latest_revision_and_is_idempotent() {
     db.store.advance_demo_clock(3).await.unwrap();
     db.store.close_due().await.unwrap();
     let newest = rain(&market, 2, 500);
-    let first = db.store.ingest_evidence(&market.id, &newest).await.unwrap();
+    let first = db.store.record_evidence(&market.id, &newest).await.unwrap();
     assert_eq!(
-        db.store.ingest_evidence(&market.id, &newest).await.unwrap()["evidence_id"],
+        db.store.record_evidence(&market.id, &newest).await.unwrap()["evidence_id"],
         first["evidence_id"]
     );
     db.store
-        .ingest_evidence(&market.id, &rain(&market, 1, 0))
+        .record_evidence(&market.id, &rain(&market, 1, 0))
         .await
         .unwrap();
     assert!(
         db.store
-            .ingest_evidence(&market.id, &rain(&market, 2, 0))
+            .record_evidence(&market.id, &rain(&market, 2, 0))
             .await
             .is_err()
     );
@@ -2633,7 +2657,7 @@ async fn out_of_order_evidence_uses_latest_revision_and_is_idempotent() {
     );
     assert!(
         db.store
-            .ingest_evidence(&market.id, &rain(&market, 3, 0))
+            .record_evidence(&market.id, &rain(&market, 3, 0))
             .await
             .is_err()
     );
@@ -2724,7 +2748,7 @@ async fn failed_settlement_batch_can_retry_without_duplicate_credit() {
     db.store.advance_demo_clock(3).await.unwrap();
     db.store.close_due().await.unwrap();
     db.store
-        .ingest_evidence(&market.id, &rain(&market, 1, 500))
+        .record_evidence(&market.id, &rain(&market, 1, 500))
         .await
         .unwrap();
     db.store.advance_demo_clock(2).await.unwrap();
@@ -2765,7 +2789,7 @@ async fn settlement_resumes_after_a_committed_batch() {
     db.store.advance_demo_clock(3).await.unwrap();
     db.store.close_due().await.unwrap();
     db.store
-        .ingest_evidence(&market.id, &rain(&market, 1, 500))
+        .record_evidence(&market.id, &rain(&market, 1, 500))
         .await
         .unwrap();
     db.store.advance_demo_clock(2).await.unwrap();
@@ -2836,7 +2860,7 @@ async fn trading_fees_are_charged_and_split_with_the_creator() {
     db.store.close_due().await.unwrap();
     for instance in [&market, &plain] {
         db.store
-            .ingest_evidence(&instance.id, &rain(instance, 1, 500))
+            .record_evidence(&instance.id, &rain(instance, 1, 500))
             .await
             .unwrap();
     }
