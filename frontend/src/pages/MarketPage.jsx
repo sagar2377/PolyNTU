@@ -52,6 +52,13 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
   const resolved = series ? series.instances.filter((i) => i.state === "resolved") : [];
   const isCreator = account && series && series.creator_account_id === account.id;
   const canSign = isCreator && series.resolution?.authority === "creator";
+  // What settles the market, in the terms a trader cares about: a person
+  // decides, or a configured external source answers.
+  const resolutionMode = series?.resolution?.authority === "creator"
+    ? "Manually resolved by the market creator"
+    : series?.resolution?.authority === "resolver"
+      ? "Automatically resolved by the external source the creator set"
+      : "Resolved by the platform administrator";
   const key = localKey || (canSign ? accountSigningKey(account) : null);
   const keyMatches = key?.public_key === series?.resolution?.public_key;
   const resolve = async (bracket, outcomeId, pair) => {
@@ -86,11 +93,9 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
     {instance.result && <div className="result-banner"><strong>{instance.state === "resolving" ? "Settlement in progress" : "Final result"}: {resultLabel}</strong><span>{instance.result.reason}</span></div>}
     <div className="layout"><section className="panel"><h2>Market probabilities</h2>
       {instance.outcomes.map((outcome) => <div className="outcome-row" key={outcome.id}><span>{outcome.label}</span><strong>{(outcome.probability * 100).toFixed(2)}%</strong><div className="probability-track"><span style={{ width: `${outcome.probability * 100}%` }} /></div></div>)}
-      <p className="muted small">Prices reflect trading activity. Opening prices are uniform and are not a forecast from a data provider.</p>
       <dl className="market-facts"><div><dt>Trading closes</dt><dd>{timestamp(instance.close_ms)}</dd></div><div><dt>Observation window</dt><dd>{timestamp(instance.observation_start_ms)} – {timestamp(instance.observation_end_ms)}</dd></div><div><dt>Evidence deadline</dt><dd>{timestamp(instance.evidence_deadline_ms)}</dd></div><div><dt>Trading fee</dt><dd>{instance.fee_charged ? "25 bps, half funds the creator" : "None, a welfare market"}</dd></div></dl>
     </section><TradePanel instance={instance} account={account} onTrade={onTrade} /></div>
     <section className="panel" aria-label="Price and volume history"><h2>Price and volume history</h2>
-      <p className="muted small">Each line is one outcome's price; bars are traded volume per interval. The chart refreshes with every trade.</p>
       <PriceHistoryChart instance={instance} reloadKey={reloads} />
     </section>
     {series && instance.outcomes.length === 2 && <section className="panel" aria-label="Day-long probability view"><h2>Implied probability across the day</h2>
@@ -120,7 +125,6 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
     </section>}
     {series && (awaiting.length > 0 || voided.length > 0 || resolved.length > 0) && <section className="panel">
       <h2>Bracket history</h2>
-      <p className="muted small">History is collapsed by default; open a tab to show it and click it again to hide it.</p>
       <div className="tab-bar" role="tablist" aria-label="Bracket history">
         <button role="tab" aria-selected={historyTab === "closed"} className={historyTab === "closed" ? "selected" : ""} onClick={() => setHistoryTab(historyTab === "closed" ? null : "closed")}>Closed ({awaiting.length})</button>
         <button role="tab" aria-selected={historyTab === "voided"} className={historyTab === "voided" ? "selected" : ""} onClick={() => setHistoryTab(historyTab === "voided" ? null : "voided")}>Voided ({voided.length})</button>
@@ -128,7 +132,7 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
       </div>
       {historyTab === "closed" && <>
         {canSign && (keyMatches
-          ? <p className="muted small">Pick the outcome for each closed bracket; this browser signs with the key derived from your password.</p>
+          ? null
           : <div className="resolve-control"><label className="sr-only" htmlFor="key-password">Password</label>
               <input id="key-password" type="password" placeholder="Account password" value={keyPassword} autoComplete="current-password" onChange={(e) => setKeyPassword(e.target.value)} />
               <button disabled={deriving || !keyPassword} onClick={deriveKey}>Derive signing key</button></div>)}
@@ -141,9 +145,7 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
                   {bracket.outcomes.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
                 <button disabled={busy} onClick={() => resolve(bracket, choices[bracket.id] ?? bracket.outcomes[0].id, key)}>Resolve</button></span>
-            : canSign
-              ? <span className="muted small">Derive the signing key above to resolve these brackets.</span>
-              : <span className="muted small">{series.resolution?.authority === "resolver" ? "The automatic resolver is answering" : "Awaiting the resolution authority"}</span>}
+            : <span className="muted small">{series.resolution?.authority === "resolver" ? "The automatic resolver is answering" : "Awaiting the resolution authority"}</span>}
         </li>)}
         </ul>
       </>}
@@ -160,6 +162,6 @@ export default function MarketPage({ id, account, config, refresh, onTrade, onEr
       </li>)}
       </ul>}
     </section>}
-    <section className="panel"><h2>How this market resolves</h2><p>{instance.resolution_criterion}</p><p className="muted">{instance.void_policy}</p><dl className="market-facts"><div><dt>Source</dt><dd>{instance.source_id}</dd></div><div><dt>Evidence</dt><dd>{instance.evidence ? `Received ${timestamp(instance.evidence.received_ms)}` : "Awaiting the observation window and final evidence"}</dd></div>{instance.evidence?.source && <div><dt>Answered by</dt><dd>{instance.evidence.source === "ntubus-live" ? "Live NTU bus feed" : instance.evidence.source === "simulated-fallback" ? "Simulated fallback (the live feed did not answer)" : instance.evidence.source}</dd></div>}</dl>{instance.evidence && <details><summary>View resolution evidence</summary><pre>{JSON.stringify(instance.evidence.payload, null, 2)}</pre></details>}</section>
+    <section className="panel"><h2>How this market resolves</h2><p>{instance.resolution_criterion}</p><dl className="market-facts"><div><dt>Resolved by</dt><dd>{resolutionMode}</dd></div><div><dt>Evidence</dt><dd>{instance.evidence ? `Received ${timestamp(instance.evidence.received_ms)}` : "Awaiting the observation window and final evidence"}</dd></div>{instance.evidence?.source && <div><dt>Answered by</dt><dd>{instance.evidence.source === "ntubus-live" ? "Live NTU bus feed" : instance.evidence.source === "simulated-fallback" ? "Simulated fallback (the live feed did not answer)" : instance.evidence.source}</dd></div>}</dl>{instance.evidence && <details><summary>View resolution evidence</summary><pre>{JSON.stringify(instance.evidence.payload, null, 2)}</pre></details>}</section>
   </>;
 }

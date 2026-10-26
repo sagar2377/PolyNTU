@@ -47,7 +47,6 @@ export default function AdminPanel({ account, onClose, onChanged }) {
 
   return <Modal label="Administrator console" onClose={onClose}>
     <h2>Administrator console</h2>
-    <p className="muted small">Use the shared administrator token, or sign in as an administrator account and paste its session token.</p>
     <label htmlFor="console-token">Administrator token</label>
     <input id="console-token" type="password" value={token} autoComplete="off" onChange={(e) => setToken(e.target.value)} />
     {message && <p className={failed ? "error small" : "muted small"} role="status">{message}</p>}
@@ -82,6 +81,5 @@ export default function AdminPanel({ account, onClose, onChanged }) {
       </div>
       {reconcile && <p className="muted small">{reconcile.ok ? "Reconciliation found no discrepancies." : "Reconciliation found discrepancies; see the report."}</p>}
     </section>
-    {account?.role === "admin" && <p className="muted small">Signed in as an administrator; the request carries your session, so the token is only needed to act as the shared operator.</p>}
   </Modal>;
 }

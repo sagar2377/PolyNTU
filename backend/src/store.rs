@@ -168,7 +168,6 @@ pub fn instance_view(instance: &Instance, now: i64) -> Result<Value> {
         "creator_account_id": instance.creator_account_id,
         "series_id": instance.series_id, "bracket_start_ms": instance.bracket_start_ms,
         "evidence_id": instance.evidence_id, "server_time_ms": now,
-        "void_policy": "Each outcome share redeems for 1/n units; aggregate account credits round down to a micro-unit."
     }))
 }
 

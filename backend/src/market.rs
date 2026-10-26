@@ -872,7 +872,7 @@ pub fn demo_specs(now: i64) -> Vec<NewInstance> {
             Rule::Count { .. } => "Yes if the trusted source's count at the end of the published sampling window reaches the threshold. Queue length and occupancy use distinct measurements.",
             Rule::Other { condition } => condition,
         };
-        NewInstance { template_id: id.into(), title: title.into(), resolution_criterion: format!("{criterion} Demo: deterministic simulated evidence. Missing final evidence voids shares at 1/n units each."),
+        NewInstance { template_id: id.into(), title: title.into(), resolution_criterion: criterion.into(),
             rule, source_id: "polyntu-simulator-v1".into(), data_mode: "simulated".into(), close_ms: close,
             observation_start_ms: close, observation_end_ms: close + duration, finalize_after_ms: close + duration + 1000,
             evidence_deadline_ms: close + duration + 60000, liquidity_units: 100, fee_charged: true, creator_account_id: None,

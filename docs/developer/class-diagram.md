@@ -80,8 +80,8 @@ The diagram groups related settings into value types. These values do not have i
 | MarketWindow | `closeAt`, `observationStartAt`, `observationEndAt`, `finalizeAfterAt`, `evidenceDeadlineAt`, all timestamps, satisfying `close <= observationStart < observationEnd <= finalizeAfter < evidenceDeadline`. |
 | ResolverConfig | `endpoint: URL`, fixed at publication for resolver authority. |
 | ResolutionKey | `publicKey: String`, the fixed ed25519 public key for creator authority. No private signing key is stored in these entities. |
-| MarketRule | Tagged weather, bus, election, or count parameters, matching the current domain rules. |
-| EvidencePayload | Either a normalized observation with its reference, a signed creator statement (outcome, nonce, signature, public key), or the recorded external resolver request/response and selected outcome. The observation form covers rainfall, bus arrivals, election result, or count data with relevant completion/finality flags. |
+| MarketRule | Tagged weather, bus, election, count, or other parameters, matching the current domain rules. The `other` variant carries the creator's prose resolution condition and settles on the outcome the recorded evidence names. |
+| EvidencePayload | Either a normalized observation with its reference, a signed creator statement (outcome, nonce, signature, public key), or the recorded external resolver request/response and selected outcome. The observation form covers rainfall, bus arrivals, election result, count data, or an `other` market's named outcome, with relevant completion/finality flags. |
 | Resolution | Either `winner(outcomeIndex)` or `void(reason)`; absent until determined. |
 
 Registered accounts have email, password hash, and role together; user accounts have a token hash. Plaintext passwords and session tokens are not persisted as entity attributes. `Trader`, `Market Creator`, and `Platform Admin` are actor roles, not Account subclasses. Approval changes the role of an existing account.

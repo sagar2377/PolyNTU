@@ -17,10 +17,8 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
   const [direction, setDirection] = useState("");
   const [stopId, setStopId] = useState("");
   const [candidates, setCandidates] = useState("");
-  const [condition, setCondition] = useState("");
   const [metric, setMetric] = useState("queue_length");
   const [locationId, setLocationId] = useState("");
-  const [sourceId, setSourceId] = useState("");
   const [liquidity, setLiquidity] = useState("100");
   const [feeCharged, setFeeCharged] = useState(true);
   const [scheduleKind, setScheduleKind] = useState("once");
@@ -49,7 +47,7 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
       const rule = category === "weather" ? { kind: "weather", station_id: stationId.trim(), threshold_milli_mm: Number(threshold) }
         : category === "bus" ? { kind: "bus", route_id: routeId.trim(), direction: direction.trim(), stop_id: stopId.trim() }
         : category === "elections" ? { kind: "election", candidates: candidates.split(",").map((c) => c.trim()).filter(Boolean), is_fictional: true }
-        : category === "other" ? { kind: "other", condition: condition.trim() }
+        : category === "other" ? { kind: "other", condition: criterion.trim() }
         : { kind: "count", metric, location_id: locationId.trim(), threshold: Number(threshold) };
       let schedule;
       if (scheduleKind === "once") {
@@ -70,19 +68,19 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
         : resolutionKind === "resolver"
           ? { kind: "resolver", endpoint: resolverEndpoint.trim() }
           : undefined;
-      const created = await api.createSeries({ title: title.trim(), resolution_criterion: criterion.trim(), rule, source_id: sourceId.trim(), liquidity_units: Number(liquidity), fee_charged: feeCharged, resolution, schedule });
+      const created = await api.createSeries({ title: title.trim(), resolution_criterion: criterion.trim(), rule, source_id: "polyntu-creator", liquidity_units: Number(liquidity), fee_charged: feeCharged, resolution, schedule });
       if (resolutionKind === "creator" && pair) storeSigningKey(account.email, pair);
       onCreated(created.id);
     } catch (e) { onError(e.message); } finally { setBusy(false); }
   };
   return <>
     <button className="link-button" onClick={onBack}>← All markets</button>
-    <div className="market-heading"><h1>Publish a market</h1><p className="muted">Definitions are immutable once published. Trading fees split 50/50 with you; leave the fee off for welfare markets.</p></div>
+    <div className="market-heading"><h1>Publish a market</h1></div>
     <form onSubmit={submit} className="create-form panel">
       <label htmlFor="market-title">Title</label>
-      <input id="market-title" value={title} minLength={5} maxLength={240} required onChange={(e) => setTitle(e.target.value)} placeholder="Short, specific, time-bound" />
+      <input id="market-title" value={title} minLength={5} maxLength={240} required onChange={(e) => setTitle(e.target.value)} placeholder="Short, specific" />
       <label htmlFor="market-criterion">Resolution criterion</label>
-      <textarea id="market-criterion" value={criterion} minLength={5} maxLength={4000} required rows={4} onChange={(e) => setCriterion(e.target.value)} placeholder="Exactly what evidence resolves each outcome" />
+      <textarea id="market-criterion" value={criterion} minLength={5} maxLength={4000} required rows={4} onChange={(e) => setCriterion(e.target.value)} placeholder="State exactly what settles this market, for example: Yes if the Student Union announces a Reading Week for this semester." />
       <label htmlFor="market-category">Category</label>
       <select id="market-category" value={category} onChange={(e) => setCategory(e.target.value)}>
         {Object.entries(categories).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
@@ -118,40 +116,28 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
         <input id="market-count-threshold" type="number" min={1} max={1000000} value={threshold} required onChange={(e) => setThreshold(e.target.value)} />
       </>}
       {category === "other" && <>
-        <label htmlFor="market-condition">Resolution condition</label>
-        <textarea id="market-condition" value={condition} maxLength={4000} required rows={3} aria-describedby="market-condition-help" onChange={(e) => setCondition(e.target.value)} placeholder="State exactly what settles this market, for example: Yes if the Student Union announces a Reading Week for this semester." />
-        <p id="market-condition-help" className="muted small">Settles Yes or No. With manual resolution you state the outcome yourself; with an API, your endpoint returns the winning outcome.</p>
       </>}
-      <label htmlFor="market-source">Evidence source identifier</label>
-      <input id="market-source" value={sourceId} maxLength={120} required onChange={(e) => setSourceId(e.target.value)} placeholder="The source your criterion names" />
       <div className="form-row">
-        <div><label htmlFor="market-liquidity">Liquidity (units, 10 to 100000)</label>
-          <input id="market-liquidity" type="number" min={10} max={100000} value={liquidity} required aria-describedby="market-liquidity-help" onChange={(e) => setLiquidity(e.target.value)} />
-          <p id="market-liquidity-help" className="muted small">How much the odds move per trade. A higher value keeps prices near 50% for longer, so it takes bigger trades to shift them; a lower value makes the market more responsive. 100 suits most markets, and the amount is funding the market, not a fee.</p></div>
+        <div><label htmlFor="market-liquidity">Liquidity (10 to 100000)</label>
+          <input id="market-liquidity" type="number" min={10} max={100000} value={liquidity} required onChange={(e) => setLiquidity(e.target.value)} /></div>
         <div><label htmlFor="market-fee">Charge the 25 bps trading fee?</label>
           <select id="market-fee" value={feeCharged ? "yes" : "no"} onChange={(e) => setFeeCharged(e.target.value === "yes")}>
             <option value="yes">Yes</option>
             <option value="no">No</option>
-          </select>
-          <p className="muted small">A fee is 0.25% of each trade; half of it goes to you and half to the platform treasury.</p></div>
+          </select></div>
       </div>
       <label htmlFor="market-resolution">Resolution mode</label>
       <select id="market-resolution" value={resolutionKind} onChange={(e) => chooseResolution(e.target.value)}>
         <option value="creator">Manual update by the market creator</option>
         <option value="resolver">Automatic resolution via a provided API</option>
-        <option value="admin">Platform administrator records the outcome</option>
       </select>
-      {resolutionKind === "creator" && <>
-        <p className="muted small">{keyPair
-          ? "Resolutions are signed with the key derived from your account password, so you can resolve from any browser where you sign in. The password itself never leaves this browser; only the public key is published."
-          : "Enter your password to derive the signing key in this browser. The key is derived from the password, so any browser where you sign in can resolve; the password never leaves this browser."}</p>
-        {!keyPair && <><label htmlFor="market-key-password">Password (derives the signing key)</label>
-        <input id="market-key-password" type="password" value={keyPassword} required autoComplete="current-password" onChange={(e) => setKeyPassword(e.target.value)} /></>}
+      {resolutionKind === "creator" && !keyPair && <>
+        <label htmlFor="market-key-password">Password</label>
+        <input id="market-key-password" type="password" value={keyPassword} required autoComplete="current-password" onChange={(e) => setKeyPassword(e.target.value)} />
       </>}
       {resolutionKind === "resolver" && <>
         <label htmlFor="market-resolver-endpoint">Resolver endpoint (https URL)</label>
         <input id="market-resolver-endpoint" value={resolverEndpoint} maxLength={500} required onChange={(e) => setResolverEndpoint(e.target.value)} placeholder="https://example.com/polyntu-resolver" />
-        <p className="muted small">PolyNTU posts the instance identifier, bracket window, and rule; your endpoint must answer with one published outcome identifier or pending.</p>
       </>}
       <label htmlFor="market-schedule">Schedule</label>
       <select id="market-schedule" value={scheduleKind} onChange={(e) => setScheduleKind(e.target.value)}>
@@ -185,7 +171,6 @@ export default function CreateMarket({ account, onCreated, onError, onBack }) {
           <option value="weekdays">Weekdays (Monday to Friday)</option>
           <option value="weekends">Weekends (Saturday and Sunday)</option>
         </select>
-        <p className="muted small">Brackets spawn on the interval grid, only inside the operating window and on the operating days, and never after the end date. Leave the end date empty for a perpetual series.</p>
       </>}
       <button className="primary publish-button" disabled={busy}>{scheduleKind === "once" ? "Publish market" : "Publish series"}</button>
     </form>

@@ -26,7 +26,7 @@ For other platforms, Docker, separate frontend development, and environment vari
 
 ## What the system provides
 
-- Five market categories: weather, bus timings, fictional elections, queue/crowd measurements, and event/lecture attendance.
+- Six market categories: weather, bus timings, fictional elections, queue/crowd measurements, event/lecture attendance, and a catch-all where the creator states the resolution condition in prose.
 - NTU email registration, password login, and single-session tokens that invalidate older sessions.
 - An administrator-reviewed verification workflow that grants the creator role.
 - One-time and recurring market series; recurring series spawn brackets on a fixed grid inside a daily operating window.

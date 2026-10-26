@@ -130,7 +130,6 @@ export default function App() {
     {!account && entryView && <Modal label="Account access" onClose={() => setEntryView(null)}>
       {entryView === "register" ? <>
         <h2>Create your account</h2>
-        <p className="muted small">An NTU email is required. Each winning share resolves to one unit; new accounts start with 10,000 units.</p>
         <form onSubmit={(e) => signIn(e, "register")} className="stacked-form">
           <label htmlFor="reg-name">Display name</label>
           <input id="reg-name" value={regName} minLength={2} maxLength={60} required onChange={(e) => setRegName(e.target.value)} placeholder="Your name" />
@@ -151,7 +150,6 @@ export default function App() {
         </form>
       </>}
       {config?.demo_mode && <details><summary>Demo accounts</summary>
-        <p className="muted small">A one-click participant with 1,000 units, the bus market creator, or the seeded administrator.</p>
         <form onSubmit={(e) => signIn(e, "demo")}><label htmlFor="display-name">Demo display name</label><div className="inline-form"><input id="display-name" value={name} minLength={2} maxLength={60} required onChange={(e) => setName(e.target.value)} placeholder="Your name" /><button disabled={busy}>Start with 1,000 units</button></div></form>
         <div className="button-row">
           <button disabled={busy} onClick={() => signInDemoAccount("bus@ntu.edu.sg", "bus")}>Sign in as bus@ntu.edu.sg</button>
@@ -173,7 +171,6 @@ export default function App() {
     {adminOpen && <AdminPanel account={account} onClose={() => setAdminOpen(false)} onChanged={() => setRefresh((n) => n + 1)} />}
     {config?.demo_mode && clockOpen && <Modal label="Demo clock controls" onClose={() => setClockOpen(false)}>
       <h2>Demo clock controls</h2>
-      <p className="muted small">Advance simulated time to observe closing and settlement. Administrator access is required.</p>
       <label htmlFor="admin-token">Administrator token</label>
       <input id="admin-token" type="password" value={admin} autoComplete="off" onChange={(e) => setAdmin(e.target.value)} />
       <div className="button-row"><button disabled={busy || !admin} onClick={() => advance(60)}>Advance 1 hour</button><button disabled={busy || !admin} onClick={() => advance(1440)}>Advance 1 day</button></div>
