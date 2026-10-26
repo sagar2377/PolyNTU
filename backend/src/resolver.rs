@@ -164,10 +164,32 @@ pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
         return Ok(pending());
     };
     let now = store.now().await?;
-    if instance.data_mode != "simulated"
+    // Simulated and live-mode instances both answer through the adapter; the
+    // rule and window gates below keep it to bus brackets past observation.
+    if !matches!(instance.data_mode.as_str(), "simulated" | "manual")
         || now < instance.observation_end_ms
         || !matches!(instance.rule.0, Rule::Bus { .. })
     {
+        return Ok(pending());
+    }
+    // A creator-published bus series is stored as a manual market because the
+    // simulator source is reserved for seeded demo series. Its resolver
+    // authority is what makes it eligible for the live feed, so the adapter
+    // answers it too instead of leaving it to void at its deadline.
+    let resolver_authority = match &instance.series_id {
+        Some(series_id) => {
+            sqlx::query_scalar::<_, String>(
+                "SELECT resolution_authority FROM market_series WHERE id=$1",
+            )
+            .bind(series_id)
+            .fetch_optional(&store.pool)
+            .await?
+            .as_deref()
+                == Some("resolver")
+        }
+        None => false,
+    };
+    if instance.data_mode == "manual" && !resolver_authority {
         return Ok(pending());
     }
     let provider = store
@@ -191,6 +213,13 @@ pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
     // answer the bracket stays pending, so the published evidence deadline
     // voids it instead of recording a result the live feed never produced.
     if store.live_mode {
+        return Ok(pending());
+    }
+    // A configured provider that stays silent has usually lost poll coverage
+    // (a restart or a gap over 2.5 cycles), not observed "no bus". Falling
+    // back would turn a real No into a fabricated Yes, so a provider-backed
+    // market waits for the deadline instead.
+    if !provider.is_empty() {
         return Ok(pending());
     }
     let secret: String =

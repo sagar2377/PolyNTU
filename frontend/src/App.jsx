@@ -5,6 +5,7 @@ import MarketPage from "./pages/MarketPage";
 import Portfolio from "./pages/Portfolio";
 import CreateMarket from "./pages/CreateMarket";
 import Modal from "./components/Modal";
+import AdminPanel from "./components/AdminPanel";
 import "./App.css";
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
   const [name, setName] = useState("");
   const [entryView, setEntryView] = useState(null);
   const [clockOpen, setClockOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [admin, setAdmin] = useState("");
   const [busy, setBusy] = useState(false);
   const [regName, setRegName] = useState("");
@@ -164,7 +166,8 @@ export default function App() {
     {view === "market" && selected && <MarketPage key={`${selected}:${account?.id || "guest"}`} id={selected} account={account} refresh={refresh} onTrade={() => setRefresh((n) => n + 1)} onError={setError} onBack={() => setView(marketFrom)} onSelect={(id) => openMarket(id, marketFrom)} />}
     {view === "create" && account?.role === "creator" && <CreateMarket account={account} onCreated={(id) => { setRefresh((n) => n + 1); openSeries(id); }} onError={setError} onBack={() => setView("browse")} />}
     {view === "portfolio" && <Portfolio account={account} refresh={refresh} onError={setError} onSelect={(id) => openMarket(id, "portfolio")} />}
-    <footer><span>PolyNTU · Outcome markets</span><span className="footer-actions">{config?.demo_mode && <button className="link-button" onClick={() => setClockOpen(true)}>Demo clock</button>}</span></footer>
+    <footer><span>PolyNTU · Outcome markets</span><span className="footer-actions">{config?.demo_mode && <button className="link-button" onClick={() => setClockOpen(true)}>Demo clock</button>}<button className="link-button" onClick={() => setAdminOpen(true)}>Admin</button></span></footer>
+    {adminOpen && <AdminPanel account={account} onClose={() => setAdminOpen(false)} onError={setError} onChanged={() => setRefresh((n) => n + 1)} />}
     {config?.demo_mode && clockOpen && <Modal label="Demo clock controls" onClose={() => setClockOpen(false)}>
       <h2>Demo clock controls</h2>
       <p className="muted small">Advance simulated time to observe closing and settlement. Administrator access is required.</p>

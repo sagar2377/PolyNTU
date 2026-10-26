@@ -18,7 +18,9 @@ Pop-Location
 ./scripts/run-prod.ps1
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Create a demo account, open a market, preview a trade, and confirm it. Demo databases also seed an administrator account, `admin@ntu.edu.sg` with password `admin`, for signing in and working the verification queue. In demo mode, the administrator token stored in `.local/dev-secrets.json` can advance the demonstration clock. Keep that file private.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Create a demo account, open a market, preview a trade, and confirm it. Demo databases also seed an administrator account, `admin@ntu.edu.sg` with password `admin`, for signing in and working the verification queue from the **Admin** button in the footer. In demo mode, the administrator token stored in `.local/dev-secrets.json` can advance the demonstration clock. Keep that file private.
+
+`run-prod.ps1` also starts the NTU bus provider and checks that it is answering, so bus brackets can resolve from the campus Omnibus feed. Pass `-NoProvider` to skip it. For a live demonstration where the bus markets must come from the real feed and never from the simulator, use `./scripts/run-live.ps1`.
 
 For other platforms, Docker, separate frontend development, and environment variables, see [development setup](docs/development.md). For fast backend iteration, `./scripts/run-dev.ps1` runs a debug backend and skips the frontend build; keep the Vite dev server (`npm run dev` in `frontend/`) running for the interface.
 

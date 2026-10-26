@@ -45,6 +45,14 @@ export const api = {
   portfolio: (offset = 0) => request(`/me/portfolio?limit=100&offset=${offset}`),
   trades: (offset = 0) => request(`/me/trades?limit=100&offset=${offset}`),
   advance: (minutes, adminToken) => request("/admin/clock/advance", { method: "POST", body: { minutes }, adminToken }),
+  adminVerifications: (status, adminToken) => request(`/admin/verification-requests${status ? `?status=${encodeURIComponent(status)}` : ""}`, { adminToken }),
+  adminDecide: (id, body, adminToken) => request(`/admin/verification-requests/${encodeURIComponent(id)}/decision`, { method: "POST", body, adminToken }),
+  adminCreateAccount: (display_name, adminToken) => request("/admin/accounts", { method: "POST", body: { display_name }, adminToken }),
+  adminCreateInstance: (body, adminToken) => request("/admin/instances", { method: "POST", body, adminToken }),
+  adminEvidence: (id, body, adminToken) => request(`/admin/instances/${encodeURIComponent(id)}/evidence`, { method: "POST", body, adminToken }),
+  adminSuspend: (id, body, adminToken) => request(`/admin/instances/${encodeURIComponent(id)}/suspension`, { method: "POST", body, adminToken }),
+  adminReconcile: (adminToken) => request("/admin/reconcile", { adminToken }),
+  adminTick: (adminToken) => request("/admin/worker/tick", { method: "POST", adminToken }),
   eventsUrl: (id) => `${BASE}/api/v2/instances/${encodeURIComponent(id)}/events`,
 };
 export const categories = { weather: "Weather", bus: "Bus timings", elections: "Elections", queue_crowd: "Queue & crowd", attendance: "Event & lecture attendance" };

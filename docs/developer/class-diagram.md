@@ -26,7 +26,7 @@ The ten existing entity definitions and their association multiplicities are pre
 | VerificationRequest, Position, Trade, Evidence, SettlementClaim, LedgerTransfer | Persisted records accessed through SQL and returned through read models/JSON; no new Rust entity struct is implied for each box. |
 | User boundaries | React function components and supporting browser functions, as listed below. |
 | OutcomeSet, PositionBook, TradeHistory | Design-level collections. `OutcomeSet` groups the `Vec<Outcome>` and inventory array of an `Instance` with `amm::prices`; `PositionBook` and `TradeHistory` group the rows of the `positions` and `trades` tables for one account. No new Rust struct is implied. See [container classes](#container-classes). |
-| ResolutionAuthority and its three implementations | The `AuthorityKind` value plus `match` dispatch over `ingest_evidence`, `record_creator_resolution` and `record_resolver_evidence`. See [design patterns](#design-patterns). |
+| ResolutionAuthority and its three implementations | The `AuthorityKind` design value plus three parallel methods, `ingest_evidence`, `record_creator_resolution` and `record_resolver_evidence`, each re-checking the stored `resolution_authority` column. See [design patterns](#design-patterns). |
 | Seven use-case controls | Logical groups of handlers, `Store` methods, and helper functions. They allocate design responsibilities without extracting new controller structs. |
 | Startup/runtime boxes | Existing structs or named functions/modules, as listed in the startup table. |
 

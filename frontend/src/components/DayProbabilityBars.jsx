@@ -20,7 +20,7 @@ export default function DayProbabilityBars({ series }) {
         : sgtHm(slot.close_ms)}</span>
       <span className="probability-track"><span style={{ width: `${slot.probability * 100}%` }} /></span>
       <span className="day-bar-value">{(slot.probability * 100).toFixed(1)}%</span>
-      <span className="day-bar-volume">{slot.volume_micros > 0 ? units(slot.volume_micros) : ""}</span>
+      <span className="day-bar-volume" title="Units traded in this bracket">{slot.volume_micros > 0 ? `${units(slot.volume_micros)} traded` : ""}</span>
     </div>)}
   </div>;
 }

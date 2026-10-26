@@ -29,6 +29,11 @@ use uuid::Uuid;
 const SECRET: &str = "test-quote-secret-012345678901234567890";
 const ADMIN: &str = "test-admin-token-012345678901234567890";
 
+/// Database names this process created, so the stale sweep never races a
+/// parallel test that has created its database but not yet connected.
+static CREATED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
 struct TestDb {
     store: Store,
     admin: PgPool,
@@ -36,11 +41,41 @@ struct TestDb {
     url: String,
 }
 impl TestDb {
+    /// Remove databases left behind by an earlier interrupted or panicked run.
+    /// A test that finishes normally drops its own database; one that aborts
+    /// cannot, so the next run sweeps stale `polyntu_test_*` databases first.
+    /// Names created by this process are skipped, because a parallel test may
+    /// have created one but not connected to it yet. A database still held
+    /// open by another process is left alone too: `DROP DATABASE` without
+    /// FORCE refuses while connections exist.
+    async fn sweep_stale(admin: &PgPool) {
+        let stale: Vec<String> = sqlx::query_scalar(
+            "SELECT datname FROM pg_database WHERE datname LIKE 'polyntu\\_test\\_%'",
+        )
+        .fetch_all(admin)
+        .await
+        .unwrap();
+        // Copy the set out and release the lock: a guard held across the
+        // DROP awaits below would block every other test's `new`.
+        let live: std::collections::HashSet<String> = CREATED.lock().unwrap().clone();
+        for name in stale {
+            let safe = name.starts_with("polyntu_test_")
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !safe || live.contains(&name) {
+                continue;
+            }
+            let _ = sqlx::query(AssertSqlSafe(format!("DROP DATABASE IF EXISTS {name}")))
+                .execute(admin)
+                .await;
+        }
+    }
     async fn new() -> Self {
         let base = std::env::var("TEST_DATABASE_URL")
             .expect("Set TEST_DATABASE_URL for PostgreSQL integration tests");
         let admin = PgPool::connect(&base).await.unwrap();
+        Self::sweep_stale(&admin).await;
         let name = format!("polyntu_test_{}", Uuid::new_v4().simple());
+        CREATED.lock().unwrap().insert(name.clone());
         // The name is polyntu_test_ plus a simple UUID (alphanumeric and
         // underscores only), so interpolating it cannot inject SQL.
         sqlx::query(AssertSqlSafe(format!("CREATE DATABASE {name}")))
@@ -129,6 +164,7 @@ impl TestDb {
         .execute(&self.admin)
         .await
         .unwrap();
+        CREATED.lock().unwrap().remove(&self.name);
         self.admin.close().await;
     }
 }

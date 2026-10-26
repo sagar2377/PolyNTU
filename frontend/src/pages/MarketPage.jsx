@@ -96,6 +96,7 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
       {series.day?.weighted_probability !== null && series.day?.weighted_probability !== undefined
         ? <p className="muted">Volume-weighted {series.day.slots[0]?.outcome_label} probability across live brackets: <strong>{(series.day.weighted_probability * 100).toFixed(1)}%</strong>, each bracket weighted by units bet.</p>
         : <p className="muted">No live brackets have traded volume yet; the weighted probability appears with the first trade.</p>}
+      <p className="muted small">Each row is one bracket: its implied probability, then the units traded in it.</p>
       <DayProbabilityBars series={series} />
     </section>}
     {series && <section className="panel"><h2>How this series works</h2>
