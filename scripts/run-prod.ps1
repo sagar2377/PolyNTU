@@ -16,12 +16,19 @@ try {
     if (-not $NoProvider -and $env:POLYNTU_NTUBUS_PROVIDER) {
         $providerDir = Join-Path $projectRoot 'provider\ntubus'
         $provider = Start-Process -FilePath 'python' -ArgumentList 'service.py' -WorkingDirectory $providerDir -PassThru
-        $ready = $false
-        for ($i = 0; $i -lt 30; $i++) {
-            try { $null = Invoke-RestMethod -Uri 'http://127.0.0.1:8090/' -TimeoutSec 2; $ready = $true; break } catch { Start-Sleep -Seconds 1 }
+    }
+    Push-Location (Join-Path $projectRoot 'frontend')
+    try { npm.cmd run build; if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' } } finally { Pop-Location }
+    # Check the provider only after the build: the build takes far longer than
+    # the service's start-up, so the wait costs nothing here. The response is
+    # captured in the loop rather than fetched twice.
+    if ($provider) {
+        $status = $null
+        for ($i = 0; $i -lt 30 -and -not $status; $i++) {
+            try { $status = Invoke-RestMethod -Uri 'http://127.0.0.1:8090/' -TimeoutSec 2 }
+            catch { Start-Sleep -Milliseconds 500 }
         }
-        if ($ready) {
-            $status = Invoke-RestMethod -Uri 'http://127.0.0.1:8090/' -TimeoutSec 2
+        if ($status) {
             Write-Output "NTU bus provider ready: $($status.events) arrival events across $($status.routes.PSObject.Properties.Count) routes"
         } elseif ($Live) {
             Write-Warning 'The NTU bus provider did not become ready; live bus brackets will void at their evidence deadline.'
@@ -29,8 +36,6 @@ try {
             Write-Warning 'The NTU bus provider did not become ready; the adapter will fall back to simulated evidence.'
         }
     }
-    Push-Location (Join-Path $projectRoot 'frontend')
-    try { npm.cmd run build; if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' } } finally { Pop-Location }
     Push-Location (Join-Path $projectRoot 'backend')
     try { cargo run --locked --release; if ($LASTEXITCODE -ne 0) { throw 'Backend failed' } } finally { Pop-Location }
 } finally {

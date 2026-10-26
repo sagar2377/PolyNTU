@@ -34,6 +34,9 @@ const ADMIN: &str = "test-admin-token-012345678901234567890";
 static CREATED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
+/// Whether this process has already swept stale databases.
+static SWEPT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The only names this suite may interpolate into CREATE/DROP DATABASE: the
 /// fixed prefix plus alphanumerics and underscores. Both the sweep and the
 /// per-test drop guard on this, so the two cannot drift apart.
@@ -78,7 +81,12 @@ impl TestDb {
         let base = std::env::var("TEST_DATABASE_URL")
             .expect("Set TEST_DATABASE_URL for PostgreSQL integration tests");
         let admin = PgPool::connect(&base).await.unwrap();
-        Self::sweep_stale(&admin).await;
+        // One sweep per process is enough: every database this process creates
+        // is already protected by CREATED. `std::sync::Once` cannot hold an
+        // await, so the flag is swapped atomically instead.
+        if !SWEPT.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            Self::sweep_stale(&admin).await;
+        }
         let name = format!("polyntu_test_{}", Uuid::new_v4().simple());
         CREATED.lock().unwrap().insert(name.clone());
         // The name is polyntu_test_ plus a simple UUID (alphanumeric and
