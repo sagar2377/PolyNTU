@@ -19,4 +19,4 @@ Start with the repository-level [developer guide](../developer-guide.md), then u
 | [Class diagram](class-diagram.md) | Entity, boundary, and control classes, relationships, and use-case mappings; includes the diagram and editable source |
 | [Glossary](glossary.md) | Domain, pricing, accounting, evidence, and lifecycle terms |
 
-These documents describe the working tree audited on 9 September 2026. The [documentation register](../README.md) explains authority, maintenance, and the uncommitted-baseline caveat. The [use case model](use-cases.md) describes the implemented platform: every registered use case is marked existing and carries a detailed flow.
+These documents describe the working tree as last reviewed on 26 October 2026; individual documents carry their own review date. The [documentation register](../README.md) explains authority, maintenance, and the uncommitted-baseline caveat. The [use case model](use-cases.md) describes the implemented platform: every registered use case is marked existing and carries a detailed flow.

@@ -29,98 +29,98 @@ skinparam titleFontSize 22
 skinparam legendBackgroundColor #F7F9FC
 skinparam legendBorderColor #CBD5E1
 
-title PolyNTU Lab 3 design class model\nDraft: checklist steps 1-8 only
+title PolyNTU Lab 3 design class model\nDraft: checklist steps 1-8, detailed operations from step 12
 caption Class responsibilities, patterns and use-case mappings: docs/developer/class-diagram.md
 
 package "User and administrator boundaries" {
   class AccountPanel <<boundary>> {
-    + registerAccount()
-    + logIn()
-    + requestCreatorVerification()
-    + showVerificationStatus()
+    + registerAccount(name: String, email: String, password: String): Session
+    + logIn(email: String, password: String): Session
+    + requestCreatorVerification(): VerificationRequest
+    + showVerificationStatus(): VerificationRequest [0..1]
     + handleSessionExpired()
     + signOutLocally()
   }
   class MarketBrowsePage <<boundary>> {
-    + selectCategory()
-    + openHistoryTab()
-    + turnPage()
-    + openMarket()
+    + selectCategory(category: Category [0..1])
+    + openHistoryTab(tab: HistoryTab [0..1])
+    + turnPage(list: HistoryTab [0..1], offset: Integer)
+    + openMarket(instanceId: Identifier)
   }
   class CreateMarketPage <<boundary>> {
-    + enterDefinition()
-    + chooseResolutionAuthority()
-    + deriveSigningKey()
-    + publishMarket()
+    + enterDefinition(def: SeriesDefinition)
+    + chooseResolutionAuthority(authority: ResolutionSpec [0..1])
+    + deriveSigningKey(password: String): SigningKeyPair
+    + publishMarket(spec: NewSeries): SeriesView
   }
   class MarketPage <<boundary>> {
-    + showMarketAndCharts()
-    + selectBracket()
-    + previewTrade()
-    + confirmTrade()
-    + resumePendingTrade()
-    + deriveSigningKey()
-    + signAndSubmitResolution()
+    + showMarketAndCharts(id: Identifier): MarketDetail
+    + selectBracket(instanceId: Identifier)
+    + previewTrade(req: QuoteRequest): Quote
+    + confirmTrade(req: TradeRequest, key: String): Receipt
+    + resumePendingTrade(req: TradeRequest, key: String): Receipt
+    + deriveSigningKey(password: String): SigningKeyPair
+    + signAndSubmitResolution(bracketId: Identifier, outcomeId: String): EvidenceRecord
   }
   class PortfolioPage <<boundary>> {
-    + showPositionsAndCredits()
-    + showTradeHistory()
-    + openMarket()
+    + showPositionsAndCredits(offset: Integer): PortfolioView
+    + showTradeHistory(offset: Integer): TradeRecord[*]
+    + openMarket(instanceId: Identifier)
   }
   class AdminApi <<boundary>> {
-    + receiveAdminRequest()
-    + returnResult()
+    + receiveAdminRequest(adminToken: String [0..1], sessionToken: String [0..1], req: AdminRequest)
+    + returnResult(result: AdminResult)
   }
 }
 
 package "Use-case controls" {
   class AccountControl <<control>> {
-    + registerAndGrantWelcomeGift()
-    + authenticate()
-    + getCurrentAccount()
-    + requestCreatorVerification()
-    + getVerificationStatus()
+    + registerAndGrantWelcomeGift(name: String, email: String, password: String): Session
+    + authenticate(email: String, password: String): Session
+    + getCurrentAccount(token: String): Account
+    + requestCreatorVerification(acct: Identifier): VerificationRequest
+    + getVerificationStatus(acct: Identifier): VerificationRequest [0..1]
   }
   class MarketQueryControl <<control>> {
-    + listMarkets()
-    + getMarket()
-    + getSeries()
-    + getHistory()
+    + listMarkets(state: InstanceState [0..1], offset: Integer): MarketSummary[*]
+    + getMarket(id: Identifier): MarketDetail
+    + getSeries(id: Identifier): SeriesView
+    + getHistory(id: Identifier, bucketMs: Integer): PricePoint[*]
   }
   class MarketCreationControl <<control>> {
-    + validateDefinitionAndAuthority()
-    + publishSeries()
-    + createFundedInstance()
+    + validateDefinitionAndAuthority(spec: NewSeries): Boolean
+    + publishSeries(creator: Identifier [0..1], spec: NewSeries, dataMode: DataMode): SeriesView
+    + createFundedInstance(spec: NewInstance): MarketInstance
   }
   class TradingControl <<control>> {
-    + issueQuote()
-    + executeTrade()
-    + recoverReceipt()
+    + issueQuote(acct: Identifier, req: QuoteRequest): Quote
+    + executeTrade(acct: Identifier, key: String, req: TradeRequest): Receipt
+    + recoverReceipt(acct: Identifier, key: String, req: TradeRequest): Receipt
   }
   class PortfolioControl <<control>> {
-    + getPositionsAndCredits()
-    + getTradeHistory()
+    + getPositionsAndCredits(acct: Identifier, limit: Integer, offset: Integer): PortfolioView
+    + getTradeHistory(acct: Identifier, limit: Integer, offset: Integer): TradeRecord[*]
   }
   class MarketLifecycleControl <<control>> {
-    + spawnDueBrackets()
-    + closeDueInstances()
-    + acceptAdminEvidence()
-    + acceptSignedResolution()
-    + resolveAutomatically()
-    + setSuspension()
-    + settleAndSplitFees()
-    + voidAtDeadline()
-    + purgeExpiredBrackets()
+    + spawnDueBrackets(): Integer
+    + closeDueInstances(): Integer
+    + acceptAdminEvidence(id: Identifier, input: EvidenceInput): EvidenceRecord
+    + acceptSignedResolution(id: Identifier, submitter: Identifier, stmt: SignedStatement): EvidenceRecord
+    + resolveAutomatically(id: Identifier): EvidenceRecord [0..1]
+    + setSuspension(id: Identifier, suspended: Boolean, reason: String)
+    + settleAndSplitFees(id: Identifier): Integer
+    + voidAtDeadline(id: Identifier): Resolution
+    + purgeExpiredBrackets(): Integer
   }
   class AdminControl <<control>> {
-    + authorize()
-    + listCreatorRequests()
-    + reviewCreatorRequest()
-    + createDirectInstance()
-    + submitAdminEvidence()
-    + requestSuspension()
-    + provisionAccountWithGrant()
-    + reconcile()
+    + authorize(adminToken: String [0..1], sessionToken: String [0..1]): Boolean
+    + listCreatorRequests(status: VerificationStatus [0..1]): VerificationRequest[*]
+    + reviewCreatorRequest(id: Identifier, approve: Boolean, reason: String [0..1]): VerificationRequest
+    + createDirectInstance(spec: NewInstance): MarketInstance
+    + submitAdminEvidence(id: Identifier, input: EvidenceInput): EvidenceRecord
+    + requestSuspension(id: Identifier, suspended: Boolean, reason: String)
+    + provisionAccountWithGrant(name: String): Session
+    + reconcile(): ReconciliationReport
   }
 }
 
@@ -129,29 +129,29 @@ package "Startup and runtime" {
     + {static} main()
   }
   class Store <<infrastructure>> {
-    + connect()
-    + now()
-    - initialize()
+    + connect(url: String, demoMode: Boolean): Store
+    + now(): Timestamp
+    - initialize(): Integer
   }
   class AppState <<infrastructure>> {
-    + new()
-    + account()
-    + requireAdmin()
+    + new(store: Store, quoteSecret: String, adminToken: String): AppState
+    - account(sessionToken: String): AuthAccount
+    - requireAdmin(adminToken: String [0..1], sessionToken: String [0..1]): Boolean
   }
   class ApiRouter <<boundary>> {
-    + router()
+    + router(state: AppState, origins: URL[*]): Router
   }
   class BackgroundWorker <<active>> {
-    + run()
-    + tick()
-    + seedDemo()
+    + run(store: Store)
+    + tick(store: Store): Integer
+    + seedDemo(store: Store)
   }
   class EventBus <<infrastructure>> {
-    + subscribe()
+    + subscribe(instanceId: Identifier): EventStream
   }
   class EventRuntime <<infrastructure>> {
-    + runListener()
-    + runClockRefresher()
+    + runListener(store: Store, bus: EventBus)
+    + runClockRefresher(store: Store)
   }
 
   StartupControl ..> Store : connect / initialize
@@ -175,9 +175,9 @@ class Account <<entity>> {
   passwordHash: String [0..1]
   tokenHash: String [0..1]
   balance: Money
-  + verifyPassword()
-  + hasRole()
-  + canAfford()
+  + verifyPassword(password: String): Boolean
+  + hasRole(role: AccountRole): Boolean
+  + canAfford(amount: Money): Boolean
 }
 
 class VerificationRequest <<entity>> {
@@ -186,9 +186,9 @@ class VerificationRequest <<entity>> {
   reason: String [0..1]
   requestedAt: Timestamp
   decidedAt: Timestamp [0..1]
-  + isPending()
-  + approve()
-  + reject()
+  + isPending(): Boolean
+  + approve(decidedAt: Timestamp)
+  + reject(reason: String, decidedAt: Timestamp)
 }
 
 class MarketSeries <<entity>> {
@@ -206,8 +206,8 @@ class MarketSeries <<entity>> {
   resolverConfig: ResolverConfig [0..1]
   resolutionKey: ResolutionKey [0..1]
   state: SeriesState
-  + isActiveAt()
-  + bracketSpec()
+  + isActiveAt(slot: Timestamp): Boolean
+  + bracketSpec(slotStart: Timestamp): NewInstance
 }
 
 class MarketInstance <<entity>> {
@@ -227,10 +227,10 @@ class MarketInstance <<entity>> {
   version: Integer
   result: Resolution [0..1]
   selectedEvidence: Evidence [0..1]
-  + isTradable()
-  + isCreatedBy()
-  + isObservationOver()
-  + isPastEvidenceDeadline()
+  + isTradable(now: Timestamp): Boolean
+  + isCreatedBy(acct: Identifier): Boolean
+  + isObservationOver(now: Timestamp): Boolean
+  + isPastEvidenceDeadline(now: Timestamp): Boolean
 }
 
 class Outcome <<entity>> {
@@ -243,7 +243,7 @@ class Outcome <<entity>> {
 
 class Position <<entity>> {
   quantity: Quantity
-  + isOpen()
+  + isOpen(): Boolean
 }
 
 class Trade <<entity>> {
@@ -280,20 +280,20 @@ class LedgerTransfer <<entity>> {
 }
 
 class OutcomeSet <<container>> {
-  + indexOf()
-  + prices()
-  + validate()
+  + indexOf(outcomeId: String): Integer
+  + prices(): Decimal[*]
+  + validate(): Boolean
 }
 
 class PositionBook <<container>> {
-  + quantityOf()
-  + openHoldings()
-  + adjust()
+  + quantityOf(inst: Identifier, outcome: Integer): Quantity
+  + openHoldings(offset: Integer): PositionView[*]
+  + adjust(inst: Identifier, outcome: Integer, owned: Quantity)
 }
 
 class TradeHistory <<container>> {
-  + append()
-  + page()
+  + append(trade: Trade)
+  + page(limit: Integer, offset: Integer): TradeRecord[*]
 }
 
 Account "1" -up- "0..*" VerificationRequest : requester
@@ -318,26 +318,26 @@ Account "\n1" -left- "\n0..*" LedgerTransfer : \nto
 }
 
 class ResolverGateway <<boundary>> {
-  + requestExternalResolution()
-  + parseResolverResponse()
+  + requestExternalResolution(endpoint: URL, req: ResolverRequest): String
+  + parseResolverResponse(body: String, options: OutcomeSet): ResolverAnswer
 }
 
 class NtuBusAdapter <<boundary>> {
-  + answer()
+  + answer(call: ResolverCall): ResolverResponse
 }
 
 package "Resolution authority strategies" {
   interface ResolutionAuthority <<strategy>> {
-    + acceptEvidence()
+    + acceptEvidence(evidence: EvidencePayload): EvidenceRecord
   }
   class AdminAuthority <<strategy>> {
-    + acceptEvidence()
+    + acceptEvidence(id: Identifier, input: EvidenceInput): EvidenceRecord
   }
   class CreatorSignedAuthority <<strategy>> {
-    + acceptEvidence()
+    + acceptEvidence(id: Identifier, submitter: Identifier, stmt: SignedStatement): EvidenceRecord
   }
   class ExternalResolverAuthority <<strategy>> {
-    + acceptEvidence()
+    + acceptEvidence(id: Identifier, outcomeId: String, req: ResolverRequest, res: ResolverResponse, replay: Boolean): EvidenceRecord
   }
   ResolutionAuthority <|.. AdminAuthority
   ResolutionAuthority <|.. CreatorSignedAuthority
@@ -387,5 +387,6 @@ legend bottom left
   Only principal control-to-entity dependencies are drawn; see the responsibility matrix.
   Logical collaboration arrows group existing functions; they do not imply a code refactor.
   Browser-to-control arrows summarize HTTP paths. ApiRouter shows startup wiring.
+  Operation signatures are design-level and abbreviated as documented in docs/developer/class-diagram.md.
 endlegend
 @enduml

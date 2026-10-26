@@ -1,6 +1,6 @@
 # Lab 3 draft design class model
 
-Status: **draft covering original checklist steps 1-8**, reviewed against source on **23 October 2026**. Persistence and access-control design (manual 3.2.1), the AI exercises (3.3) and the implementation audit (3.4) are still open.
+Status: **draft covering original checklist steps 1-8 and the step-12 detailed operations**, reviewed against source on **26 October 2026**. Persistence and access-control design (manual 3.2.1) are delivered in the [persistent-data](../../lab3/persistent-data.md) and [access-control](../../lab3/access-control.md) write-ups; the implementation audit (3.4) remains open.
 
 This draft refines the existing conceptual/design diagram using the [use cases](use-cases.md) and active implementation. It covers manual 3.1.1 to 3.1.4: the design model, architecture, startup and control classes, collection containers, patterns, the dialog maps and the detailed attributes and operations. It retains the existing entity attributes and associations, adds startup wiring, and makes coordination ownership explicit. It does not establish the provenance of an untouched Lab 2 diagram. See the [steps 1-4 handoff](../../lab3/steps-1-4-handoff.md).
 
@@ -179,10 +179,10 @@ In the diagram, `MarketInstance` owns one `OutcomeSet`, which owns 2 to 8 `Outco
 
 | Pattern | Problem and roles | Status |
 |---|---|---|
-| Strategy | Three resolution authorities (administrator, creator signature, external resolver) accept evidence differently but share one lifecycle. `ResolutionAuthority` is implemented by `AdminAuthority`, `CreatorSignedAuthority` and `ExternalResolverAuthority`; `MarketLifecycleControl` delegates by the series' `AuthorityKind`. | Design level (`AuthorityKind` and `match`) |
+| Strategy | Three resolution authorities (administrator, creator signature, external resolver) accept evidence differently but share one lifecycle. `ResolutionAuthority` is implemented by `AdminAuthority`, `CreatorSignedAuthority` and `ExternalResolverAuthority`; `MarketLifecycleControl` delegates by the series' `AuthorityKind`. | Design level: the source stores a CHECK-constrained `resolution_authority` text column and reaches the three implementations through separate routes and worker branches; there is no `AuthorityKind` Rust type and no single `match` dispatch point. |
 | Adapter | The bus provider's data differs from the fixed resolver contract. `NtuBusAdapter` converts it to one published outcome id. | In code (`ntu_bus_answer`) |
 | Observer | Browsers learn of changes without polling. `EventBus` keeps a channel per instance and SSE clients subscribe. | In code (`EventBus::subscribe`) |
-| Factory Method | A recurring series creates a correctly timed instance per slot. `MarketSeries.bracketSpec` builds the definition and `createFundedInstance` creates it. | In code (`Series::bracket_spec`) |
+| Factory Method | A recurring series creates a correctly timed instance per slot. `MarketSeries.bracketSpec` builds the definition for the scheduler, and `createFundedInstance` creates it; creator publication uses the parallel `NewSeries.instanceSpec` builder. | In code (`Series::bracket_spec`, `NewSeries::instance_spec`) |
 
 State, Singleton and Repository were considered and not applied: instance states are enforced by database constraints, `AppState` and `Store` are cloned handles passed explicitly, and `Store` mixes service logic with SQL.
 

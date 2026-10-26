@@ -22,20 +22,28 @@ false No.
 
 ```
 pip install requests
-python provider/ntubus/service.py
+cd provider/ntubus
+python service.py
 ```
+
+Run it from inside `provider/ntubus/` (or put that directory on `PYTHONPATH`): the
+service imports its client as a sibling module, so `python provider/ntubus/service.py`
+from the repository root fails with `ModuleNotFoundError: ntubus_client`.
 
 Then start the backend with the provider enabled (the default below points
 at the service's default port):
 
 ```
 $env:POLYNTU_NTUBUS_PROVIDER = "http://127.0.0.1:8090/resolve"   # default
+$env:POLYNTU_LIVE_MODE = "true"                                  # live demo: never fabricate
 cargo run --manifest-path backend/Cargo.toml --release
 ```
 
-Set `POLYNTU_NTUBUS_PROVIDER` to an empty string to disable the live path
-and always answer from the simulated feed (what CI does, since no provider
-runs there).
+Leave `POLYNTU_LIVE_MODE` unset for the deterministic simulated demo, which
+still prefers the provider when it answers but falls back to the simulator
+when it does not. Set `POLYNTU_NTUBUS_PROVIDER` to an empty string to disable
+the live path entirely and always answer from the simulated feed (what CI
+does, since no provider runs there).
 
 ## The contract the platform sends
 

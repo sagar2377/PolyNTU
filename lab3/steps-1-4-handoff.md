@@ -2,9 +2,11 @@
 
 Date: **23 October 2026**. Scope: design-model draft, architecture, startup class, and control responsibility allocation. Application source and behaviour are unchanged. This is an internal handoff, not an extra deliverable prescribed by the manual.
 
+> **Superseded 26 October 2026.** This is a point-in-time record of the 23 October state. The container classes, design patterns, dialog maps, detailed operation signatures, and the 3.3 AI artifacts have since been delivered, and the class count has risen from 31 to 39. Read the counts and the remaining-work table below as history, not as the current status. Current state: [class diagram](class-diagram.png) / [editable source](class-diagram.puml), [class responsibilities](../docs/developer/class-diagram.md), [architecture](architecture.md), [persistent data](persistent-data.md), [access control](access-control.md), [design patterns](design-patterns.md).
+
 ## Read this first
 
-The class diagram is an **intermediate draft**, not the completed Lab 3 design. Finish the remaining design work before using it for the Lab 3.3 AI exercises. Keep the maintained sources under `docs/`; refresh the diagram copies under `lab3/` after changes. The original Lab 2 transcript and diagram provenance have not been recovered or reconstructed by this work.
+The class diagram was an **intermediate draft** at the time of writing; it has since been completed through the later design tasks. Keep the maintained sources under `docs/`; refresh the diagram copies under `lab3/` after changes. The original Lab 2 transcript and diagram provenance have not been recovered or reconstructed by this work.
 
 ## Scope and manual mapping
 
@@ -40,7 +42,7 @@ The manual's section 4 asks for deliverables under `lab3/` in GitHub before Lab 
 
 The original ten entities remain Account, VerificationRequest, MarketSeries, MarketInstance, Outcome, Position, Trade, Evidence, SettlementClaim, and LedgerTransfer. Existing entity attributes, associations, multiplicities, and composition are preserved. The seven existing boundaries remain; ApiRouter is added for startup wiring. No new collection container classes, pattern claims, entity operations, or detailed signatures have been introduced.
 
-The updated model contains **31 classes**: **10 entities, 8 boundaries, 8 controls, 4 infrastructure classes, and 1 active runtime abstraction**. The controls are the original seven use-case controls plus StartupControl. Operation additions/renames express coordination responsibilities; further signature/visibility refinement is left for the later design task.
+The updated model contained **31 classes at this stage**: **10 entities, 8 boundaries, 8 controls, 4 infrastructure classes, and 1 active runtime abstraction**. The controls are the original seven use-case controls plus StartupControl. Operation additions/renames express coordination responsibilities. *(The current diagram has 39 classes: containers and resolution-authority strategies were added in the later steps.)*
 
 MarketInstance/MarketSeries map to Rust Instance/Series. Outcome combines its published ID/label with its instance inventory entry; probability is derived. Account's domain fields are broader than its public API struct. Several other entities are persisted SQL records returned through read models/JSON, rather than separate Rust structs. React function components and browser helpers implement the user boundaries. The companion document explains these mappings so the diagram does not imply a class-per-file refactor.
 
@@ -106,17 +108,19 @@ Full test traceability and any coverage gaps, including portfolio/admin operatio
 
 ## Remaining work for teammates
 
-| Owner/work area | Remaining task and boundary |
-|---|---|
-| Collection/container design | Original step 5 / remaining container bullet of 3.1.3: assess outcomes, positions, and trades collections; model appropriate containers without assuming each is a database table. |
-| Pattern assessment | Original steps 6/11 / 3.1.3 and 3.2.2: assess and justify appropriate patterns. Existing helper/gateway names here are not a completed pattern analysis. |
-| Dialog map | Original step 7 / 3.1.4: revisit and refine the existing dialog maps. They are unchanged by this contribution. |
-| Detailed class model | Original steps 8/12 / 3.1.4 and 3.2.3: refine attributes, operation signatures, visibility, value types, and relationships as needed. Retained attributes and responsibility-level operations are a starting point. |
-| Persistent data and access control | Original steps 9/10 / 3.2.1: perform the schema/migration and authorization design review. Existing behaviour references above do not complete that work. |
-| AI technology-stack comparison | Original steps 13/14 / 3.3.1-2: obtain the actual Lab 2 prompt/response/model details and original diagram, plus the Lab 1 description; then use the team's completed updated diagram. |
-| AI skeleton, evaluation, and reporting | Original steps 15-18 / 3.3.3-5: generate the TODO-only skeleton separately, evaluate it, retain prompts/responses, prepare the short PDF, and package its distinct ZIP. |
-| Implementation audit | Original steps 19-22 / 3.4: verify the existing application against the design, consider stereotype/folder mapping, audit class/key-public-method documentation, and check source availability in GitHub. No application code/refactor/audit was completed here. |
-| Submission assembly | Section 4: include the complete use-case diagram/descriptions, completed class diagram and dialog map, architecture, full application skeleton/prototype with clear structure, AI PDF, and separately identifiable AI skeleton ZIP. Arrange artifacts under `lab3/` and upload before Lab 4. |
+**Status at 26 October 2026:** the rows marked *delivered* below are complete; the table is retained as the original allocation record.
+
+| Owner/work area | Remaining task and boundary | Status |
+|---|---|---|
+| Collection/container design | Original step 5 / remaining container bullet of 3.1.3: assess outcomes, positions, and trades collections; model appropriate containers without assuming each is a database table. | Delivered: OutcomeSet, PositionBook, TradeHistory. |
+| Pattern assessment | Original steps 6/11 / 3.1.3 and 3.2.2: assess and justify appropriate patterns. | Delivered: [design patterns](design-patterns.md). |
+| Dialog map | Original step 7 / 3.1.4: revisit and refine the existing dialog maps. | Delivered: [dialog map](dialog-map.png), [trade](dialog-map-trade.png), [resolve](dialog-map-resolve.png). |
+| Detailed class model | Original steps 8/12 / 3.1.4 and 3.2.3: refine attributes, operation signatures, visibility, value types, and relationships as needed. | Delivered: typed operation signatures in the class diagram. |
+| Persistent data and access control | Original steps 9/10 / 3.2.1: perform the schema/migration and authorization design review. | Delivered: [persistent data](persistent-data.md), [access control](access-control.md). |
+| AI technology-stack comparison | Original steps 13/14 / 3.3.1-2: obtain the actual Lab 2 prompt/response/model details and original diagram, plus the Lab 1 description; then use the team's completed updated diagram. | Delivered: see the 3.3 report. |
+| AI skeleton, evaluation, and reporting | Original steps 15-18 / 3.3.3-5: generate the TODO-only skeleton separately, evaluate it, retain prompts/responses, prepare the short PDF, and package its distinct ZIP. | Delivered: both skeleton ZIPs and the report PDF. |
+| Implementation audit | Original steps 19-22 / 3.4: verify the existing application against the design, consider stereotype/folder mapping, audit class/key-public-method documentation, and check source availability in GitHub. | Open. |
+| Submission assembly | Section 4: include the complete use-case diagram/descriptions, completed class diagram and dialog map, architecture, full application skeleton/prototype with clear structure, AI PDF, and separately identifiable AI skeleton ZIP. Arrange artifacts under `lab3/` and upload before Lab 4. | Open. |
 
 Manual clarifications for later owners:
 
@@ -141,7 +145,7 @@ The renderer requires Java and a PlantUML JAR; the repository script downloads t
 
 Verification performed on **23 October 2026**:
 
-- Rendered the canonical diagram with PlantUML **1.2026.9** using the repository script and the local JDK; visually inspected the resulting **2832 x 2722 PNG**. Keep the image at full resolution when reviewing its class text and associations.
+- Rendered the canonical diagram with PlantUML **1.2026.9** using the repository script and the local JDK; visually inspected the resulting **2832 x 2722 PNG** (the render at that time; the shipped diagram has since been re-rendered at a larger size). Keep the image at full resolution when reviewing its class text and associations.
 - Confirmed all **31** class definitions, stereotype counts, and dependency endpoints; confirmed the seven original use-case controls plus StartupControl.
 - Compared the entity section with the pre-change source: all ten entity definitions and their associations/multiplicities are unchanged. Presentation-only line breaks separate the parallel ledger-transfer role labels and multiplicities in the rendering.
 - Confirmed submission PUML/PNG snapshots are byte-identical to their canonical counterparts.

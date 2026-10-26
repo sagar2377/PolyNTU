@@ -1,6 +1,6 @@
 # PolyNTU system architecture - Lab 3
 
-Status: **draft contribution for original checklist steps 1-4**, 23 October 2026. This write-up describes the implemented architecture; later design tasks and final submission assembly remain with the team.
+Status: **draft contribution for original checklist steps 1-4, extended through the later design steps**, 26 October 2026. This write-up describes the implemented architecture. The AI artifacts and submission assembly remain with the team.
 
 The maintained detailed explanation is [docs/architecture.md](../docs/architecture.md). The [class diagram](class-diagram.png), [editable source](class-diagram.puml), [class responsibilities](../docs/developer/class-diagram.md), and [handoff](steps-1-4-handoff.md) provide the matching design view.
 
@@ -68,4 +68,4 @@ Initialization errors propagate through Result values. Some validation occurs af
 
 ## Submission scope
 
-This is the architecture contribution only. The class diagram is a draft snapshot covering checklist steps 1-8: containers, patterns, the dialog maps and detailed operations are included. Teammates still need to address detailed persistence/access-control design, and prepare the AI report/skeleton artifacts and final submission. See the [handoff](steps-1-4-handoff.md) for ownership boundaries and refresh instructions.
+This is the architecture contribution only. The class diagram covers checklist steps 1-12: containers, patterns, the dialog maps and the detailed operation signatures are included. The persistence and access-control design are in [persistent data](persistent-data.md) and [access control](access-control.md), and the pattern assessment in [design patterns](design-patterns.md). Teammates still need the implementation audit and the final submission. See the [handoff](steps-1-4-handoff.md) for ownership boundaries and refresh instructions.

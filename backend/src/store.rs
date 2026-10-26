@@ -15,6 +15,12 @@ use uuid::Uuid;
 pub struct Store {
     pub pool: PgPool,
     pub demo_mode: bool,
+    /// Live demonstration mode (POLYNTU_LIVE_MODE). Separate from
+    /// `demo_mode` so the deterministic testing path stays exactly as it is:
+    /// live mode never fabricates a simulated answer when the external
+    /// provider is unavailable, and it refuses demo-clock advances because
+    /// the provider runs on wall-clock time.
+    pub live_mode: bool,
     pub cache: Cache,
     /// The NTU Bus API provider the bus adapter asks before falling back to
     /// the simulated feed; the entry point sets it from
@@ -168,6 +174,13 @@ pub fn instance_view(instance: &Instance, now: i64) -> Result<Value> {
 
 impl Store {
     pub async fn connect(url: &str, demo_mode: bool) -> Result<Self> {
+        Self::connect_with(url, demo_mode, false).await
+    }
+
+    /// Connect with an explicit live-demonstration flag. `connect` keeps the
+    /// two-argument shape every existing caller and test uses; the entry point
+    /// calls this one to enable live mode.
+    pub async fn connect_with(url: &str, demo_mode: bool, live_mode: bool) -> Result<Self> {
         let pool = PgPoolOptions::new().max_connections(32)
             .acquire_timeout(std::time::Duration::from_secs(5))
             .after_connect(|conn, _| Box::pin(async move {
@@ -182,6 +195,7 @@ impl Store {
         let store = Self {
             pool,
             demo_mode,
+            live_mode,
             cache: Cache::new(0),
             ntubus_provider: None,
             tick_lock: Arc::new(tokio::sync::Mutex::new(())),
@@ -655,8 +669,19 @@ impl Store {
             .bind(evidence_id)
             .fetch_one(&self.pool)
             .await?;
+            let payload: Json<Value> = record.get("payload");
+            // The bus adapter records which path answered; surface it so a
+            // demonstration can distinguish live data from the simulated
+            // fallback without opening the raw payload.
+            let evidence_source = payload
+                .0
+                .get("response")
+                .and_then(|response| response.get("source"))
+                .and_then(Value::as_str)
+                .map(str::to_owned);
             view["evidence"] = json!({"source_id": record.get::<String,_>("source_id"), "event_id": record.get::<String,_>("event_id"),
-                "received_ms": record.get::<i64,_>("received_ms"), "payload": record.get::<Json<Value>,_>("payload").0});
+                "received_ms": record.get::<i64,_>("received_ms"), "source": evidence_source,
+                "payload": payload.0});
         }
         Ok(view)
     }

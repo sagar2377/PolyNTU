@@ -24,13 +24,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let admin_token =
         std::env::var("POLYNTU_ADMIN_TOKEN").map_err(|_| "POLYNTU_ADMIN_TOKEN is required")?;
     let demo_mode = std::env::var("POLYNTU_DEMO_MODE").is_ok_and(|v| v == "true");
+    // Live demonstration mode: bus markets resolve from the external provider
+    // only and never fabricate an outcome. It is a separate switch so the
+    // deterministic simulated testing path is unchanged when it is off.
+    let live_mode = std::env::var("POLYNTU_LIVE_MODE").is_ok_and(|v| v == "true");
+    if live_mode && !demo_mode {
+        return Err("Live mode requires demo mode (POLYNTU_DEMO_MODE=true)".into());
+    }
     let address: std::net::SocketAddr = std::env::var("POLYNTU_BIND")
         .unwrap_or_else(|_| "127.0.0.1:8000".into())
         .parse()?;
     if demo_mode && !address.ip().is_loopback() {
         return Err("Demo mode must bind to a loopback address".into());
     }
-    let mut store = Store::connect(&database_url, demo_mode).await?;
+    let mut store = Store::connect_with(&database_url, demo_mode, live_mode).await?;
     // The NTU Bus API provider the bus adapter prefers over the simulated
     // feed; an empty value disables the live path.
     if let Ok(provider) = std::env::var("POLYNTU_NTUBUS_PROVIDER") {
@@ -54,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let worker = tokio::spawn(worker::run(store.clone()));
     let events_task = tokio::spawn(events::run_listener(store.clone(), bus));
     let clock_task = tokio::spawn(events::run_clock_refresher(store));
-    tracing::info!(%address,demo_mode,"PolyNTU Rust backend listening");
+    tracing::info!(%address,demo_mode,live_mode,"PolyNTU Rust backend listening");
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

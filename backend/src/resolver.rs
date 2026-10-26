@@ -187,6 +187,12 @@ pub async fn ntu_bus_answer(store: &Store, instance_id: &str) -> Result<Value> {
             }
         }
     }
+    // Live mode never fabricates an outcome: with no definitive provider
+    // answer the bracket stays pending, so the published evidence deadline
+    // voids it instead of recording a result the live feed never produced.
+    if store.live_mode {
+        return Ok(pending());
+    }
     let secret: String =
         sqlx::query_scalar("SELECT simulation_secret FROM settings WHERE singleton")
             .fetch_one(&store.pool)

@@ -534,6 +534,12 @@ impl Store {
         if !self.demo_mode {
             return Err(Error::Forbidden);
         }
+        // The live provider runs on wall-clock time, so advancing the demo
+        // clock puts every new bracket in its future and the feed can never
+        // answer. Refuse rather than silently degrading to no evidence.
+        if self.live_mode {
+            return Err(Error::Forbidden);
+        }
         if !(1..=10080).contains(&minutes) {
             return Err(invalid("Advance between 1 minute and 7 days"));
         }

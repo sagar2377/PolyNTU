@@ -17,6 +17,7 @@ PostgreSQL stores all active v2 state. SQLx embeds and applies the numbered migr
 | `0009_market_series.sql` | Add the `market_series` table, the instance series/bracket/fee columns, the `protect_series` trigger, and the extended `protect_instance`. |
 | `0010_resolution_authority.sql` | Fix the resolution authority at series creation: the `admin` default, the creator's ed25519 public key, or the external resolver endpoint, all immutable ([ADR 0007](../decisions/0007-resolution-authority.md)). |
 | `0011_bracket_retention.sql` | Bracket retention: recreate `immutable_record` so deletes pass only inside a purge transaction setting `polyntu.purge = 'on'`, make the circular `instances_evidence_id_fkey` deferrable, and add the partial `instances_purge` index. |
+| `0012_bus_operating_days.sql` | Add `market_series.active_days` (JSONB, default all seven days) so a recurring series can run on a subset of weekdays, with a non-empty-array check; folded into `protect_series` as an immutable definition field. |
 
 Never edit an applied migration. Add a numbered migration and verify both fresh creation and upgrade.
 
@@ -175,6 +176,7 @@ One row per published series (migration 0009). A one-time market is a series wit
 | `recurrence` | `once` or `recurring`. |
 | `interval_ms` | Slot spacing, 1 minute to 1 day; null exactly when the recurrence is `once`. |
 | `active_start_minute` / `active_end_minute` | Daily operating window as minutes of day in Singapore time (UTC+8); required for recurring series with start before end. |
+| `active_days` | Weekday subset the series runs on, as a JSON array of 1–7 (migration 0012); defaults to all seven and must be non-empty. |
 | `max_concurrency` | How many upcoming slots stay live, 1–50, default 1. |
 | `end_ms` | Optional series end; null means perpetual. |
 | `anchor_ms` | Grid origin for slot calculation, fixed at creation. |

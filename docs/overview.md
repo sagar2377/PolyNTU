@@ -96,7 +96,7 @@ The API can display an effectively closed state as soon as the cutoff passes, ev
 
 ## Data-source assumption
 
-Live evidence adapters are not part of the current build. Candidate sources named during planning, such as NEA and OmniBus, are treated as future adapter inputs rather than current dependencies. Weather, bus, crowd, and attendance integrations will have practical challenges such as access permission, stable identifiers, missing readings, corrections, completeness, and proving that an observation matches the published window. For current development, the project assumes that an authorized adapter can eventually provide the normalized evidence required by each rule. The local demo uses clearly labelled simulated evidence and must never be presented as live data.
+The NTU bus lines have a working live adapter: `provider/ntubus/` polls the campus Omnibus API and answers the platform's resolver contract, and the backend prefers it over the deterministic simulator for bus brackets. Other candidate sources named during planning, such as NEA weather and crowd/attendance feeds, remain future adapter inputs rather than current dependencies. Weather, crowd, and attendance integrations will have practical challenges such as access permission, stable identifiers, missing readings, corrections, completeness, and proving that an observation matches the published window. For those categories the project assumes that an authorized adapter can eventually provide the normalized evidence required by each rule. The deterministic simulator stays available and is clearly labelled; it must never be presented as live data, and live mode (`POLYNTU_LIVE_MODE`) refuses to fabricate an answer when the provider does not respond.
 
 ## Platform direction
 
@@ -107,7 +107,7 @@ PolyNTU has grown from an administrator-published demonstration into a campus pl
 - **Resolution authority**: implemented. Fixed at creation: the platform administrator (the default), the creator signing each human resolution with a key the platform never holds, or an external resolver endpoint whose answer PolyNTU validates against the published options. Administrator evidence cannot resolve a creator-signed or resolver-settled market ([ADR 0007](decisions/0007-resolution-authority.md), accepted).
 - **Market experience**: implemented. Live quotes and probabilities, joined by a live-refreshing price and volume history chart on every market and a day-long implied-probability view for recurring series.
 
-Every use case in the model is marked existing. The one deferred item is the real bus timing adapter, a live data source rather than platform work.
+Every use case in the model is marked existing. The bus timing adapter is implemented for the campus shuttle lines; extending it to further routes or other data categories is integration work rather than platform work.
 
 ## Current limitations
 
@@ -115,7 +115,7 @@ Every use case in the model is marked existing. The one deferred item is the rea
 - The creator resolution signing key is derived from the account password, so any browser where the creator signs in can resolve, but a lost password voids the market at its published deadline because no password recovery exists; the copy in the browser's local storage is only a cache.
 - The shared administrator token carries no per-action identity; administrators resolve only platform-authority markets, and the seeded demo administrator (`admin@ntu.edu.sg`, password `admin`) exists only in demo-mode databases.
 - No request-rate limiting or public deployment hardening.
-- No live provider adapters or independent verification of manual observations; the real bus timing adapter remains deferred, and resolver-based resolution trusts the configured endpoint.
+- No independent verification of manual observations, and resolver-based resolution trusts the configured endpoint. The bus adapter covers the five campus lines; weather, crowd, and attendance still rely on manual evidence.
 - No outbox retention or compaction beyond the bracket purge.
 - Settled brackets of recurring series are purged 24 hours after their evidence deadline, together with their trades, positions, evidence, and settlement credits, so old recurring-series data does not pile up; one-time markets and the append-only ledger and audit history are kept forever.
 - No resting orders, short selling, leverage, real-money payments, or budget-to-share inversion.

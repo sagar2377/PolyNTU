@@ -18,6 +18,6 @@ if (-not (Test-Path $jar)) {
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $jar
     Write-Output "Downloaded $($asset.name) into .tools\plantuml.jar"
 }
-& java -jar $jar -tpng -charset UTF-8 $source
+& java -DPLANTUML_LIMIT_SIZE=16384 -jar $jar -tpng -charset UTF-8 $source
 if ($LASTEXITCODE -ne 0) { throw 'PlantUML rendering failed' }
 Write-Output "Rendered $([IO.Path]::ChangeExtension($Diagram, '.png'))"

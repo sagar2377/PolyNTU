@@ -81,7 +81,7 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
   };
   return <>
     <button className="link-button" onClick={onBack}>← All markets</button>
-    <div className="market-heading"><span className={`category category-${instance.category}`}>{categories[instance.category]}</span><h1>{instance.title}</h1><p className="muted">{instance.data_mode === "simulated" ? "Simulated observations" : "Evidence from the published source"} · Times in Singapore (SGT)</p></div>
+    <div className="market-heading"><span className={`category category-${instance.category}`}>{categories[instance.category]}</span><h1>{instance.title}</h1><p className="muted">{instance.evidence?.source === "ntubus-live" ? "Live observations" : instance.data_mode === "simulated" ? "Simulated observations" : "Evidence from the published source"} · Times in Singapore (SGT)</p></div>
     {instance.result && <div className="result-banner"><strong>{instance.state === "resolving" ? "Settlement in progress" : "Final result"}: {resultLabel}</strong><span>{instance.result.reason}</span></div>}
     <div className="layout"><section className="panel"><h2>Market probabilities</h2>
       {instance.outcomes.map((outcome) => <div className="outcome-row" key={outcome.id}><span>{outcome.label}</span><strong>{(outcome.probability * 100).toFixed(2)}%</strong><div className="probability-track"><span style={{ width: `${outcome.probability * 100}%` }} /></div></div>)}
@@ -160,6 +160,6 @@ export default function MarketPage({ id, account, refresh, onTrade, onError, onB
       </li>)}
       </ul>}
     </section>}
-    <section className="panel"><h2>How this market resolves</h2><p>{instance.resolution_criterion}</p><p className="muted">{instance.void_policy}</p><dl className="market-facts"><div><dt>Source</dt><dd>{instance.source_id}</dd></div><div><dt>Evidence</dt><dd>{instance.evidence ? `Received ${timestamp(instance.evidence.received_ms)}` : "Awaiting the observation window and final evidence"}</dd></div></dl>{instance.evidence && <details><summary>View resolution evidence</summary><pre>{JSON.stringify(instance.evidence.payload, null, 2)}</pre></details>}</section>
+    <section className="panel"><h2>How this market resolves</h2><p>{instance.resolution_criterion}</p><p className="muted">{instance.void_policy}</p><dl className="market-facts"><div><dt>Source</dt><dd>{instance.source_id}</dd></div><div><dt>Evidence</dt><dd>{instance.evidence ? `Received ${timestamp(instance.evidence.received_ms)}` : "Awaiting the observation window and final evidence"}</dd></div>{instance.evidence?.source && <div><dt>Answered by</dt><dd>{instance.evidence.source === "ntubus-live" ? "Live NTU bus feed" : instance.evidence.source === "simulated-fallback" ? "Simulated fallback (the live feed did not answer)" : instance.evidence.source}</dd></div>}</dl>{instance.evidence && <details><summary>View resolution evidence</summary><pre>{JSON.stringify(instance.evidence.payload, null, 2)}</pre></details>}</section>
   </>;
 }

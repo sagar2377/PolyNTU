@@ -68,6 +68,8 @@ When started from `backend/`, the default frontend directory is `../frontend/dis
 | `POLYNTU_QUOTE_SECRET` | Yes | Persistent quote-signing secret of at least 32 characters. |
 | `POLYNTU_ADMIN_TOKEN` | Yes | Separate administrator token of at least 32 characters. Must differ from the quote secret. |
 | `POLYNTU_DEMO_MODE` | No | Exact string `true` enables demo enrollment, simulator evidence, and virtual clock controls. Defaults off. |
+| `POLYNTU_LIVE_MODE` | No | Exact string `true` switches the bus markets to live evidence: the provider must answer, and an unavailable provider voids the bracket instead of fabricating an outcome. Requires demo mode. The demo clock is refused in this mode because the provider runs on wall-clock time. Defaults off, which keeps the deterministic simulated path. |
+| `POLYNTU_NTUBUS_PROVIDER` | No | URL of the NTU bus provider the adapter asks first; defaults to `http://127.0.0.1:8090/resolve`. An empty string disables the live path. |
 | `POLYNTU_BIND` | No | Socket address; defaults to `127.0.0.1:8000`. Demo mode rejects non-loopback addresses. |
 | `POLYNTU_CORS_ORIGINS` | No | Comma-separated allowed origins; defaults to localhost and loopback port 5173. |
 | `POLYNTU_FRONTEND_DIR` | No | Static build path; defaults to `../frontend/dist`. |

@@ -147,6 +147,7 @@ async fn process_instance(store: &Store, instance: &Instance) -> Result<usize> {
         None => None,
     };
     if store.demo_mode
+        && !store.live_mode
         && instance.data_mode == "simulated"
         && instance.state == "closed"
         && instance.evidence_id.is_none()
