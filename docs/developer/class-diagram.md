@@ -175,7 +175,7 @@ In the diagram, `MarketInstance` owns one `OutcomeSet`, which owns 2 to 8 `Outco
 
 ## Design patterns
 
-"In code" means the structure exists in the source; "design level" means the diagram expresses it but Rust implements it with an idiom such as an enum and `match`.
+"In code" means the structure exists in the source; "design level" means the diagram expresses it but Rust implements it with a lighter idiom. Operation signatures in the diagram are abbreviated design-level forms: request structs stand for their expanded fields, and `ExternalResolverAuthority.acceptEvidence` omits its `replay` argument, which only decides whether a demo-mode answer may bypass the published evidence deadline.
 
 | Pattern | Problem and roles | Status |
 |---|---|---|

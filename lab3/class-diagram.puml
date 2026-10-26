@@ -337,7 +337,7 @@ package "Resolution authority strategies" {
     + acceptEvidence(id: Identifier, submitter: Identifier, stmt: SignedStatement): EvidenceRecord
   }
   class ExternalResolverAuthority <<strategy>> {
-    + acceptEvidence(id: Identifier, outcomeId: String, req: ResolverRequest, res: ResolverResponse, replay: Boolean): EvidenceRecord
+    + acceptEvidence(id: Identifier, outcomeId: String, req: ResolverRequest, res: ResolverResponse): EvidenceRecord
   }
   ResolutionAuthority <|.. AdminAuthority
   ResolutionAuthority <|.. CreatorSignedAuthority
