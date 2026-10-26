@@ -156,10 +156,14 @@ jobs:
             kpi-report.json
             server.log
 
-  # Drives the real React UI in headless Chrome over the DevTools protocol:
-  # registration with password-derived resolution keys, creator verification,
-  # publishing, trading, charts, and both resolution paths. Demo mode is
-  # required for the seeded administrator and the clock advance.
+  # Drives the real React UI in headless Chrome over the DevTools protocol: the
+  # whole demonstration runbook in docs/demo-runbook.md, plus both password
+  # prompts. Two instances run side by side on separate databases, because a
+  # demo clock advance puts every live bracket in the provider's wall-clock
+  # future: the simulated one (port 8000, advanceable clock, deterministic bus
+  # simulator) and the live one (port 8001, real clock, bus evidence only from
+  # the provider). A deterministic stub stands in for provider/ntubus, so CI
+  # never depends on the campus Omnibus API being reachable.
   browser-e2e:
     needs: changes
     if: needs.changes.outputs.e2e == 'true'
@@ -176,11 +180,9 @@ jobs:
           --health-cmd "pg_isready -U polyntu -d postgres"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgres://polyntu:test-only-password@localhost:5432/postgres
       POLYNTU_QUOTE_SECRET: ci-only-quote-secret-0123456789abcdef
       POLYNTU_ADMIN_TOKEN: ci-only-admin-token-0123456789abcdef
       POLYNTU_DEMO_MODE: "true"
-      POLYNTU_BIND: 127.0.0.1:8000
       POLYNTU_FRONTEND_DIR: frontend/dist
     steps:
       - uses: actions/checkout@v7
@@ -195,6 +197,10 @@ jobs:
       - run: cargo build --manifest-path backend/Cargo.toml --release --locked
       - run: npm ci && npm run build
         working-directory: frontend
+      - name: Create the live instance's database
+        run: |
+          psql "postgres://polyntu:test-only-password@localhost:5432/postgres" \
+            -c 'CREATE DATABASE polyntu_live'
       - name: Start headless Chrome with a debug port
         run: |
           google-chrome --headless=new --remote-debugging-port=9223 \
@@ -208,24 +214,44 @@ jobs:
           exit 1
       - name: Run the browser end-to-end flow
         run: |
-          ./backend/target/release/polyntu > server.log 2>&1 &
+          # The deterministic bus provider stand-in. The live instance points
+          # its adapter at it, so evidence is tagged ntubus-live exactly as a
+          # real provider's would be, without depending on the campus feed.
+          node scripts/ntubus-stub.mjs 8090 > provider.log 2>&1 &
+          PROVIDER=$!
+          # Simulated instance: advanceable clock, deterministic bus simulator.
+          DATABASE_URL="postgres://polyntu:test-only-password@localhost:5432/postgres" \
+            POLYNTU_BIND=127.0.0.1:8000 POLYNTU_NTUBUS_PROVIDER="" \
+            ./backend/target/release/polyntu > server.log 2>&1 &
           SERVER=$!
+          # Live instance: its own database, wall clock, provider authoritative.
+          DATABASE_URL="postgres://polyntu:test-only-password@localhost:5432/polyntu_live" \
+            POLYNTU_BIND=127.0.0.1:8001 POLYNTU_LIVE_MODE=true \
+            POLYNTU_NTUBUS_PROVIDER="http://127.0.0.1:8090/resolve" \
+            ./backend/target/release/polyntu > live.log 2>&1 &
+          LIVE=$!
           for i in $(seq 1 60); do
-            curl -sf http://127.0.0.1:8000/health >/dev/null && break
+            curl -sf http://127.0.0.1:8000/health >/dev/null \
+              && curl -sf http://127.0.0.1:8001/health >/dev/null \
+              && curl -sf http://127.0.0.1:8090/ >/dev/null && break
             sleep 1
           done
           curl -sf http://127.0.0.1:8000/health >/dev/null || { cat server.log >&2; exit 1; }
-          # The runner shell uses -e; disable it around the test so the server
-          # is killed and the exit status is propagated, not skipped.
+          curl -sf http://127.0.0.1:8001/health >/dev/null || { cat live.log >&2; exit 1; }
+          # The runner shell uses -e; disable it around the test so the servers
+          # are killed and the exit status is propagated, not skipped.
           set +e
           node scripts/browser-e2e.mjs
           STATUS=$?
           set -e
-          kill $SERVER 2>/dev/null || true
+          kill $SERVER $LIVE $PROVIDER 2>/dev/null || true
           exit $STATUS
-      - name: Retain server log on failure
+      - name: Retain server logs on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: browser-e2e-server-log
-          path: server.log
+          path: |
+            server.log
+            live.log
+            provider.log

@@ -239,18 +239,26 @@ is deliberately not automated, because the point is to show the audience what
 the product does, not to replay a recording.
 
 The automated equivalent is `scripts/browser-e2e.mjs`, which runs in CI on
-every backend, frontend, or test-script change. It drives the same core flow
-over the Chrome DevTools protocol — registration, verification, publishing a
-creator-authority market, trading, both charts, and both resolution paths — and
-fails the build if any of it regresses. That is where automated coverage
-belongs; this document is the human script.
+every backend, frontend, or test-script change. It drives this whole runbook
+over the Chrome DevTools protocol — both account types, the seeded demo price
+history, registration, trading, the verification workflow through the
+administrator console, publishing a creator-authority market, the self-trading
+ban, the signed resolution, the settlement credit, reconciliation, the browse
+collapse, both password prompts, and the live instance settling from the
+provider — and fails the build if any of it regresses. That is where automated
+coverage belongs; this document is the human script.
 
-To check the demo still works before presenting it, run the CI test locally
-against the simulated instance:
+To check the demo still works before presenting it, run the CI test locally.
+It needs both instances and a bus provider; `scripts/ntubus-stub.mjs` is a
+deterministic stand-in that answers the same contract as the real provider, so
+the check does not depend on the campus feed:
 
 ```text
+node scripts/ntubus-stub.mjs 8090
 node scripts/browser-e2e.mjs
 ```
+
+Set `E2E_SKIP_LIVE=1` to run only the simulated half.
 
 ## Related documents
 
