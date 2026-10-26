@@ -30,6 +30,10 @@ For the class model and use-case mapping, see [class diagram](developer/class-di
 
 PolyNTU is one deployable application backed by PostgreSQL. The Rust executable serves the versioned JSON API, Server-Sent Events, and the built React files. It also starts a periodic background worker from the same codebase.
 
+![Functional modules](diagrams/architecture-overview.png)
+
+The module-level view above is the summary. The detailed view below names each source module and the calls between them.
+
 ![Runtime architecture](diagrams/architecture.png)
 
 Market categories provide typed rules and evidence evaluation only. They do not receive network access, calculate prices, authenticate users, or move balances.

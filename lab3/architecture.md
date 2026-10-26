@@ -2,6 +2,8 @@
 
 The maintained detailed explanation is [docs/architecture.md](../docs/architecture.md). The [class diagram](class-diagram.png), [editable source](class-diagram.puml), [class responsibilities](../docs/developer/class-diagram.md), and [handoff](steps-1-4-handoff.md) provide the matching design view.
 
+![Functional modules](architecture-overview.png)
+
 ![Runtime architecture](architecture.png)
 
 ## Architectural style

@@ -1,0 +1,41 @@
+@startuml
+!pragma layout smetana
+hide circle
+hide empty members
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 16
+skinparam classAttributeIconSize 0
+skinparam componentStyle rectangle
+skinparam componentBorderColor #40546A
+skinparam componentBackgroundColor #EAF2FC
+skinparam databaseBackgroundColor #E3F1D3
+skinparam databaseBorderColor #40546A
+skinparam ArrowColor #526579
+skinparam ArrowFontSize 14
+skinparam nodesep 60
+skinparam ranksep 70
+skinparam titleFontSize 24
+skinparam legendBackgroundColor #F7F9FC
+skinparam legendBorderColor #CBD5E1
+
+title PolyNTU architecture\nFunctional modules
+
+component "Participant browser\nReact interface" as Browser
+component "Market service\nquotes, trades, pricing,\nmarket lifecycle" as Service
+component "Settlement worker\nbracket scheduling, resolution,\nclaim settlement" as Worker
+database "PostgreSQL\naccounts, markets, trades,\nevidence, ledger" as Db
+component "External data sources\nconfigured resolvers and\nthe NTU bus feed" as Sources
+
+Browser --> Service : trade, publish, resolve
+Service --> Browser : live updates
+Service --> Db : reads and writes
+Worker --> Db : closes, resolves, settles
+Worker --> Sources : fetches the outcome
+
+legend bottom left
+  One Rust process serves the browser and runs the settlement worker;
+  both read and write the same database.
+endlegend
+@enduml

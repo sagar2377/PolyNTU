@@ -34,12 +34,14 @@ Manual 2.3 asks for encapsulation, loose coupling, and high cohesion; the design
 | [docs/diagrams/class-diagram.puml](../docs/diagrams/class-diagram.puml) | Maintained editable design diagram. |
 | [docs/diagrams/class-diagram.png](../docs/diagrams/class-diagram.png) | Maintained rendered diagram. |
 | [docs/developer/class-diagram.md](../docs/developer/class-diagram.md) | Maintained entity/boundary/control explanations, runtime mappings, and use-case coverage. |
+| [docs/diagrams/architecture-overview.puml](../docs/diagrams/architecture-overview.puml) | Maintained functional-module overview diagram source. |
 | [docs/diagrams/architecture.puml](../docs/diagrams/architecture.puml) | Maintained runtime architecture diagram source. |
 | [docs/diagrams/architecture.png](../docs/diagrams/architecture.png) | Maintained rendered runtime architecture. |
 | [docs/architecture.md](../docs/architecture.md) | Maintained detailed architecture. |
 | [lab3/class-diagram.puml](class-diagram.puml) | Submission snapshot of the maintained diagram source. |
 | [lab3/class-diagram.png](class-diagram.png) | Submission snapshot of its rendered image. |
 | [lab3/architecture.md](architecture.md) | Concise architecture submission write-up, with links to maintained details. |
+| [lab3/architecture-overview.png](architecture-overview.png) | Submission snapshot of the functional-module overview. |
 | [lab3/architecture.png](architecture.png) | Submission snapshot of the runtime architecture diagram. |
 | [lab3/persistent-data.md](persistent-data.md) | Persistent-data design write-up. |
 | [lab3/access-control.md](access-control.md) | Access-control design write-up. |
@@ -129,9 +131,12 @@ Edit the canonical PlantUML first, keep its companion explanations/counts synchr
 
 ```powershell
 .\scripts\render-diagrams.ps1 -Diagram 'docs\diagrams\class-diagram.puml'
+.\scripts\render-diagrams.ps1 -Diagram 'docs\diagrams\architecture-overview.puml'
 .\scripts\render-diagrams.ps1 -Diagram 'docs\diagrams\architecture.puml'
 Copy-Item -LiteralPath 'docs\diagrams\class-diagram.puml' -Destination 'lab3\class-diagram.puml'
 Copy-Item -LiteralPath 'docs\diagrams\class-diagram.png' -Destination 'lab3\class-diagram.png'
+Copy-Item -LiteralPath 'docs\diagrams\architecture-overview.puml' -Destination 'lab3\architecture-overview.puml'
+Copy-Item -LiteralPath 'docs\diagrams\architecture-overview.png' -Destination 'lab3\architecture-overview.png'
 Copy-Item -LiteralPath 'docs\diagrams\architecture.puml' -Destination 'lab3\architecture.puml'
 Copy-Item -LiteralPath 'docs\diagrams\architecture.png' -Destination 'lab3\architecture.png'
 ```
