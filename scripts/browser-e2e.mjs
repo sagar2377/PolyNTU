@@ -310,6 +310,14 @@ async function main() {
   await waitFor(cdp, "market grid", `document.querySelectorAll('.market-card').length > 0`, 30000);
   const cards = await evaluate(cdp, `[...document.querySelectorAll('.market-card')].map((c) => c.textContent)`);
   log(1, `visitor sees ${cards.length} live market cards without signing in`);
+  // UC-5 search: the title filter narrows the grid, reports a miss, and clears.
+  await evaluate(cdp, `__set('.market-search', 'rainfall')`);
+  await waitFor(cdp, "search narrows the grid", `(() => { const t = [...document.querySelectorAll('.market-card h3')].map((h) => h.textContent); return t.length > 0 && t.every((x) => x.toLowerCase().includes('rainfall')); })()`);
+  await evaluate(cdp, `__set('.market-search', 'no-such-market-zz')`);
+  await waitFor(cdp, "search empty state", `__bodyHas('No markets match')`);
+  await evaluate(cdp, `__set('.market-search', '')`);
+  await waitFor(cdp, "search cleared", `[...document.querySelectorAll('.market-card h3')].some((h) => !h.textContent.toLowerCase().includes('rainfall'))`);
+  log(1, "visitor searched the grid by title, saw the no-match message, and cleared the search");
   // The demo participants trade the seeded one-time markets, so the grid must
   // not read a flat 50/50 everywhere. The first fill lands on an early worker
   // tick; allow time for a few.

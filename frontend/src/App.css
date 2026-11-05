@@ -35,6 +35,7 @@ nav { display:flex; gap:8px; } nav button { border:0; background:none; color:var
 .chart-container-wrap { position:relative; } .chart-container { height:280px; width:100%; }
 .day-bars { display:flex; flex-direction:column; gap:7px; } .day-bar-row { display:grid; grid-template-columns:112px minmax(0,1fr) 52px; gap:10px; align-items:center; font-size:.8rem; } .day-bar-row .probability-track { height:9px; } .day-bar-time { color:var(--muted); white-space:nowrap; } .day-bar-value { text-align:right; font-variant-numeric:tabular-nums; }
 .create-form textarea { width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:8px; font:inherit; } .form-row { display:flex; gap:12px; } .form-row>div { flex:1; min-width:0; }
+.market-search { max-width:420px; margin-bottom:14px; }
 .filters { display:flex; flex-wrap:wrap; gap:8px; padding-bottom:25px; } .filters button { border-radius:30px; font-size:.8rem; padding:8px 15px; } .filters .selected { background:var(--text); color:white; border-color:var(--text); }
 .section-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; } .section-heading h2 { margin:0; } .section-heading span { font-size:.8rem; }
 .market-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:18px; }
