@@ -363,6 +363,14 @@ async function main() {
   await evaluate(cdp, `[...document.querySelectorAll('.admin-list li')].find((li) => li.textContent.includes('E2E Creator'))?.querySelector('button').click()`);
   await waitFor(cdp, "approval confirmation", `__bodyHas('Approved')`, 15000);
   log(6, "administrator approved the request from the console UI");
+  // UC-23: provisioning shows the one-time session token, the only way in.
+  await evaluate(cdp, `__set('#provision-name', 'E2E Provisioned')`);
+  await evaluate(cdp, `__clickText('button', 'Create with 1,000-unit grant')`);
+  await waitFor(cdp, "provisioned token", `(document.querySelector('.provisioned-token')?.value || '').length > 20`, 15000);
+  const provisionedToken = await evaluate(cdp, `document.querySelector('.provisioned-token').value`);
+  const provisionedAccount = await api.get("/me", { token: provisionedToken });
+  if (provisionedAccount.display_name !== "E2E Provisioned" || provisionedAccount.balance_micros !== String(1000 * 1_000_000)) throw new Error(`provisioned account is wrong: ${JSON.stringify(provisionedAccount)}`);
+  log(6, "administrator provisioned an account; the console showed its token, which opens the account with the 1,000-unit grant");
 
   await signOut(cdp);
   await signIn(cdp, creatorEmail, PASSWORD);

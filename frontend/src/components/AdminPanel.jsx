@@ -16,6 +16,10 @@ export default function AdminPanel({ account, onClose, onChanged }) {
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
   const [reconcile, setReconcile] = useState(null);
+  // A provisioned account has no email or password, so the token returned
+  // once by the server is the only way into it (UC-23); show it so the
+  // administrator can hand it over.
+  const [provisioned, setProvisioned] = useState(null);
 
   const run = async (action, success) => {
     setBusy(true); setMessage(""); setFailed(false);
@@ -33,10 +37,12 @@ export default function AdminPanel({ account, onClose, onChanged }) {
     onChanged?.();
   }, approve ? "Approved; the account now holds the creator role." : "Rejected with your recorded reason.");
   const provision = () => run(async () => {
-    await api.adminCreateAccount(displayName.trim(), token);
+    setProvisioned(null);
+    const created = await api.adminCreateAccount(displayName.trim(), token);
+    setProvisioned({ name: created.account.display_name, token: created.token });
     setDisplayName("");
     onChanged?.();
-  }, "Provisioned an account with its welcome grant.");
+  }, "Provisioned an account with the 1,000-unit grant.");
   const checkReconcile = () => run(async () => {
     setReconcile(await api.adminReconcile(token));
   });
@@ -70,7 +76,11 @@ export default function AdminPanel({ account, onClose, onChanged }) {
       <h3>Provision an account</h3>
       <label htmlFor="provision-name">Display name</label>
       <input id="provision-name" value={displayName} maxLength={80} onChange={(e) => setDisplayName(e.target.value)} />
-      <button disabled={busy || !token || !displayName.trim()} onClick={provision}>Create with welcome grant</button>
+      <button disabled={busy || !token || !displayName.trim()} onClick={provision}>Create with 1,000-unit grant</button>
+      {provisioned && <div className="notice" role="status">
+        <p className="small">Session token for <strong>{provisioned.name}</strong>. It is shown once and is the only way into this account, so copy it now.</p>
+        <input className="provisioned-token" readOnly value={provisioned.token} aria-label="Provisioned session token" onFocus={(e) => e.target.select()} />
+      </div>}
     </section>
 
     <section aria-label="Operations">
