@@ -49,7 +49,7 @@ package "User and administrator boundaries" {
   }
   class CreateMarketPage <<boundary>> {
     + enterDefinition(def: SeriesDefinition)
-    + chooseResolutionAuthority(authority: ResolutionSpec [0..1])
+    + chooseResolutionAuthority(authority: ResolutionSpec)
     + deriveSigningKey(password: String): SigningKeyPair
     + publishMarket(spec: NewSeries): SeriesView
   }
@@ -74,7 +74,9 @@ package "User and administrator boundaries" {
     + provisionAccount(name: String)
     + runSettlementPass()
     + showReconciliation(): ReconciliationReport
-    + advanceDemoClock(minutes: Integer)
+  }
+  class DemoClockDialog <<boundary>> {
+    + advanceDemoClock(minutes: Integer, adminToken: String)
   }
   class AdminApi <<boundary>> {
     + receiveAdminRequest(adminToken: String [0..1], sessionToken: String [0..1], req: AdminRequest)
@@ -92,7 +94,7 @@ package "Use-case controls" {
     + getVerificationStatus(acct: Identifier): VerificationRequest [0..1]
   }
   class MarketQueryControl <<control>> {
-    + listMarkets(state: InstanceState [0..1], offset: Integer): MarketSummary[*]
+    + listMarkets(state: BrowseClass [0..1], offset: Integer): MarketSummary[*]
     + getMarket(id: Identifier, viewer: Identifier [0..1]): MarketDetail
     + getSeries(id: Identifier): SeriesView
     + getHistory(id: Identifier, bucketMs: Integer): PricePoint[*]
@@ -359,6 +361,7 @@ MarketPage ..> MarketLifecycleControl
 MarketPage ..> EventBus : SSE market events
 PortfolioPage ..> PortfolioControl
 AdminConsole ..> AdminControl
+DemoClockDialog ..> AdminControl
 AdminApi ..> AdminControl
 AdminControl ..> MarketLifecycleControl : suspension /\nsettlement pass
 MarketLifecycleControl ..> MarketCreationControl : funded bracket creation
@@ -369,7 +372,7 @@ ResolverGateway ..> NtuBusAdapter : HTTP resolver contract
 MarketLifecycleControl ..> ResolutionAuthority : delegates by series authority
 
 legend bottom left
-  Green <<boundary>>: UI or external interface. AdminConsole is the browser admin dialog;
+  Green <<boundary>>: UI or external interface. AdminConsole is the browser admin console;
   AdminApi is the /admin routes called directly (suspension has no console control).
   Amber <<control>>: seven logical use-case controls and one startup control.
   Blue <<entity>>: domain information with attributes, operations, and association multiplicities.
@@ -383,7 +386,10 @@ legend bottom left
   Logical collaboration arrows group existing functions; they do not imply a code refactor.
   Browser-to-control arrows summarize HTTP paths. ApiRouter shows startup wiring.
   MarketPage to EventBus is the per-instance SSE stream (Observer); it carries no domain data.
-  No administrator path creates instances or resolves markets (resolution authority is creator or resolver only).
+  No admin-only route creates instances or records evidence. An admin-role account may publish a series
+  through MarketCreationControl like a creator, and then resolves it only as that series' creator.
+  DemoClockDialog is the demo-mode footer dialog, separate from AdminConsole.
+  BrowseClass is open, closed (includes resolving), voided or resolved.
   Operation signatures are design-level and abbreviated as documented in docs/developer/class-diagram.md.
 endlegend
 @enduml
