@@ -493,7 +493,7 @@ The demo bus series is the built-in example: the platform serves its own adapter
 
 - The treasury balance is below the grant: rejected with a conflict and no account remains.
 - In demo mode the one-click demo endpoint performs the same provisioning for any visitor with the same grant.
-- The provisioned account carries no email, password, or role: it cannot log in, and with the token sign-in path gone from the browser its token is the only way in, so the token must be kept.
+- The provisioned account carries no email, password, or role: it cannot log in, and with the token sign-in path gone from the browser its token is the only way in, so the token must be kept. The administrator console shows it once after provisioning.
 
 ### UC-24: Run reconciliation
 
