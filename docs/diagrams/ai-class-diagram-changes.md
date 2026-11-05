@@ -1,0 +1,57 @@
+# Class diagram changes for Lab 5
+
+This file compares the current Lab 3 model ([class-diagram.puml](class-diagram.puml), [class-diagram.md](../developer/class-diagram.md)) with the updated diagram ([ai-class-diagram.puml](ai-class-diagram.puml), [ai-class-diagram.png](ai-class-diagram.png)). Every class, attribute, operation and relationship was checked against `backend/src`, `backend/migrations` and `frontend/src` at commit `ad330cd` (master), and against [use-cases.md](../developer/use-cases.md).
+
+The changes keep the existing conventions: boundary, control and entity stereotypes, the container, strategy, infrastructure and active styles, design-level signatures, and the Smetana layout. Everything not listed below was checked and matches the code.
+
+## Changes
+
+| # | Element | Change | Kind | Code evidence |
+|---|---|---|---|---|
+| 1 | Title / caption | "Lab 3" changed to "Lab 5 … synchronised with the implementation"; the caption now points to this file. | Housekeeping | — |
+| 2 | **AdminConsole** `<<boundary>>` | **New class.** A browser administrator dialog now exists. It loads the pending verification queue, approves or rejects requests, provisions an account, runs a settlement pass and shows reconciliation. It also advances the demo clock (the footer "Demo clock" dialog). | Wrong in current model | `frontend/src/components/AdminPanel.jsx:10-85` (calls at lines 27, 30, 36, 41, 44); opened from `frontend/src/App.jsx:174-175`; demo clock dialog `App.jsx:84-88`, `App.jsx:176-186` |
+| 3 | AdminConsole ..> AdminControl | New dependency, like the other browser-to-control arrows. | New | `frontend/src/api.js` (`adminVerifications`, `adminDecide`, `adminCreateAccount`, `adminReconcile`, `adminTick`, `advance`) → `backend/src/api.rs:111-120` |
+| 4 | Legend, AdminApi line | "AdminApi is an API, not an admin screen" replaced. AdminConsole is the dialog; AdminApi is the `/admin` routes called directly. AdminApi is kept because suspension (UC-22) has no console control and is reached only through the API. | Wrong in current model | `backend/src/api.rs:117` (suspension route); no suspension control in `AdminPanel.jsx` |
+| 5 | MarketLifecycleControl `acceptAdminEvidence(id, input)` | **Renamed to `recordSimulatedEvidence(id, input)`.** No administrator evidence route exists. `record_evidence` is called only by the demo worker's simulator, and it refuses any instance that belongs to a series. | Wrong in current model | `backend/src/resolution.rs:174-178` (doc comment: "no administrator evidence route exists"), `resolution.rs:225-230` (series instances refused); caller `backend/src/worker.rs:257-279` (call at line 273); route list `api.rs:86-121`; `backend/migrations/0015_creator_and_resolver_authority_only.sql` |
+| 6 | `ExternalResolverAuthority ..> ResolverGateway : uses` | **Removed.** The worker (MarketLifecycleControl) calls the endpoint and parses the answer itself, then passes the already-validated outcome, request and response to `record_resolver_evidence`. The authority never calls the gateway. Its own signature `acceptEvidence(id, outcomeId, req, res)` already showed this. | Wrong in current model | `backend/src/worker.rs:285-300` (`resolver::call`, `resolver::parse_response`, then `record_resolver_evidence`); `backend/src/resolution.rs:111-176` (no network call) |
+| 7 | MarketLifecycleControl ..> ResolverGateway label | "calls external API" changed to "calls and parses external API", following from #6. | Clarified | `backend/src/worker.rs:286`, `:290` |
+| 8 | AdminControl | Added `runSettlementPass(): Integer` and `advanceDemoClock(minutes): Timestamp`. Both are admin routes and are now buttons in the browser. They are operational, not numbered use cases. | Missing | `backend/src/api.rs:118`, `:120`, handlers `api.rs:484-505`; `backend/src/resolution.rs:511`; `worker::tick` `worker.rs:94` |
+| 9 | AdminControl ..> MarketLifecycleControl label | "suspension" changed to "suspension / settlement pass", following from #8. | Clarified | `backend/src/api.rs:476`, `:490`, `:503` |
+| 10 | AccountPanel | Added `startDemoAccount(name): Session`, the demo-mode one-click account (UC-23 alternative flow). | Missing | `frontend/src/App.jsx:71`, `:154`; `frontend/src/api.js` `createAccount` → `/auth/demo` |
+| 11 | AccountControl | Added `provisionDemoAccount(name): Session` (`Store::create_account`, gated on demo mode, 1,000-unit grant). | Missing | `backend/src/api.rs:89`, `:169-177`; `backend/src/store.rs:481`, `DEMO_GRANT_UNITS` `store.rs:102` |
+| 12 | MarketPage | Added `subscribeToMarketEvents(id)`, the SSE subscription that reloads the page on market events. | Missing | `frontend/src/pages/MarketPage.jsx:20-21` |
+| 13 | MarketPage ..> EventBus : SSE market events | **New dependency.** The Observer pattern was described in the text, but no diagram element showed a subscriber. | Missing | `frontend/src/pages/MarketPage.jsx:20`; `backend/src/api.rs:102`, `:515-574` (`bus.subscribe`); `backend/src/events.rs:54` |
+| 14 | MarketQueryControl `getMarket(id)` | Changed to `getMarket(id, viewer [0..1])`. A signed-in caller also receives their own holdings, which the trade panel uses to limit sells. | Missing parameter | `backend/src/api.rs:297-311`; `backend/src/store.rs:793`; `frontend/src/components/TradePanel.jsx:8-9` |
+| 15 | BackgroundWorker ..> MarketCreationControl : demo seeding | **New dependency.** `seedDemo` was already an operation on BackgroundWorker, but its collaboration was not shown. It publishes the demo bus series and the demo one-time instances. | Missing | `backend/src/worker.rs:68` (`create_series`), `worker.rs:81` (`create_instance`), called from `main.rs:61` and `worker.rs:134` |
+| 16 | Store `connect(url, demoMode)` | Changed to `connectWith(url, demoMode, liveMode, tuning)`, the entry point startup actually uses. `connect` survives as a two-argument shorthand for tests. | Out of date | `backend/src/main.rs:47`; `backend/src/store.rs:229-236` |
+| 17 | Legend | Added two lines: the SSE edge is the Observer stream, and no administrator path creates instances or resolves markets. | Clarified | `backend/migrations/0015_creator_and_resolver_authority_only.sql:41`; `docs/developer/use-cases.md:18` (Platform Admin actor) |
+
+## Errors found in the current model and its explanation
+
+These are errors in the current design model, so the existing files are now out of step with the code. As instructed, the existing files were not edited.
+
+1. **Admin evidence path.** `acceptAdminEvidence` (diagram), and the statement that "`acceptAdminEvidence()` remains subject to the fixed resolution authority" (class-diagram.md line 117), describe a route that was removed. See #5.
+2. **Direct administrator instance creation.** class-diagram.md lines 52, 111, 123 and 124 describe an "AdminControl -> MarketCreationControl" path and "direct administrator" creation. No `/admin/instances` creation route exists (`api.rs:86-121`). Series-less instances now come only from demo seeding (`worker.rs:75-90`). Use-cases.md line 18 confirms the admin "cannot create instances". The `NewInstance.series_id` comment in `market.rs` ("direct administrator-created instances") and `Store::series` in `store.rs` are also stale. The diagram itself never drew this arrow, so the only diagram change is #15.
+3. **"ExternalResolverAuthority uses ResolverGateway"** is wrong; see #6.
+4. **"AdminApi is not an admin screen"** is no longer true; see #2 and #4. class-diagram.md line 233 ("It does not propose an administrator screen") is also out of date.
+5. **Publisher role.** class-diagram.md line 111 says publication requires creator access. The code also accepts the `admin` role (`store.rs:1065-1071`; `App.jsx` `canPublish`). The diagram has no role check to change; this is a text correction only.
+6. **Use-case model inconsistency (not a diagram error).** Business rule 3 in use-cases.md line 70 still says "the administrator sets it creating instances directly", which contradicts the actor table on line 18 and the code.
+
+## Deliberately left out or unchanged
+
+| Item | Reason |
+|---|---|
+| `Cache` / `AuthAccount` (`backend/src/cache.rs`) | Performance plumbing inside `Store` (`store.rs:24`) for the quote fast path. It has no domain or use-case responsibility; the existing "shares pool and cache" label covers it. |
+| Demo trading by the worker (`seed_demo_trades`, `worker.rs:102`, `:157`) | A demo-only fixture that trades through the normal `quote`/`execute` path. A BackgroundWorker ..> TradingControl arrow would suggest a production collaboration that does not exist. |
+| NtuBusAdapter's call to the external NTU Bus provider (`resolver.rs:181-197`) | The provider is an external system outside the class model. Drawing NtuBusAdapter ..> ResolverGateway would create a confusing two-way dependency with the existing arrow. |
+| Series end transition (`store.rs:1277-1286`) | Part of `spawnDueBrackets`; `MarketSeries.state` already models it. |
+| `settleAndSplitFees` and `voidAtDeadline` kept as two operations | Both are implemented by one function, `settle_batch` (`resolution.rs:346-509`). They are kept separate as a design decomposition because they map to different use cases (UC-15/16 vs UC-17). |
+| Strategy interface signature `acceptEvidence(evidence: EvidencePayload)` | Still an idealisation; the two implementations take different arguments and are reached through separate paths (`api.rs:434-453`, `worker.rs:297`). This is unchanged and already documented in class-diagram.md "Design patterns". |
+| Minor persisted columns: `Trade.engineVersion`, `Evidence.parserVersion` / `payloadHash`, `MarketSeries.createdAt`, `MarketInstance.templateId` / `category` | Implementation or audit detail; `category` is derived from `rule` (`market.rs:91`). Omitted as allowed by the "minor details omitted" guidance. |
+| Read-only listing endpoints `/markets`, `/markets/{id}/instances`, `/series` (list) | Exist in `api.rs:93-96`, but the current frontend does not use the first two, and `seriesList` is never called (`frontend/src`). `listMarkets` and `getSeries` cover discovery. |
+| Retired legacy routes returning 410 (`api.rs:125-127`) | Not part of the design. |
+| Entity attributes, multiplicities and associations | Re-checked against migrations 0001-0015 and `market.rs` / `store.rs`. They are correct and unchanged; for example, `AuthorityKind` is `creator`/`resolver` per 0015, reserve is `UNIQUE NOT NULL` (0001), and the series creator is nullable (0009). |
+
+## Rendering
+
+Rendered with PlantUML 1.2025.4 (Maven Central jar, Smetana layout, no Graphviz) using `java -DPLANTUML_LIMIT_SIZE=16384 -jar plantuml.jar -tpng -charset UTF-8 docs/diagrams/ai-class-diagram.puml`. It succeeded on the first attempt and produced an 8294 × 1885 PNG.

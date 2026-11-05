@@ -1,0 +1,389 @@
+@startuml
+!pragma layout smetana
+hide circle
+hide empty fields
+hide empty methods
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 14
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classBorderColor #40546A
+skinparam classBackgroundColor<<boundary>> #E5F4EB
+skinparam classBackgroundColor<<control>> #FFF1D6
+skinparam classBackgroundColor<<entity>> #EAF2FC
+skinparam classBackgroundColor<<container>> #E3F1D3
+skinparam classBackgroundColor<<strategy>> #F9E4F0
+skinparam classBackgroundColor<<infrastructure>> #F0F2F5
+skinparam classBackgroundColor<<active>> #EEE8FA
+skinparam packageStyle rectangle
+skinparam packageBackgroundColor #FAFBFD
+skinparam packageBorderColor #CBD5E1
+skinparam ArrowColor #526579
+skinparam ArrowFontSize 12
+skinparam nodesep 40
+skinparam ranksep 60
+skinparam titleFontSize 22
+skinparam legendBackgroundColor #F7F9FC
+skinparam legendBorderColor #CBD5E1
+
+title PolyNTU Lab 5 design class model (synchronised with the implementation)\nClasses, containers, patterns and detailed operations
+caption Changes from the Lab 3 model and their code evidence: docs/diagrams/ai-class-diagram-changes.md
+
+package "User and administrator boundaries" {
+  class AccountPanel <<boundary>> {
+    + registerAccount(name: String, email: String, password: String): Session
+    + logIn(email: String, password: String): Session
+    + startDemoAccount(name: String): Session
+    + requestCreatorVerification(): VerificationRequest
+    + showVerificationStatus(): VerificationRequest [0..1]
+    + handleSessionExpired()
+    + signOutLocally()
+  }
+  class MarketBrowsePage <<boundary>> {
+    + selectCategory(category: Category [0..1])
+    + openHistoryTab(tab: HistoryTab [0..1])
+    + turnPage(list: HistoryTab [0..1], offset: Integer)
+    + openMarket(instanceId: Identifier)
+  }
+  class CreateMarketPage <<boundary>> {
+    + enterDefinition(def: SeriesDefinition)
+    + chooseResolutionAuthority(authority: ResolutionSpec [0..1])
+    + deriveSigningKey(password: String): SigningKeyPair
+    + publishMarket(spec: NewSeries): SeriesView
+  }
+  class MarketPage <<boundary>> {
+    + showMarketAndCharts(id: Identifier): MarketDetail
+    + subscribeToMarketEvents(id: Identifier)
+    + selectBracket(instanceId: Identifier)
+    + previewTrade(req: QuoteRequest): Quote
+    + confirmTrade(req: TradeRequest, key: String): Receipt
+    + resumePendingTrade(req: TradeRequest, key: String): Receipt
+    + deriveSigningKey(password: String): SigningKeyPair
+    + signAndSubmitResolution(bracketId: Identifier, outcomeId: String): EvidenceRecord
+  }
+  class PortfolioPage <<boundary>> {
+    + showPositionsAndCredits(offset: Integer): PortfolioView
+    + showTradeHistory(offset: Integer): TradeRecord[*]
+    + openMarket(instanceId: Identifier)
+  }
+  class AdminConsole <<boundary>> {
+    + loadPendingRequests(adminToken: String): VerificationRequest[*]
+    + decideRequest(id: Identifier, approve: Boolean, reason: String [0..1])
+    + provisionAccount(name: String)
+    + runSettlementPass()
+    + showReconciliation(): ReconciliationReport
+    + advanceDemoClock(minutes: Integer)
+  }
+  class AdminApi <<boundary>> {
+    + receiveAdminRequest(adminToken: String [0..1], sessionToken: String [0..1], req: AdminRequest)
+    + returnResult(result: AdminResult)
+  }
+}
+
+package "Use-case controls" {
+  class AccountControl <<control>> {
+    + registerAndGrantWelcomeGift(name: String, email: String, password: String): Session
+    + authenticate(email: String, password: String): Session
+    + provisionDemoAccount(name: String): Session
+    + getCurrentAccount(token: String): Account
+    + requestCreatorVerification(acct: Identifier): VerificationRequest
+    + getVerificationStatus(acct: Identifier): VerificationRequest [0..1]
+  }
+  class MarketQueryControl <<control>> {
+    + listMarkets(state: InstanceState [0..1], offset: Integer): MarketSummary[*]
+    + getMarket(id: Identifier, viewer: Identifier [0..1]): MarketDetail
+    + getSeries(id: Identifier): SeriesView
+    + getHistory(id: Identifier, bucketMs: Integer): PricePoint[*]
+  }
+  class MarketCreationControl <<control>> {
+    + validateDefinitionAndAuthority(spec: NewSeries): Boolean
+    + publishSeries(creator: Identifier [0..1], spec: NewSeries, dataMode: DataMode): SeriesView
+    + createFundedInstance(spec: NewInstance): MarketInstance
+  }
+  class TradingControl <<control>> {
+    + issueQuote(acct: Identifier, req: QuoteRequest): Quote
+    + executeTrade(acct: Identifier, key: String, req: TradeRequest): Receipt
+    + recoverReceipt(acct: Identifier, key: String, req: TradeRequest): Receipt
+  }
+  class PortfolioControl <<control>> {
+    + getPositionsAndCredits(acct: Identifier, limit: Integer, offset: Integer): PortfolioView
+    + getTradeHistory(acct: Identifier, limit: Integer, offset: Integer): TradeRecord[*]
+  }
+  class MarketLifecycleControl <<control>> {
+    + spawnDueBrackets(): Integer
+    + closeDueInstances(): Integer
+    + recordSimulatedEvidence(id: Identifier, input: EvidenceInput): EvidenceRecord
+    + acceptSignedResolution(id: Identifier, submitter: Identifier, stmt: SignedStatement): EvidenceRecord
+    + resolveAutomatically(id: Identifier): EvidenceRecord [0..1]
+    + setSuspension(id: Identifier, suspended: Boolean, reason: String)
+    + settleAndSplitFees(id: Identifier): Integer
+    + voidAtDeadline(id: Identifier): Resolution
+    + purgeExpiredBrackets(): Integer
+  }
+  class AdminControl <<control>> {
+    + authorize(adminToken: String [0..1], sessionToken: String [0..1]): Boolean
+    + listCreatorRequests(status: VerificationStatus [0..1]): VerificationRequest[*]
+    + reviewCreatorRequest(id: Identifier, approve: Boolean, reason: String [0..1]): VerificationRequest
+    + requestSuspension(id: Identifier, suspended: Boolean, reason: String)
+    + provisionAccountWithGrant(name: String): Session
+    + reconcile(): ReconciliationReport
+    + runSettlementPass(): Integer
+    + advanceDemoClock(minutes: Integer): Timestamp
+  }
+}
+
+package "Startup and runtime" {
+  class StartupControl <<control>> {
+    + {static} main()
+  }
+  class Store <<infrastructure>> {
+    + connectWith(url: String, demoMode: Boolean, liveMode: Boolean, tuning: Tuning): Store
+    + now(): Timestamp
+    - initialize(): Integer
+  }
+  class AppState <<infrastructure>> {
+    + new(store: Store, quoteSecret: String, adminToken: String): AppState
+    - account(sessionToken: String): AuthAccount
+    - requireAdmin(adminToken: String [0..1], sessionToken: String [0..1]): Boolean
+  }
+  class ApiRouter <<boundary>> {
+    + router(state: AppState, origins: URL[*]): Router
+  }
+  class BackgroundWorker <<active>> {
+    + run(store: Store)
+    + tick(store: Store): Integer
+    + seedDemo(store: Store)
+  }
+  class EventBus <<infrastructure>> {
+    + subscribe(instanceId: Identifier): EventStream
+  }
+  class EventRuntime <<infrastructure>> {
+    + runListener(store: Store, bus: EventBus)
+    + runClockRefresher(store: Store)
+  }
+
+  StartupControl ..> Store : connect / initialize
+  StartupControl ..> AppState : construct
+  StartupControl ..> ApiRouter : configure / serve
+  StartupControl ..> BackgroundWorker : seed / start / stop
+  StartupControl ..> EventBus : create
+  StartupControl ..> EventRuntime : start / stop
+  AppState ..> Store : shares pool and cache
+  AppState ..> EventBus : shares event channels
+}
+
+package "Entity model" {
+
+class Account <<entity>> {
+  accountId: Identifier
+  displayName: String
+  kind: AccountKind
+  email: String [0..1]
+  role: AccountRole [0..1]
+  passwordHash: String [0..1]
+  tokenHash: String [0..1]
+  balance: Money
+  + verifyPassword(password: String): Boolean
+  + hasRole(role: AccountRole): Boolean
+  + canAfford(amount: Money): Boolean
+}
+
+class VerificationRequest <<entity>> {
+  requestId: Identifier
+  status: VerificationStatus
+  reason: String [0..1]
+  requestedAt: Timestamp
+  decidedAt: Timestamp [0..1]
+  + isPending(): Boolean
+  + approve(decidedAt: Timestamp)
+  + reject(reason: String, decidedAt: Timestamp)
+}
+
+class MarketSeries <<entity>> {
+  seriesId: Identifier
+  title: String
+  resolutionCriterion: String
+  rule: MarketRule
+  sourceId: String
+  dataMode: DataMode
+  liquidityUnits: Integer
+  feeCharged: Boolean
+  recurrence: RecurrenceKind
+  schedule: RecurrencePolicy [0..1]
+  resolutionAuthority: AuthorityKind
+  resolverConfig: ResolverConfig [0..1]
+  resolutionKey: ResolutionKey [0..1]
+  state: SeriesState
+  + isActiveAt(slot: Timestamp): Boolean
+  + bracketSpec(slotStart: Timestamp): NewInstance
+}
+
+class MarketInstance <<entity>> {
+  instanceId: Identifier
+  title: String
+  resolutionCriterion: String
+  rule: MarketRule
+  sourceId: String
+  dataMode: DataMode
+  state: InstanceState
+  suspended: Boolean
+  window: MarketWindow
+  bracketStart: Timestamp [0..1]
+  liquidityUnits: Integer
+  feeCharged: Boolean
+  creatorId: Identifier [0..1]
+  version: Integer
+  result: Resolution [0..1]
+  selectedEvidence: Evidence [0..1]
+  + isTradable(now: Timestamp): Boolean
+  + isCreatedBy(acct: Identifier): Boolean
+  + isObservationOver(now: Timestamp): Boolean
+  + isPastEvidenceDeadline(now: Timestamp): Boolean
+}
+
+class Outcome <<entity>> {
+  outcomeId: String
+  index: Integer
+  label: String
+  outstandingShares: Quantity
+  /probability: Decimal
+}
+
+class Position <<entity>> {
+  quantity: Quantity
+  + isOpen(): Boolean
+}
+
+class Trade <<entity>> {
+  tradeId: Identifier
+  side: TradeSide
+  quantity: Quantity
+  allInAmount: Money
+  feeAmount: Money
+  instanceVersion: Integer
+  executedAt: Timestamp
+}
+
+class Evidence <<entity>> {
+  evidenceId: Identifier
+  sourceId: String
+  eventId: String
+  sourceRevision: Integer
+  receivedAt: Timestamp
+  payload: EvidencePayload
+  evaluatedResult: Resolution [0..1]
+}
+
+class SettlementClaim <<entity>> {
+  creditedAmount: Money
+  settledAt: Timestamp
+}
+
+class LedgerTransfer <<entity>> {
+  transferId: Identifier
+  amount: Money
+  kind: TransferKind
+  reference: String
+  createdAt: Timestamp
+}
+
+class OutcomeSet <<container>> {
+  + indexOf(outcomeId: String): Integer
+  + prices(): Decimal[*]
+  + validate(): Boolean
+}
+
+class PositionBook <<container>> {
+  + quantityOf(inst: Identifier, outcome: Integer): Quantity
+  + openHoldings(offset: Integer): PositionView[*]
+  + adjust(inst: Identifier, outcome: Integer, owned: Quantity)
+}
+
+class TradeHistory <<container>> {
+  + append(trade: Trade)
+  + page(limit: Integer, offset: Integer): TradeRecord[*]
+}
+
+Account "1" -up- "0..*" VerificationRequest : requester
+Account "0..1" -up- "0..*" MarketSeries : creator
+MarketSeries "0..1" -right- "0..*" MarketInstance : groups
+Account "1" -right- "0..1" MarketInstance : reserve
+MarketInstance "1" *-down- "1" OutcomeSet : options
+OutcomeSet "1" *-right- "2..8" Outcome : contains
+MarketInstance "1" -right- "0..*" Evidence : revisions
+MarketInstance "1" -down- "0..*" SettlementClaim : pays
+Account "1" -right- "0..*" SettlementClaim : recipient
+Account "1" *-down- "1" PositionBook : holdings
+PositionBook "1" o-down- "0..*" Position : entries
+Account "1" *-down- "1" TradeHistory : trades
+TradeHistory "1" o-down- "0..*" Trade : entries
+Outcome "1" -- "0..*" Position : held outcome
+Outcome "1" -- "0..*" Trade : traded outcome
+' Presentation-only line breaks separate the parallel transfer roles and multiplicities.
+Account "1\n" -left- "0..*\n" LedgerTransfer : from\n
+Account "\n1" -left- "\n0..*" LedgerTransfer : \nto
+
+}
+
+class ResolverGateway <<boundary>> {
+  + requestExternalResolution(endpoint: URL, req: ResolverRequest): String
+  + parseResolverResponse(body: String, options: OutcomeSet): ResolverAnswer
+}
+
+class NtuBusAdapter <<boundary>> {
+  + answer(call: ResolverCall): ResolverResponse
+}
+
+package "Resolution authority strategies" {
+  interface ResolutionAuthority <<strategy>> {
+    + acceptEvidence(evidence: EvidencePayload): EvidenceRecord
+  }
+  class CreatorSignedAuthority <<strategy>> {
+    + acceptEvidence(id: Identifier, submitter: Identifier, stmt: SignedStatement): EvidenceRecord
+  }
+  class ExternalResolverAuthority <<strategy>> {
+    + acceptEvidence(id: Identifier, outcomeId: String, req: ResolverRequest, res: ResolverResponse): EvidenceRecord
+  }
+  ResolutionAuthority <|.. CreatorSignedAuthority
+  ResolutionAuthority <|.. ExternalResolverAuthority
+}
+
+AccountPanel ..> AccountControl
+MarketBrowsePage ..> MarketQueryControl
+CreateMarketPage ..> MarketCreationControl
+MarketPage ..> MarketQueryControl
+MarketPage ..> TradingControl
+MarketPage ..> MarketLifecycleControl
+MarketPage ..> EventBus : SSE market events
+PortfolioPage ..> PortfolioControl
+AdminConsole ..> AdminControl
+AdminApi ..> AdminControl
+AdminControl ..> MarketLifecycleControl : suspension /\nsettlement pass
+MarketLifecycleControl ..> MarketCreationControl : funded bracket creation
+BackgroundWorker ..> MarketLifecycleControl : scheduled processing
+BackgroundWorker ..> MarketCreationControl : demo seeding
+MarketLifecycleControl ..> ResolverGateway : calls and parses\nexternal API
+ResolverGateway ..> NtuBusAdapter : HTTP resolver contract
+MarketLifecycleControl ..> ResolutionAuthority : delegates by series authority
+
+legend bottom left
+  Green <<boundary>>: UI or external interface. AdminConsole is the browser admin dialog;
+  AdminApi is the /admin routes called directly (suspension has no console control).
+  Amber <<control>>: seven logical use-case controls and one startup control.
+  Blue <<entity>>: domain information with attributes, operations, and association multiplicities.
+  Light green <<container>>: collection class owning the rules of a group of entities (not a table).
+  Pink <<strategy>>: interchangeable resolution authority behaviours.
+  Grey <<infrastructure>>: existing shared runtime and storage support.
+  Purple <<active>>: background task/module abstraction.
+  Dashed arrow: uses / depends on; not a stored association and has no multiplicity.
+  Solid line: entity association with multiplicities. Filled diamond: composition. Hollow diamond: aggregation.
+  Control-to-entity dependencies are listed in the responsibility matrix in docs/developer/class-diagram.md.
+  Logical collaboration arrows group existing functions; they do not imply a code refactor.
+  Browser-to-control arrows summarize HTTP paths. ApiRouter shows startup wiring.
+  MarketPage to EventBus is the per-instance SSE stream (Observer); it carries no domain data.
+  No administrator path creates instances or resolves markets (resolution authority is creator or resolver only).
+  Operation signatures are design-level and abbreviated as documented in docs/developer/class-diagram.md.
+endlegend
+@enduml
