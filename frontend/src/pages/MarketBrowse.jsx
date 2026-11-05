@@ -10,6 +10,7 @@ export default function MarketBrowse({ refresh, onSelect, onError, liveMode }) {
   const [history, setHistory] = useState(emptyHistory);
   const [offsets, setOffsets] = useState({ closed: 0, voided: 0, resolved: 0 });
   const [category, setCategory] = useState("all");
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [historyTab, setHistoryTab] = useState(null);
   useEffect(() => {
@@ -30,14 +31,18 @@ export default function MarketBrowse({ refresh, onSelect, onError, liveMode }) {
     load(); const timer = setInterval(load, 10000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [refresh, onError, offsets]);
-  const inCategory = (rows) => rows.filter((i) => category === "all" || i.category === category);
+  // Category and search both filter client-side over the loaded page, like
+  // the category buttons always have; search matches the market title.
+  const needle = query.trim().toLowerCase();
+  const inCategory = (rows) => rows.filter((i) => (category === "all" || i.category === category)
+    && (needle === "" || i.title.toLowerCase().includes(needle)));
   const liveRows = inCategory(live);
   const card = (instance) => <button className="market-card" key={instance.id} onClick={() => onSelect(instance.id)}>
     <div className="card-meta"><span className={`category category-${instance.category}`}>{categories[instance.category]}</span><span className={`status ${instance.tradable ? "open" : ""}`}>{instance.tradable ? "Open" : instance.state}</span></div>
     <h3>{instance.title}</h3><div className="outcome-preview">{instance.outcomes.slice(0, 3).map((outcome) => <div key={outcome.id}><span>{outcome.label}</span><strong>{(outcome.probability * 100).toFixed(1)}%</strong><span className="probability-track"><span style={{ width: `${outcome.probability * 100}%` }} /></span></div>)}</div>
     <div className="card-footer"><span>{observationLabel(instance, liveMode)}</span><span>Closes {timestamp(instance.close_ms)} SGT</span></div>
   </button>;
-  const grid = (rows) => rows.length === 0 ? <div className="empty-state">No markets in this category.</div> : <div className="market-grid">{rows.map(card)}</div>;
+  const grid = (rows) => rows.length === 0 ? <div className="empty-state">{needle ? `No markets match "${query.trim()}".` : "No markets in this category."}</div> : <div className="market-grid">{rows.map(card)}</div>;
   const count = (rows) => rows.length >= 100 ? "100+" : String(rows.length);
   const pager = (offset, rows, turn) => <div className="pagination">
     <button disabled={offset === 0} onClick={() => turn(Math.max(0, offset - 100))}>Previous</button>
@@ -46,6 +51,7 @@ export default function MarketBrowse({ refresh, onSelect, onError, liveMode }) {
   </div>;
   return <>
     <section className="hero"><p className="eyebrow">THE CAMPUS FORECAST</p><h1>What happens next?</h1><p>Weather, bus arrivals, campus crowds and more.<br />Explore the outcomes. Share what you know.</p></section>
+    <input type="search" className="market-search" placeholder="Search markets by title" aria-label="Search markets" value={query} onChange={(e) => setQuery(e.target.value)} maxLength={120} />
     <div className="filters" aria-label="Market categories">{[["all", "All markets"], ...Object.entries(categories)].map(([id, name]) => <button key={id} aria-pressed={category === id} className={category === id ? "selected" : ""} onClick={() => setCategory(id)}>{name}</button>)}</div>
     <div className="section-heading"><h2>{category === "all" ? "Campus markets" : categories[category]}</h2><span className="muted">{liveRows.length} open</span></div>
     {loading ? <p role="status">Loading markets…</p> : grid(liveRows)}

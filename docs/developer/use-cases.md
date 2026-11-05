@@ -177,12 +177,12 @@ Full descriptions of all twenty-five use cases, in ID order.
 2. The grid lists every market bracket directly, live markets only, soonest to close first; each card opens the bracket's market page, which carries the whole series view.
 3. Closed, voided, and resolved markets are collapsed into a history panel with Closed, Voided, and Resolved tabs that default to hidden; opening a tab lists its markets, most recently closed first, and clicking a card opens that market page.
 4. Paging follows the collapse: with every tab hidden there is no pager, and each open tab pages its own class independently.
-5. Category buttons narrow the search to one category; the filter applies client-side to the current page, across the live grid and the history tabs alike.
+5. The trader can type in the search box to narrow the listing to markets whose title contains the text, ignoring case, and category buttons narrow it to one category; both filters combine and apply client-side to the current page, across the live grid and the history tabs alike.
 6. Each card shows the category, effective state, up to three outcomes with their current probabilities, the data-mode label, and the Singapore close time; a card opens the market page.
 
 **Alternative flows:**
 
-- No market on the current page matches the category: an empty-state message appears; the filter does not fetch further pages.
+- No market on the current page matches the search text or category: an empty-state message appears; the filter does not fetch further pages.
 - Fewer than 100 rows arrive: Next is disabled, because the server returns no total count.
 
 ### UC-6: Request creator verification
