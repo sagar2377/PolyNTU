@@ -1,5 +1,7 @@
 # PolyNTU use case model
 
+Authors: Ignatius Justin Low, Luo Jun Yong, Anshul Sharma, Cao Yu Xuan, Chen Wei Feng
+
 This is the use case model of the PolyNTU platform: the actors, the complete register of use cases, the business rules behind them, and detailed flows for every registered use case. The register marks each case as existing, partial, or new:
 
 - **exists**: implemented and working in the current build;
@@ -34,7 +36,7 @@ The source is `docs/diagrams/use-case.puml`; re-render it with `scripts/render-d
 | Account and access | UC-2 | Log in with email and password | Trader | exists |
 | Account and access | UC-3 | Receive the 10,000-unit welcome gift | Trader | exists |
 | Account and access | UC-4 | View portfolio, trades, and pending receipts | Trader | exists |
-| Account and access | UC-5 | Browse and search markets | Trader | exists |
+| Account and access | UC-5 | Browse markets | Trader | exists |
 | Creator lifecycle | UC-6 | Request creator verification | Trader | exists |
 | Creator lifecycle | UC-7 | Approve or reject a creator request | Platform Admin | exists |
 | Market definition | UC-8 | Create a one-time market | Market Creator | exists |
@@ -67,7 +69,7 @@ Notes:
 
 1. Accounts require an NTU email (existing; [ADR 0005](../decisions/0005-ntu-accounts-and-creator-roles.md)). The address must match `^[^@\s]+@([a-z0-9-]+\.)*ntu\.edu\.sg$` (case-insensitive), so `billy@ntu.edu.sg` and `billy@scse.ntu.edu.sg` pass and anything else is rejected.
 2. Registered accounts receive a 10,000-unit welcome gift from the treasury; the demo account keeps its 1,000-unit grant (existing; ADR 0005). Total issuance rises from 1M to 1B units, applied as a second idempotent bootstrap transfer rather than a migration, so the gift budget is not exhausted after 100 users.
-3. Every trade on a fee-charging market pays a 25-basis-point fee on the LMSR amount, included in the quoted all-in amount, accumulated in the market reserve, and split 50/50 between the creator and the treasury at settlement (existing; [ADR 0004](../decisions/0004-trade-fees.md)). The fee is a market attribute fixed at creation (`fee_charged`, default true): the administrator sets it creating instances directly and creators set it publishing a series. A fee-free market charges nothing, collects no fee, and pays no creator share; bus timing is the welfare example.
+3. Every trade on a fee-charging market pays a 25-basis-point fee on the LMSR amount, included in the quoted all-in amount, accumulated in the market reserve, and split 50/50 between the creator and the treasury at settlement (existing; [ADR 0004](../decisions/0004-trade-fees.md)). The fee is a market attribute fixed at creation (`fee_charged`, default true): creators set it when publishing a series. A fee-free market charges nothing, collects no fee, and pays no creator share; bus timing is the welfare example.
 4. Creators cannot trade in their own markets.
 5. A perpetual market is a recurring market with no end date: it recurs forever with automatically refreshing resolution times.
 6. Rolling spawn: a new bracket instance is created every interval while the live count is below the maximum concurrency; the covered horizon is maximum concurrency × interval. Each spawned bracket's title carries its time window (`{series title} · HH:MM to HH:MM` in Singapore time), so brackets of one series stay distinguishable; a one-time market keeps the creator's title unchanged.
@@ -167,7 +169,7 @@ Full descriptions of all twenty-five use cases, in ID order.
 - One offset paginates positions, credits, and trades together, so a page can be sparse in one list and full in another; Next is disabled only when all three lists return fewer than 100 rows.
 - A settled recurring bracket past the retention window: its positions and credits disappear from the lists while the balance keeps the units (business rule 14).
 
-### UC-5: Browse and search markets
+### UC-5: Browse markets
 
 **Precondition:** none; discovery is public.
 
@@ -177,7 +179,7 @@ Full descriptions of all twenty-five use cases, in ID order.
 2. The grid lists every market bracket directly, live markets only, soonest to close first; each card opens the bracket's market page, which carries the whole series view.
 3. Closed, voided, and resolved markets are collapsed into a history panel with Closed, Voided, and Resolved tabs that default to hidden; opening a tab lists its markets, most recently closed first, and clicking a card opens that market page.
 4. Paging follows the collapse: with every tab hidden there is no pager, and each open tab pages its own class independently.
-5. Category buttons narrow the search to one category; the filter applies client-side to the current page, across the live grid and the history tabs alike.
+5. Category buttons narrow the list to one category; the filter applies client-side to the current page, across the live grid and the history tabs alike.
 6. Each card shows the category, effective state, up to three outcomes with their current probabilities, the data-mode label, and the Singapore close time; a card opens the market page.
 
 **Alternative flows:**
