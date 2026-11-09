@@ -25,7 +25,7 @@ rectangle "PolyNTU" {
     usecase "Sign out" as UC25 #C8E6C9
     usecase "Receive the 10,000-unit\nwelcome gift" as UC3 #C8E6C9
     usecase "View portfolio, trades,\nand pending receipts" as UC4 #C8E6C9
-    usecase "Browse and\nsearch markets" as UC5 #C8E6C9
+    usecase "Browse markets" as UC5 #C8E6C9
   }
 
   package "Creator lifecycle" {

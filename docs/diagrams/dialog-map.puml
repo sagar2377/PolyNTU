@@ -155,13 +155,6 @@ note bottom of Clock
   Market page and in the portfolio.
 end note
 
-note bottom of Markets
-  **UC-5 is named "Browse and search markets"**
-  but this screen offers category filters and
-  paging only; there is no search control.
-  Either add one or rename the use case.
-end note
-
 legend right
   Green: screen or dialog in the current build
   Yellow: demo-mode fixture, not a requirement
